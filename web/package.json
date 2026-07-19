@@ -2,9 +2,6 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
-  "prisma": {
-    "seed": "dotenv -e .env -- tsx prisma/seed.ts"
-  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
