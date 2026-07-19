@@ -1,0 +1,343 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ===== Enums =====
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ProviderKey {
+  DIGIFLAZZ
+  OKECONNECT
+  QIOSPAY
+  SERPUL
+}
+
+enum ProviderSkuStatus {
+  ACTIVE
+  UNAVAILABLE
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PROCESSING
+  COMPLETED
+  EXPIRED
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+  NEEDS_REVIEW
+}
+
+enum PaidVia {
+  MIDTRANS
+  BALANCE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  EXPIRED
+  FAILED
+}
+
+enum FulfillmentStatus {
+  SENT
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum LedgerType {
+  DEPOSIT
+  ORDER_PAYMENT
+  REFUND
+  ADJUSTMENT
+}
+
+enum DepositStatus {
+  PENDING
+  PAID
+  EXPIRED
+  FAILED
+}
+
+enum HealthStatus {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  DOWN
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// ===== Blok 3: User & Wallet =====
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String
+  role            Role      @default(USER)
+  emailVerifiedAt DateTime?
+  wallet          Wallet?
+  orders          Order[]
+  deposits        Deposit[]
+  adminActionLogs AdminActionLog[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Wallet {
+  id      String         @id @default(cuid())
+  userId  String         @unique
+  user    User           @relation(fields: [userId], references: [id])
+  balance BigInt         @default(0)
+  ledger  WalletLedger[]
+}
+
+model WalletLedger {
+  id             String     @id @default(cuid())
+  walletId       String
+  wallet         Wallet     @relation(fields: [walletId], references: [id])
+  type           LedgerType
+  amount         BigInt // signed: +masuk / -keluar
+  balanceAfter   BigInt
+  referenceType  String // "order" | "deposit" | "manual"
+  referenceId    String
+  idempotencyKey String     @unique
+  note           String?
+  createdAt      DateTime   @default(now())
+
+  @@index([walletId, createdAt])
+}
+
+model Deposit {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  amount      BigInt
+  status      DepositStatus @default(PENDING)
+  paymentRef  String?
+  rawResponse Json?
+  expiredAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// ===== Blok 1: Katalog =====
+
+model Category {
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  name      String
+  sortOrder Int       @default(0)
+  products  Product[]
+}
+
+model Product {
+  id               String        @id @default(cuid())
+  categoryId       String
+  category         Category      @relation(fields: [categoryId], references: [id])
+  slug             String        @unique
+  name             String
+  publisher        String?
+  banner           String?
+  description      String?       @db.Text
+  isActive         Boolean       @default(false)
+  inputFields      Json // contoh ML: [{"name":"user_id","label":"User ID"},{"name":"zone_id","label":"Zone ID"}]
+  nicknameCheckKey String?
+  items            ProductItem[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model ProductItem {
+  id           String        @id @default(cuid())
+  productId    String
+  product      Product       @relation(fields: [productId], references: [id])
+  name         String
+  sellingPrice BigInt
+  memberPrice  BigInt
+  isActive     Boolean       @default(true)
+  sortOrder    Int           @default(0)
+  providerSkus ProviderSku[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model ProviderSku {
+  id              String            @id @default(cuid())
+  productItemId   String
+  productItem     ProductItem       @relation(fields: [productItemId], references: [id])
+  provider        ProviderKey
+  providerSkuCode String
+  costPrice       BigInt
+  status          ProviderSkuStatus @default(ACTIVE)
+  lastSyncedAt    DateTime?
+
+  @@unique([productItemId, provider])
+  @@index([provider, providerSkuCode])
+}
+
+// ===== Blok 2: Order & Fulfillment =====
+
+model Order {
+  id            String               @id @default(cuid())
+  orderNumber   String               @unique // INV-YYYYMMDD-XXXX
+  status        OrderStatus          @default(PENDING_PAYMENT)
+  userId        String?
+  user          User?                @relation(fields: [userId], references: [id])
+  productItemId String?
+  productName   String // snapshot
+  itemName      String // snapshot
+  target        Json // {"user_id":"123","zone_id":"1234"} atau {"phone_number":"08..."}
+  buyerEmail    String?
+  buyerPhone    String?
+  paidVia       PaidVia?
+  sellingPrice  BigInt
+  total         BigInt
+  expiredAt     DateTime?
+  completedAt   DateTime?
+  payment       OrderPayment?
+  fulfillments  OrderFulfillment[]
+  statusHistory OrderStatusHistory[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model OrderPayment {
+  id          String        @id @default(cuid())
+  orderId     String        @unique
+  order       Order         @relation(fields: [orderId], references: [id])
+  method      String // "qris" | "gopay" | "va" | "balance"
+  paymentRef  String?
+  status      PaymentStatus @default(PENDING)
+  actions     Json? // qr_string / deeplink dari Midtrans
+  rawResponse Json?
+  expiredAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([paymentRef])
+}
+
+model OrderFulfillment {
+  id              String            @id @default(cuid())
+  orderId         String
+  order           Order             @relation(fields: [orderId], references: [id])
+  attemptNo       Int
+  provider        ProviderKey
+  providerSkuCode String
+  costPrice       BigInt // snapshot saat attempt
+  ourRefId        String            @unique // dikirim ke provider, kunci pencocokan callback
+  providerRef     String?
+  status          FulfillmentStatus @default(SENT)
+  sn              String? // serial number / token hasil
+  message         String?
+  rawCallback     Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([orderId, attemptNo])
+}
+
+model OrderStatusHistory {
+  id         String      @id @default(cuid())
+  orderId    String
+  order      Order       @relation(fields: [orderId], references: [id])
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  note       String?
+  createdAt  DateTime    @default(now())
+}
+
+// ===== Blok 4: Operasional =====
+
+model ProviderConfig {
+  id                String               @id @default(cuid())
+  key               ProviderKey          @unique
+  displayName       String
+  credentials       Json? // terenkripsi di layer aplikasi sebelum simpan
+  isActive          Boolean              @default(false)
+  priority          Int                  @default(100) // kecil = diprioritaskan saat harga seri
+  balance           BigInt               @default(0)
+  healthStatus      HealthStatus         @default(UNKNOWN)
+  lastHealthCheckAt DateTime?
+  balanceLogs       ProviderBalanceLog[]
+  updatedAt         DateTime             @updatedAt
+}
+
+model ProviderBalanceLog {
+  id         String         @id @default(cuid())
+  providerId String
+  provider   ProviderConfig @relation(fields: [providerId], references: [id])
+  balance    BigInt
+  createdAt  DateTime       @default(now())
+}
+
+model PriceSyncLog {
+  id          String      @id @default(cuid())
+  provider    ProviderKey
+  startedAt   DateTime    @default(now())
+  finishedAt  DateTime?
+  skusUpdated Int         @default(0)
+  skusMissing Int         @default(0)
+  result      String?
+  error       String?     @db.Text
+}
+
+model Job {
+  id          String    @id @default(cuid())
+  type        String
+  payload     Json
+  runAt       DateTime
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  status      JobStatus @default(PENDING)
+  lastError   String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+}
+
+model AdminActionLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  admin      User     @relation(fields: [adminId], references: [id])
+  action     String
+  targetType String?
+  targetId   String?
+  detail     Json?
+  createdAt  DateTime @default(now())
+}
+
+model WebhookEvent {
+  id            String    @id @default(cuid())
+  source        String // "midtrans" | "digiflazz" | "okeconnect" | "qiospay" | "serpul"
+  externalRef   String?
+  eventKey      String?   @unique // idempotency: `${source}:${ref}:${status}`
+  rawBody       String    @db.Text
+  headers       Json
+  processedAt   DateTime?
+  processResult String?
+  createdAt     DateTime  @default(now())
+
+  @@index([source, externalRef])
+}
