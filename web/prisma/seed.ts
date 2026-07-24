@@ -11,6 +11,26 @@ const CATEGORIES = [
   { slug: "voucher", name: "Voucher", sortOrder: 5 },
 ];
 
+const PROVIDERS = [
+  { key: "DIGIFLAZZ" as const, displayName: "Digiflazz", priority: 10 },
+  { key: "SERPUL" as const, displayName: "Serpul", priority: 20 },
+  { key: "OKECONNECT" as const, displayName: "OkeConnect", priority: 30 },
+  { key: "QIOSPAY" as const, displayName: "QiosPay", priority: 40 },
+];
+
+const SAMPLE_PRODUCTS = [
+  {
+    slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton",
+    inputFields: [{ name: "user_id", label: "User ID" }, { name: "zone_id", label: "Zone ID" }],
+    items: [{ name: "86 Diamonds", sellingPrice: 22000n, memberPrice: 21500n, sortOrder: 1 }],
+  },
+  {
+    slug: "free-fire", name: "Free Fire", publisher: "Garena",
+    inputFields: [{ name: "user_id", label: "User ID" }],
+    items: [{ name: "100 Diamond", sellingPrice: 16000n, memberPrice: 15500n, sortOrder: 1 }],
+  },
+];
+
 async function main() {
   for (const c of CATEGORIES) {
     await db.category.upsert({
@@ -39,7 +59,33 @@ async function main() {
     create: { userId: admin.id },
   });
 
-  console.log(`Seed OK: ${CATEGORIES.length} kategori, admin=${email}`);
+  for (const p of PROVIDERS) {
+    await db.providerConfig.upsert({
+      where: { key: p.key },
+      update: { displayName: p.displayName, priority: p.priority },
+      create: p, // isActive false, credentials null — diisi lewat admin
+    });
+  }
+
+  const games = await db.category.findUniqueOrThrow({ where: { slug: "games" } });
+  for (const sp of SAMPLE_PRODUCTS) {
+    const product = await db.product.upsert({
+      where: { slug: sp.slug },
+      update: { name: sp.name, publisher: sp.publisher },
+      create: {
+        categoryId: games.id, slug: sp.slug, name: sp.name, publisher: sp.publisher,
+        inputFields: sp.inputFields, isActive: false, // aktifkan manual setelah mapping SKU
+      },
+    });
+    for (const item of sp.items) {
+      const existing = await db.productItem.findFirst({ where: { productId: product.id, name: item.name } });
+      if (!existing) await db.productItem.create({ data: { productId: product.id, ...item } });
+    }
+  }
+
+  console.log(
+    `Seed OK: ${CATEGORIES.length} kategori, admin=${email}, ${PROVIDERS.length} provider config, ${SAMPLE_PRODUCTS.length} produk contoh`,
+  );
 }
 
 main()
