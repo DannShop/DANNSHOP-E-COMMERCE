@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DigiflazzAdapter } from "@/lib/providers/digiflazz";
 
@@ -136,7 +137,6 @@ describe("DigiflazzAdapter.createTransaction", () => {
 });
 
 describe("DigiflazzAdapter.parseCallback", () => {
-  const { createHmac } = require("node:crypto");
   const secret = "hook-secret";
   const credsWithHook = { ...creds, webhookSecret: secret };
   const bodyObj = {
@@ -168,5 +168,13 @@ describe("DigiflazzAdapter.parseCallback", () => {
     const adapter = new DigiflazzAdapter(credsWithHook);
     expect(adapter.parseCallback({ rawBody: "{\"halo\":1}", headers: {} })).toBeNull();
     expect(adapter.parseCallback({ rawBody: "bukan json", headers: {} })).toBeNull();
+  });
+
+  it("header key case-insensitive: X-Hub-Signature juga terdeteksi", () => {
+    const adapter = new DigiflazzAdapter(credsWithHook);
+    const result = adapter.parseCallback({ rawBody, headers: { "X-Hub-Signature": sig } });
+    expect(result).not.toBeNull();
+    expect(result!.verified).toBe(true);
+    expect(result!.refId).toBe("DS-F2-1");
   });
 });
