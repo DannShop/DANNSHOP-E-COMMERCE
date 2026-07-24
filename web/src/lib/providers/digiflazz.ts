@@ -35,6 +35,8 @@ const trxDataSchema = z.object({
 });
 const trxSchema = z.object({ data: trxDataSchema });
 
+const callbackSchema = z.object({ data: trxDataSchema.omit({ price: true }).extend({ price: z.number().optional() }) });
+
 // Mapping status Digiflazz → TrxStatus internal (spec §5.2: rc 00 sukses, 03 pending)
 function mapTrxStatus(status: string, rc: string): "success" | "pending" | "failed" {
   if (status === "Sukses" || rc === "00") return "success";
@@ -125,7 +127,33 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
     return this.createTransaction(input);
   }
 
-  parseCallback(_input: { rawBody: string; headers: Record<string, string> }): CallbackResult | null {
-    throw new Error("belum diimplementasi (Task 5)");
+  parseCallback(input: { rawBody: string; headers: Record<string, string> }): CallbackResult | null {
+    let json: unknown;
+    try {
+      json = JSON.parse(input.rawBody);
+    } catch {
+      return null;
+    }
+    const parsed = callbackSchema.safeParse(json);
+    if (!parsed.success) return null;
+
+    // Cari header case-insensitive
+    const sigHeader = Object.entries(input.headers).find(
+      ([k]) => k.toLowerCase() === "x-hub-signature",
+    )?.[1];
+
+    const verified = this.creds.webhookSecret
+      ? verifyDigiflazzWebhookSignature(input.rawBody, this.creds.webhookSecret, sigHeader)
+      : false;
+
+    const d = parsed.data.data;
+    return {
+      refId: d.ref_id,
+      status: mapTrxStatus(d.status, d.rc),
+      sn: d.sn ? d.sn : null,
+      message: d.message,
+      verified,
+      raw: json,
+    };
   }
 }

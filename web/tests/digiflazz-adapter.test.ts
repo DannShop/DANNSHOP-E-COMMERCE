@@ -134,3 +134,39 @@ describe("DigiflazzAdapter.createTransaction", () => {
     expect(result.sn).toBe("SN-AKHIR");
   });
 });
+
+describe("DigiflazzAdapter.parseCallback", () => {
+  const { createHmac } = require("node:crypto");
+  const secret = "hook-secret";
+  const credsWithHook = { ...creds, webhookSecret: secret };
+  const bodyObj = {
+    data: { ref_id: "DS-F2-1", customer_no: "123", buyer_sku_code: "ML86",
+            status: "Sukses", message: "OK", sn: "SN789", rc: "00" },
+  };
+  const rawBody = JSON.stringify(bodyObj);
+  const sig = "sha1=" + createHmac("sha1", secret).update(rawBody).digest("hex");
+
+  it("signature valid → verified true + status ter-map", () => {
+    const adapter = new DigiflazzAdapter(credsWithHook);
+    const result = adapter.parseCallback({ rawBody, headers: { "x-hub-signature": sig } });
+    expect(result).not.toBeNull();
+    expect(result!.verified).toBe(true);
+    expect(result!.refId).toBe("DS-F2-1");
+    expect(result!.status).toBe("success");
+    expect(result!.sn).toBe("SN789");
+  });
+
+  it("signature salah → verified false (payload tetap ter-parse)", () => {
+    const adapter = new DigiflazzAdapter(credsWithHook);
+    const result = adapter.parseCallback({
+      rawBody, headers: { "x-hub-signature": "sha1=" + "0".repeat(40) },
+    });
+    expect(result!.verified).toBe(false);
+  });
+
+  it("body bukan format Digiflazz → null", () => {
+    const adapter = new DigiflazzAdapter(credsWithHook);
+    expect(adapter.parseCallback({ rawBody: "{\"halo\":1}", headers: {} })).toBeNull();
+    expect(adapter.parseCallback({ rawBody: "bukan json", headers: {} })).toBeNull();
+  });
+});
