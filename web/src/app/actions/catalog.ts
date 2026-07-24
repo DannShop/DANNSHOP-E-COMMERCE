@@ -138,6 +138,7 @@ export async function createProductItem(formData: FormData): Promise<ActionResul
     },
   });
   await logAdmin(admin.adminId, "catalog.create_item", item.id, { productId: parsed.data.productId });
+  revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${parsed.data.productId}`);
   return { ok: "Item ditambahkan." };
 }
@@ -170,6 +171,7 @@ export async function updateProductItem(formData: FormData): Promise<ActionResul
     },
   });
   await logAdmin(admin.adminId, "catalog.update_item", id);
+  revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${parsed.data.productId}`);
   return { ok: "Item tersimpan." };
 }

@@ -37,22 +37,32 @@ function ItemRow({
       <input type="hidden" name="productId" value={productId} />
 
       <Input name="name" defaultValue={item.name} aria-label="Nama item" required />
-      <Input
-        name="sellingPrice"
-        defaultValue={item.sellingPrice}
-        inputMode="numeric"
-        aria-label="Harga jual"
-        className="tabular-nums"
-        required
-      />
-      <Input
-        name="memberPrice"
-        defaultValue={item.memberPrice}
-        inputMode="numeric"
-        aria-label="Harga member"
-        className="tabular-nums"
-        required
-      />
+      <div className="flex flex-col gap-1">
+        <Input
+          name="sellingPrice"
+          defaultValue={item.sellingPrice}
+          inputMode="numeric"
+          aria-label="Harga jual"
+          className="tabular-nums"
+          required
+        />
+        <span className="text-xs text-muted-foreground">
+          Rp {Number(item.sellingPrice).toLocaleString("id-ID")}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Input
+          name="memberPrice"
+          defaultValue={item.memberPrice}
+          inputMode="numeric"
+          aria-label="Harga member"
+          className="tabular-nums"
+          required
+        />
+        <span className="text-xs text-muted-foreground">
+          Rp {Number(item.memberPrice).toLocaleString("id-ID")}
+        </span>
+      </div>
       <Input
         name="sortOrder"
         defaultValue={item.sortOrder}
