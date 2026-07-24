@@ -1,6 +1,6 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (FASE 2 SELESAI — Task 1-14 semua selesai, siap final whole-branch review)
+Terakhir update: 2026-07-25 (FASE 2 SELESAI TOTAL — 14 task, whole-branch review Ready to merge: Yes, di-push ke remote, PR menunggu dibuat manual)
 
 ## Dokumen kunci
 
@@ -12,9 +12,19 @@ Terakhir update: 2026-07-25 (FASE 2 SELESAI — Task 1-14 semua selesai, siap fi
 
 ## Status Fase 2 (mulai 2026-07-24, subagent-driven) — SEMUA 14 TASK SELESAI
 
-Task 1–10 selesai (util key(), webhook signature, Digiflazz adapter, mapTrxStatus, parseCallback, registry adapter, sync harga, kredensial provider terenkripsi UI, CRUD produk/item admin). Task 11 (mapping ProviderSku + margin viewer) selesai commit `44ca067`. Task 12 (halaman transaksi tes Digiflazz) selesai commit `174351d`, review Approved tanpa Critical/Important. Task 13 (seed 4 ProviderConfig + contoh katalog ML & FF) selesai commit `f0becfb`. Task 14 (verifikasi akhir fase) selesai — lihat catatan sesi 2026-07-25 di bawah.
+Task 1–10 selesai (util key(), webhook signature, Digiflazz adapter, mapTrxStatus, parseCallback, registry adapter, sync harga, kredensial provider terenkripsi UI, CRUD produk/item admin). Task 11 (mapping ProviderSku + margin viewer) selesai commit `44ca067`. Task 12 (halaman transaksi tes Digiflazz) selesai commit `174351d`, review Approved tanpa Critical/Important. Task 13 (seed 4 ProviderConfig + contoh katalog ML & FF) selesai commit `f0becfb`. Task 14 (verifikasi akhir fase) selesai.
 
-**Lanjut ke: final whole-branch review (superpowers:requesting-code-review) lalu superpowers:finishing-a-development-branch.** Belum di-push ke remote — commit lokal sudah lengkap sampai Task 14 (belum ada commit docs checkpoint terpisah, PROGRESS.md ini akan di-commit sesudahnya).
+### Final whole-branch review + push (2026-07-25)
+
+Review whole-branch (opus, range `9b7a296..4a809c5`, 20 commit): **Ready to merge: Yes**, tanpa Critical. 2 Important ditemukan & langsung di-fix (commit `0851918`):
+1. `DigiflazzAdapter.post()` tidak ada timeout & bisa lempar `SyntaxError` mentah kalau respons bukan JSON (mis. halaman HTML dari gateway/rate-limit) — ditambah `AbortSignal.timeout(15s)` + parse JSON aman dengan pesan error jelas.
+2. `toggleProductActive` membolehkan aktivasi produk tanpa item, padahal copy halaman admin sudah mengklaim itu tidak mungkin — ditambah guard server-side + tombol "Aktifkan" di-disable di client saat item masih 0.
+
+Re-review commit fix (opus): kedua fix dikonfirmasi benar tanpa regresi. 5 Minor dari review awal **sengaja dibiarkan** (tidak blocking, ikut pola task-task sebelumnya di fase ini): validasi `ProviderKey` cast tidak konsisten antara `actions/catalog.ts` vs `actions/providers.ts`; `CRON_SECRET` compare pakai `!==` bukan `timingSafeEqual`; job runner ada payload rewrite no-op + hasil handler (string ringkasan) tidak pernah disimpan; `ensureRecurringJobs` tidak atomik (potensi job duplikat saat tick bertumpuk) + job `FAILED` permanen langsung dibuat ulang tanpa sinyal kegagalan yang tahan lama; `Number(bigint)` presisi hilang di atas 2^53 (tidak relevan untuk saldo rupiah realistis). Detail lengkap di laporan reviewer (tidak disimpan sebagai file — lihat riwayat sesi 2026-07-25 kalau perlu detail ulang).
+
+**Branch `fase-2-katalog` sudah di-push ke `origin`** (`git push -u origin fase-2-katalog`, sukses). **PENTING:** PR harus dibuat manual via GitHub web (gh CLI tidak terinstall) dengan **base branch `fase-1-fondasi`, BUKAN `main`** — karena `fase-2-katalog` dibuat dari `fase-1-fondasi` (PR Fase 1 belum di-merge; `main` remote & lokal masih di commit paling awal `d33e365`). URL compare: `https://github.com/DannShop/DANNSHOP-E-COMMERCE/compare/fase-1-fondasi...fase-2-katalog?expand=1`.
+
+**Langkah pertama saat lanjut:** cek dulu status kedua PR di GitHub (PR Fase 1 `fase-1-fondasi`→`main` DAN PR Fase 2 `fase-2-katalog`→`fase-1-fondasi`, kalau sudah dibuat user). Kalau Fase 1 sudah merge ke main, sebaiknya PR Fase 2 di-retarget ke `main` di GitHub (tombol "Edit" di halaman PR, ganti base) supaya tidak nge-stack 2 PR. Kalau belum ada progress dari sesi ini, lanjut Fase 3 (cek spec desain buat urutan fase berikutnya) setelah kedua PR beres.
 
 ### Catatan sesi 2026-07-25 (Task 14 — verifikasi akhir)
 
