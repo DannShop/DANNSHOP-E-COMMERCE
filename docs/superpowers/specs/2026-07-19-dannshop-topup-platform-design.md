@@ -1,7 +1,7 @@
 # DannShop Topup Platform — Design Doc
 
 Tanggal: 2026-07-19
-Status: Draft — menunggu review Wildan
+Status: Disetujui Wildan (2026-07-24) — Fase 1 selesai; lihat Addendum §15
 Bahasa: Indonesia (sesuai preferensi pemilik project)
 
 ## 1. Ringkasan Keputusan
@@ -261,3 +261,13 @@ Tiap fase = branch sendiri + testing sebelum lanjut (TDD untuk logic uang: ledge
 - [Serpul Dokumentasi H2H](https://serpul.co.id/dokumentasi-h2h)
 - [Midtrans Core API](https://docs.midtrans.com/reference/core-api-overview) — charge QRIS, notification signature
 - [Hostinger Web App Hosting](https://www.hostinger.com/id/web-app-hosting)
+
+## 15. Addendum 2026-07-24 (keputusan review Wildan)
+
+Roadmap Fase 2–7 di-review ulang bersama Wildan dan disetujui dengan keputusan berikut:
+
+1. **Provider tetap 4** sesuai §1: Digiflazz → Serpul → OkeConnect → QiosPay, dikerjakan bertahap (Digiflazz end-to-end dulu).
+2. **UI/UX: dark + light mode** dalam satu design system (tema via design tokens + toggle, default mengikuti preferensi OS). Referensi rasa: Codashop (terang/playful) dan UniPin (gelap/gaming) — DannShop mengambil keduanya lewat dua tema, bukan memilih salah satu. Design system disusun di awal Fase 3 (sebelum halaman publik dibangun) menggunakan skill `ui-ux-pro-max` + `frontend-design`, dan konsepnya dipresentasikan ke Wildan sebelum diterapkan.
+3. **Urutan fase mengikuti §12** (katalog dulu, UI publik di Fase 3) — halaman publik langsung memakai data produk asli, bukan dummy.
+4. **Workflow eksekusi per fase**: `writing-plans` (plan di-approve Wildan) → `subagent-driven-development` (implementer + reviewer per task) → final whole-branch review → PR → merge oleh Wildan. TDD wajib untuk semua logic uang/eksternal (adapter provider, webhook, ledger, routing).
+5. **Pelajaran audit wallet Laravel (2026-07-24) diterapkan**: (a) unique constraint idempotency webhook harus per-event (source, ref, status/event_type), bukan per-referensi saja — bug bentrok `payment_created` vs `webhook_received` di Laravel tidak boleh terulang; (b) setiap transisi status yang melepas/mendebit dana harus lock + re-check status di dalam transaksi (hindari double-release ala WithdrawalService); (c) `reference_type` ledger harus konsisten dengan isi `reference_id`.
