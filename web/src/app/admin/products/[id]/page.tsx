@@ -7,10 +7,20 @@ import {
   updateProduct,
   updateProductItem,
   toggleProductActive,
+  mapProviderSku,
+  unmapProviderSku,
 } from "@/app/actions/catalog";
 import { ProductForm } from "../product-form";
 import { ProductItemsManager } from "../product-items-manager";
 import { ProductToggleForm } from "../product-toggle-form";
+
+// Sama seperti admin/providers/page.tsx — format tanggal di Server Component
+// dan kirim sebagai string jadi, bukan di-format ulang di client component
+// (product-items-manager.tsx), supaya tidak ada risiko mismatch locale saat hidrasi.
+function formatDateTime(d: Date | null | undefined): string {
+  if (!d) return "Belum pernah";
+  return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+}
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,7 +28,12 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const [product, categories] = await Promise.all([
     db.product.findUnique({
       where: { id },
-      include: { items: { orderBy: { sortOrder: "asc" } } },
+      include: {
+        items: {
+          orderBy: { sortOrder: "asc" },
+          include: { providerSkus: true },
+        },
+      },
     }),
     db.category.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
@@ -81,9 +96,19 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             memberPrice: item.memberPrice.toString(),
             sortOrder: item.sortOrder,
             isActive: item.isActive,
+            providerSkus: item.providerSkus.map((sku) => ({
+              id: sku.id,
+              provider: sku.provider,
+              providerSkuCode: sku.providerSkuCode,
+              costPrice: sku.costPrice.toString(),
+              status: sku.status,
+              lastSyncedAtDisplay: formatDateTime(sku.lastSyncedAt),
+            })),
           }))}
           createProductItem={createProductItem}
           updateProductItem={updateProductItem}
+          mapProviderSku={mapProviderSku}
+          unmapProviderSku={unmapProviderSku}
         />
       </section>
     </div>

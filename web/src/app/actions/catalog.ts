@@ -1,7 +1,20 @@
 import { revalidatePath } from "next/cache";
+import { ProviderKey } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { productSchema, productItemSchema } from "@/lib/validation/catalog";
+
+const PROVIDER_KEYS = Object.values(ProviderKey);
+
+function parseNonNegativeBigInt(raw: FormDataEntryValue | null): bigint | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  try {
+    const value = BigInt(raw);
+    return value >= BigInt(0) ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 export type ActionResult = { ok?: string; error?: string };
 
@@ -174,4 +187,93 @@ export async function updateProductItem(formData: FormData): Promise<ActionResul
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${parsed.data.productId}`);
   return { ok: "Item tersimpan." };
+}
+
+// Petakan satu ProductItem ke SKU sebuah provider. Upsert on
+// @@unique([productItemId, provider]) — satu item boleh punya paling banyak
+// satu mapping aktif per provider (ganti kode/harga = replace mapping lama).
+// Sync harga (Task 7) hanya MENGUBAH mapping yang sudah ada lewat aksi ini,
+// tidak pernah membuat baru — sesuai kontrak diffPriceList di price-sync.ts.
+export async function mapProviderSku(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const productItemId = formData.get("productItemId");
+  const provider = formData.get("provider");
+  const providerSkuCode = formData.get("providerSkuCode");
+  const costPriceRaw = formData.get("costPrice");
+
+  if (typeof productItemId !== "string" || !productItemId) return { error: "Item produk tidak ditemukan." };
+  if (typeof provider !== "string" || !PROVIDER_KEYS.includes(provider as ProviderKey)) {
+    return { error: "Provider tidak valid." };
+  }
+  if (typeof providerSkuCode !== "string" || !providerSkuCode.trim()) {
+    return { error: "Kode SKU provider wajib diisi." };
+  }
+
+  const costPrice = parseNonNegativeBigInt(costPriceRaw);
+  if (costPrice === null) return { error: "Harga modal tidak valid." };
+
+  const item = await db.productItem.findUnique({ where: { id: productItemId }, select: { productId: true } });
+  if (!item) return { error: "Item produk tidak ditemukan." };
+
+  const providerKey = provider as ProviderKey;
+  const code = providerSkuCode.trim();
+  const mapping = await db.providerSku.upsert({
+    where: { productItemId_provider: { productItemId, provider: providerKey } },
+    create: {
+      productItemId,
+      provider: providerKey,
+      providerSkuCode: code,
+      costPrice,
+      status: "ACTIVE",
+      lastSyncedAt: new Date(),
+    },
+    update: {
+      providerSkuCode: code,
+      costPrice,
+      status: "ACTIVE",
+      lastSyncedAt: new Date(),
+    },
+  });
+
+  await logAdmin(admin.adminId, "catalog.map_sku", productItemId, {
+    provider: providerKey,
+    providerSkuCode: code,
+    costPrice: costPrice.toString(),
+    mappingId: mapping.id,
+  });
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${item.productId}`);
+  return { ok: "SKU berhasil dipetakan." };
+}
+
+export async function unmapProviderSku(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) return { error: "Mapping tidak ditemukan." };
+
+  const mapping = await db.providerSku.findUnique({
+    where: { id },
+    select: {
+      productItemId: true,
+      provider: true,
+      providerSkuCode: true,
+      productItem: { select: { productId: true } },
+    },
+  });
+  if (!mapping) return { error: "Mapping tidak ditemukan." };
+
+  await db.providerSku.delete({ where: { id } });
+  await logAdmin(admin.adminId, "catalog.unmap_sku", mapping.productItemId, {
+    provider: mapping.provider,
+    providerSkuCode: mapping.providerSkuCode,
+  });
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${mapping.productItem.productId}`);
+  return { ok: "Mapping SKU dihapus." };
 }
