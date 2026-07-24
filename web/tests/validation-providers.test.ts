@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { digiflazzCredentialsSchema } from "@/app/actions/providers";
+import { digiflazzCredentialsSchema, testTransactionSchema } from "@/app/actions/providers";
 
 describe("digiflazzCredentialsSchema", () => {
   it("username + apiKey wajib, webhookSecret opsional", () => {
@@ -18,5 +18,16 @@ describe("digiflazzCredentialsSchema", () => {
   it("webhookSecret string kosong dinormalisasi jadi undefined", () => {
     const r = digiflazzCredentialsSchema.parse({ username: "u", apiKey: "k", webhookSecret: "" });
     expect(r.webhookSecret).toBeUndefined();
+  });
+});
+
+describe("testTransactionSchema", () => {
+  it("skuCode + target wajib; testing default true", () => {
+    const r = testTransactionSchema.parse({ skuCode: "ML86", target: "123456789" });
+    expect(r.testing).toBe(true);
+  });
+
+  it("field kosong ditolak", () => {
+    expect(testTransactionSchema.safeParse({ skuCode: "", target: "" }).success).toBe(false);
   });
 });

@@ -18,6 +18,12 @@ export const digiflazzCredentialsSchema = z.object({
 
 export type ActionResult = { ok?: string; error?: string };
 
+export const testTransactionSchema = z.object({
+  skuCode: z.string().min(1, "Kode SKU wajib diisi"),
+  target: z.string().min(1, "Nomor tujuan wajib diisi"),
+  testing: z.coerce.boolean().default(true),
+});
+
 // Catatan: "use server" sengaja dipasang inline per-fungsi (bukan di baris pertama
 // file) karena Next.js 16 melarang file ber-directive "use server" di level file
 // meng-export apa pun selain async function ("A 'use server' file can only export
@@ -98,6 +104,33 @@ export async function checkProviderBalance(formData: FormData): Promise<ActionRe
       data: { healthStatus: "DOWN", lastHealthCheckAt: new Date() },
     });
     return { error: e instanceof Error ? e.message : "Gagal cek saldo." };
+  }
+}
+
+export async function sendTestTransaction(formData: FormData): Promise<
+  ActionResult & { result?: { refId: string; status: string; sn: string | null; message: string } }
+> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = testTransactionSchema.safeParse({
+    skuCode: formData.get("skuCode"),
+    target: formData.get("target"),
+    testing: formData.get("testing") === "on",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const refId = `TEST-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  try {
+    const adapter = await getAdapter("DIGIFLAZZ");
+    const result = await adapter.createTransaction({ ...parsed.data, refId });
+    await logAdmin(admin.adminId, "provider.test_transaction", "DIGIFLAZZ", {
+      refId, skuCode: parsed.data.skuCode, status: result.status,
+    });
+    return { ok: `Transaksi tes terkirim (${result.status}).`, result: { refId, status: result.status, sn: result.sn, message: result.message } };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Transaksi tes gagal." };
   }
 }
 
