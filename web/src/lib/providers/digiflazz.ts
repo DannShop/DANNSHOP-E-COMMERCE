@@ -25,6 +25,23 @@ const priceRowSchema = z.object({
 const priceListSchema = z.object({ data: z.array(priceRowSchema) });
 const balanceSchema = z.object({ data: z.object({ deposit: z.number() }) });
 
+const trxDataSchema = z.object({
+  ref_id: z.string(),
+  status: z.string(),          // "Pending" | "Sukses" | "Gagal"
+  message: z.string().optional().default(""),
+  rc: z.string().optional().default(""),
+  sn: z.string().optional().default(""),
+  price: z.number().optional(),
+});
+const trxSchema = z.object({ data: trxDataSchema });
+
+// Mapping status Digiflazz → TrxStatus internal (spec §5.2: rc 00 sukses, 03 pending)
+function mapTrxStatus(status: string, rc: string): "success" | "pending" | "failed" {
+  if (status === "Sukses" || rc === "00") return "success";
+  if (status === "Pending" || rc === "03") return "pending";
+  return "failed";
+}
+
 const BASE_URL = "https://api.digiflazz.com/v1";
 
 export class DigiflazzAdapter implements TopupProviderAdapter {
@@ -78,12 +95,34 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
     return BigInt(Math.round(parsed.data.data.deposit));
   }
 
-  async createTransaction(_input: CreateTrxInput): Promise<ProviderTrxResult> {
-    throw new Error("belum diimplementasi (Task 4)");
+  async createTransaction(input: CreateTrxInput): Promise<ProviderTrxResult> {
+    const body: Record<string, unknown> = {
+      username: this.creds.username,
+      buyer_sku_code: input.skuCode,
+      customer_no: input.target,
+      ref_id: input.refId,
+      sign: digiflazzSign(this.creds.username, this.creds.apiKey, input.refId),
+    };
+    if (input.testing) body.testing = true;
+
+    const raw = await this.post("/transaction", body);
+    const parsed = trxSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(`Digiflazz transaction: response tidak sesuai (${JSON.stringify(raw).slice(0, 200)})`);
+    }
+    const d = parsed.data.data;
+    return {
+      refId: d.ref_id,
+      status: mapTrxStatus(d.status, d.rc),
+      sn: d.sn ? d.sn : null,
+      message: d.message,
+      costPrice: d.price !== undefined ? BigInt(Math.round(d.price)) : null,
+      raw,
+    };
   }
 
-  async checkStatus(_input: CreateTrxInput): Promise<ProviderTrxResult> {
-    throw new Error("belum diimplementasi (Task 4)");
+  async checkStatus(input: CreateTrxInput): Promise<ProviderTrxResult> {
+    return this.createTransaction(input);
   }
 
   parseCallback(_input: { rawBody: string; headers: Record<string, string> }): CallbackResult | null {

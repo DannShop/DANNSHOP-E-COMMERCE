@@ -64,3 +64,73 @@ describe("DigiflazzAdapter.fetchBalance", () => {
     expect(body.cmd).toBe("deposit");
   });
 });
+
+describe("DigiflazzAdapter.createTransaction", () => {
+  it("POST /transaction dengan sign md5(user+key+refId), map Pending", async () => {
+    const fn = mockFetchOnce({
+      data: {
+        ref_id: "DS-F2-1", status: "Pending", message: "PROSES", rc: "03",
+        sn: "", price: 19750, buyer_last_saldo: 1000000,
+      },
+    });
+    const adapter = new DigiflazzAdapter(creds);
+    const result = await adapter.createTransaction({
+      skuCode: "ML86", target: "1234567891234", refId: "DS-F2-1",
+    });
+
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("https://api.digiflazz.com/v1/transaction");
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toMatchObject({
+      username: "userX", buyer_sku_code: "ML86", customer_no: "1234567891234", ref_id: "DS-F2-1",
+    });
+    expect(body.testing).toBeUndefined(); // hanya dikirim kalau diminta
+
+    expect(result.status).toBe("pending");
+    expect(result.refId).toBe("DS-F2-1");
+    expect(result.costPrice).toBe(19750n);
+  });
+
+  it("status Sukses + rc 00 → success dengan SN", async () => {
+    mockFetchOnce({
+      data: { ref_id: "DS-F2-2", status: "Sukses", message: "OK", rc: "00", sn: "SN123456", price: 19750 },
+    });
+    const adapter = new DigiflazzAdapter(creds);
+    const result = await adapter.createTransaction({ skuCode: "ML86", target: "123", refId: "DS-F2-2" });
+    expect(result.status).toBe("success");
+    expect(result.sn).toBe("SN123456");
+  });
+
+  it("status Gagal → failed, message diteruskan", async () => {
+    mockFetchOnce({
+      data: { ref_id: "DS-F2-3", status: "Gagal", message: "Saldo tidak cukup", rc: "40", sn: "" },
+    });
+    const adapter = new DigiflazzAdapter(creds);
+    const result = await adapter.createTransaction({ skuCode: "ML86", target: "123", refId: "DS-F2-3" });
+    expect(result.status).toBe("failed");
+    expect(result.message).toBe("Saldo tidak cukup");
+    expect(result.sn).toBeNull();
+  });
+
+  it("testing:true ikut terkirim di body", async () => {
+    const fn = mockFetchOnce({
+      data: { ref_id: "DS-F2-4", status: "Pending", message: "", rc: "03", sn: "" },
+    });
+    const adapter = new DigiflazzAdapter(creds);
+    await adapter.createTransaction({ skuCode: "ML86", target: "123", refId: "DS-F2-4", testing: true });
+    const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.testing).toBe(true);
+  });
+
+  it("checkStatus mengirim request identik dengan createTransaction (idempotent by ref_id)", async () => {
+    const fn = mockFetchOnce({
+      data: { ref_id: "DS-F2-1", status: "Sukses", message: "OK", rc: "00", sn: "SN-AKHIR" },
+    });
+    const adapter = new DigiflazzAdapter(creds);
+    const result = await adapter.checkStatus({ skuCode: "ML86", target: "1234567891234", refId: "DS-F2-1" });
+    const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.ref_id).toBe("DS-F2-1");
+    expect(result.status).toBe("success");
+    expect(result.sn).toBe("SN-AKHIR");
+  });
+});
