@@ -61,6 +61,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           <ProductToggleForm
             productId={product.id}
             isActive={product.isActive}
+            itemCount={product.items.length}
             toggleProductActive={toggleProductActive}
           />
         </div>

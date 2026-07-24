@@ -59,9 +59,15 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     });
     // Digiflazz membalas error dalam body JSON (bukan selalu non-200) — parse dulu, validasi di caller.
-    return res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Digiflazz ${path}: response bukan JSON (status ${res.status}): ${text.slice(0, 200)}`);
+    }
   }
 
   async fetchPriceList(): Promise<ProviderSkuPrice[]> {

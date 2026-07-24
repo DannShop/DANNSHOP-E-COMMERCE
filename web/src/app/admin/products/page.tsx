@@ -71,6 +71,7 @@ export default async function AdminProductsPage() {
                     <ProductToggleForm
                       productId={product.id}
                       isActive={product.isActive}
+                      itemCount={product._count.items}
                       toggleProductActive={toggleProductActive}
                     />
                   </div>

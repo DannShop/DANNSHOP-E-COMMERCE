@@ -116,8 +116,14 @@ export async function toggleProductActive(formData: FormData): Promise<ActionRes
   const id = formData.get("id");
   if (typeof id !== "string" || !id) return { error: "Produk tidak ditemukan." };
 
-  const product = await db.product.findUnique({ where: { id } });
+  const product = await db.product.findUnique({
+    where: { id },
+    include: { _count: { select: { items: true } } },
+  });
   if (!product) return { error: "Produk tidak ditemukan." };
+  if (!product.isActive && product._count.items === 0) {
+    return { error: "Produk belum punya item — tambahkan minimal satu item dulu sebelum diaktifkan." };
+  }
 
   await db.product.update({ where: { id }, data: { isActive: !product.isActive } });
   await logAdmin(admin.adminId, product.isActive ? "catalog.deactivate_product" : "catalog.activate_product", id);
