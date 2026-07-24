@@ -1,24 +1,36 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-24 (FASE 2 sedang berjalan, Task 11/13 selesai — lanjut dari Task 12)
+Terakhir update: 2026-07-25 (FASE 2 SELESAI — Task 1-14 semua selesai, siap final whole-branch review)
 
 ## Dokumen kunci
 
 - Design doc: `docs/superpowers/specs/2026-07-19-dannshop-topup-platform-design.md`
 - Rencana Fase 1: `docs/superpowers/plans/2026-07-19-fase-1-fondasi.md`
-- Rencana Fase 2: `docs/superpowers/plans/2026-07-24-fase-2-katalog-digiflazz.md` (13 task, katalog + integrasi Digiflazz)
+- Rencana Fase 2: `docs/superpowers/plans/2026-07-24-fase-2-katalog-digiflazz.md` (14 task, katalog + integrasi Digiflazz)
 - Ledger eksekusi: `.superpowers/sdd/progress.md` (jangan dihapus)
 - Branch kerja Fase 1: `fase-1-fondasi` — Branch kerja Fase 2: `fase-2-katalog` (dibuat dari `fase-1-fondasi` karena PR Fase 1 belum di-merge saat itu)
 
-## Status Fase 2 (mulai 2026-07-24, subagent-driven)
+## Status Fase 2 (mulai 2026-07-24, subagent-driven) — SEMUA 14 TASK SELESAI
 
-Task 1–10 selesai (util key(), webhook signature, Digiflazz adapter, mapTrxStatus, parseCallback, registry adapter, sync harga, kredensial provider terenkripsi UI, CRUD produk/item admin). Task 11 (mapping ProviderSku + margin viewer) selesai commit `44ca067`. Task 12 (halaman transaksi tes Digiflazz) selesai commit `174351d`, review Approved tanpa Critical/Important — detail lengkap + minor findings ada di `.superpowers/sdd/progress.md`.
+Task 1–10 selesai (util key(), webhook signature, Digiflazz adapter, mapTrxStatus, parseCallback, registry adapter, sync harga, kredensial provider terenkripsi UI, CRUD produk/item admin). Task 11 (mapping ProviderSku + margin viewer) selesai commit `44ca067`. Task 12 (halaman transaksi tes Digiflazz) selesai commit `174351d`, review Approved tanpa Critical/Important. Task 13 (seed 4 ProviderConfig + contoh katalog ML & FF) selesai commit `f0becfb`. Task 14 (verifikasi akhir fase) selesai — lihat catatan sesi 2026-07-25 di bawah.
 
-**Tinggal Task 13** (terakhir — seed 4 ProviderConfig + contoh katalog). Perhatikan: DB dev SUDAH punya 4 row ProviderConfig hasil kerja manual Task 11 (upsert by key, jadi Task 13 aman/idempotent dijalankan di atasnya). Setelah Task 13, lanjut final whole-branch review (superpowers:requesting-code-review) lalu superpowers:finishing-a-development-branch.
+**Lanjut ke: final whole-branch review (superpowers:requesting-code-review) lalu superpowers:finishing-a-development-branch.** Belum di-push ke remote — commit lokal sudah lengkap sampai Task 14 (belum ada commit docs checkpoint terpisah, PROGRESS.md ini akan di-commit sesudahnya).
 
-Catatan penting sesi Task 11:
-- DB dev sekarang punya kredensial Digiflazz ASLI tersimpan terenkripsi (`ProviderConfig` key=DIGIFLAZZ, isActive=false, health "Sehat"), didapat dari user langsung di sesi ini untuk verifikasi live. Jangan expose/log ulang kredensial ini.
-- `npx tsc --noEmit` di `web/` menunjukkan error TS2737 (BigInt literal butuh target ES2020, tsconfig masih ES2017) di beberapa file test — ini **pre-existing**, bukan regresi Task 11 (dikonfirmasi masih muncul di commit sebelum Task 11 disentuh). Belum diinvestigasi/di-fix — kandidat technical debt utk sesi mendatang.
+### Catatan sesi 2026-07-25 (Task 14 — verifikasi akhir)
+
+- **Fix tech debt BigInt/tsconfig** (commit `7a79514`): `web/tsconfig.json` target dinaikkan `ES2017` → `ES2020`. Ini akar masalah TS2737 yang dicatat sebagai pre-existing sejak Task 11 (BigInt literal seperti `19750n` butuh ES2020). Setelah fix + hapus `tsconfig.tsbuildinfo` (cache stale menyembunyikan hasil), `npx tsc --noEmit` bersih total.
+- Verifikasi penuh dijalankan & PASS semua: `npx vitest run` (49/49 test, 11 file), `npx tsc --noEmit` (bersih), `npm run lint` (bersih), `npm run build` (sukses, 14 route ter-generate termasuk `/api/cron/tick`, `/admin/providers/test-transaction`).
+- **DoD end-to-end manual via Playwright MCP + dev server lokal** (kredensial Digiflazz ASLI, sudah tersimpan dari Task 11):
+  1. `/admin/providers` → "Cek Saldo" Digiflazz → sukses, health "Sehat", saldo Rp 0 tampil.
+  2. "Sync Harga Sekarang" → `PriceSyncLog` result "ok" (0 diupdate/0 hilang — wajar, belum ada mapping ProviderSku di DB dev saat ini).
+  3. `/admin/providers/test-transaction` dengan SKU `Aybt69` (sku real dari sesi Task 11) → dapat response signed asli dari Digiflazz: status "Gagal", pesan "IP Anda tidak kami kenali: 103.18.34.217" — **bukan bug**, ini penolakan IP-whitelist di sisi Digiflazz (persis pola yang sudah diverifikasi & diterima di review Task 12). Membuktikan alur create→parse→render bekerja benar end-to-end.
+  4. `POST /api/cron/tick`: tanpa header → 401; header salah → 401; `x-cron-secret` benar → `{"ran":0,"failed":0}` (wajar, tidak ada provider aktif/job pending).
+- Catatan: saat mencoba GET `/api/admin/provider-price-list?provider=DIGIFLAZZ` (dipakai sku-picker) sempat kena rate-limit asli Digiflazz (rc 83, "Anda telah mencapai limitasi pengecekan pricelist") — dikonfirmasi error dari sisi Digiflazz, bukan bug adapter (adapter melempar pesan jelas, route balas 502 dengan pesan, tidak crash).
+- `web/.env` (untracked) ditambah `CRON_SECRET` (belum ada sebelumnya walau sudah ada di `.env.example` sejak Task 8) — perlu untuk uji manual cron tick lokal.
+- Dev server (`npm run dev`) yang dipakai untuk verifikasi Playwright sudah dihentikan setelah selesai.
+
+Catatan penting sesi Task 11 (masih relevan):
+- DB dev punya kredensial Digiflazz ASLI tersimpan terenkripsi (`ProviderConfig` key=DIGIFLAZZ, isActive=false, health "Sehat"). Jangan expose/log ulang kredensial ini.
 - Minor kosmetik non-blocking: `sku-picker.tsx` Select trigger provider menampilkan raw enum value sebelum dropdown pernah dibuka sekali.
 
 ## Status eksekusi Fase 1 (subagent-driven)
