@@ -1,6 +1,6 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (Fase 1+2+3 SUDAH DI-MERGE ke branch `fase-3-order-midtrans` — 81/81 test lulus setelah merge. Worktree & branch sementara `fase-3-order-midtrans-sdd` sudah dibersihkan. **BELUM diputuskan**: push branch + buat PR ke `main` — tanyakan ke user di awal sesi berikutnya.)
+Terakhir update: 2026-07-25 (Fase 1+2+3 SUDAH DI-MERGE ke branch `fase-3-order-midtrans` — 81/81 test lulus setelah merge. Worktree & branch sementara `fase-3-order-midtrans-sdd` sudah dibersihkan. **Branch sudah di-push ke `origin`** — base PR yang benar adalah `main` (branch dibuat dari `main` yang sudah up to date, merge-base = `cd98723` = HEAD `main` lokal & remote). PR harus dibuat manual via GitHub web (`gh` CLI tidak terinstall): `https://github.com/DannShop/DANNSHOP-E-COMMERCE/compare/main...fase-3-order-midtrans?expand=1`.)
 
 ## Dokumen kunci
 
