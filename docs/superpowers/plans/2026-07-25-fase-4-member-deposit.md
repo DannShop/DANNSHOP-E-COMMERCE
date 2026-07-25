@@ -521,6 +521,94 @@ git commit -m "feat(fase4): checkout attach userId dari sesi + jalur bayar pakai
 
 ---
 
+### Task 4b: Job reconcile order PAID macet (jalur bayar saldo)
+
+**Kenapa task ini ada:** ditambahkan setelah task review Task 4 menemukan gap nyata (Important, dikonfirmasi user) — order yang dibayar pakai saldo (Task 4) langsung `PAID` di dalam satu `db.$transaction`, lalu `dispatchFulfillment(order.id)` dipanggil TERPISAH sesudahnya (di luar transaksi, sesuai desain — panggilan network tidak boleh ikut lock DB). Kalau proses crash TEPAT di window sempit antara transaksi commit dan panggilan itu, order macet `PAID` selamanya. Beda dari jalur QRIS/Midtrans (dibangun di Fase 3): jalur itu punya jaring pengaman alami — Midtrans me-retry webhook notification kalau tidak dapat respons 200, dan `route.ts` sudah menangani "order sudah `PAID` tapi mungkin belum di-dispatch" dengan memanggil `dispatchFulfillment` lagi. Jalur saldo TIDAK PUNYA pemicu retry eksternal apa pun (tidak ada webhook), jadi butuh job reconcile sendiri.
+
+**Files:**
+- Modify: `web/src/lib/jobs/runner.ts`
+
+**Interfaces:**
+- Consumes: `dispatchFulfillment(orderId: string): Promise<void>` dari `@/lib/order/fulfillment` (sudah ada, idempotent — klaim atomik `PAID→PROCESSING` di dalamnya membuat pemanggilan ulang aman/no-op kalau order sudah diproses task lain).
+- Produces: tidak ada export baru — `ensureRecurringJobs()` dan `handlers` (keduanya sudah ada) diperluas.
+
+Tidak ada test otomatis baru (job handler, orkestrasi DB — pola sama seperti `expire-order`/`expire-deposit` yang juga tidak dites lewat DB tiruan).
+
+- [ ] **Step 1: Tambah import `dispatchFulfillment` di `web/src/lib/jobs/runner.ts`**
+
+Cek dulu apakah `dispatchFulfillment` sudah diimpor di file ini (kemungkinan besar BELUM — `runner.ts` cuma impor `applyFulfillmentResult`, bukan `dispatchFulfillment`). Kalau belum, tambah ke baris import yang sudah ada:
+
+```ts
+import { applyFulfillmentResult, dispatchFulfillment } from "@/lib/order/fulfillment";
+```
+
+- [ ] **Step 2: Tambah handler `reconcile-paid-orders` ke object `handlers`**
+
+Tambahkan entri baru (urutan bebas, taruh dekat `expire-order` biar mengelompok secara tematik):
+
+```ts
+  "reconcile-paid-orders": async () => {
+    const STALE_MINUTES = 5;
+    const staleThreshold = new Date(Date.now() - STALE_MINUTES * 60_000);
+    const staleOrders = await db.order.findMany({
+      where: { status: "PAID", updatedAt: { lte: staleThreshold } },
+      select: { id: true },
+      take: 20,
+    });
+    for (const order of staleOrders) {
+      await dispatchFulfillment(order.id);
+    }
+    return `reconciled=${staleOrders.length}`;
+  },
+```
+
+Catatan: `take: 20` membatasi jumlah order yang diproses per tick (pola sama seperti `runDueJobs` yang membatasi 10 job per tick) — cukup karena job ini dipanggil ulang tiap tick cron (tiap menit) lewat `ensureRecurringJobs`, jadi backlog akan habis dalam beberapa tick kalau pun ada lonjakan.
+
+- [ ] **Step 3: Perluas `ensureRecurringJobs()` supaya job ini selalu ada**
+
+Ganti isi fungsi `ensureRecurringJobs` (tambahkan blok baru di akhir fungsi, SETELAH loop `sync-prices` yang sudah ada, jangan hapus loop itu):
+
+```ts
+export async function ensureRecurringJobs(): Promise<void> {
+  const active = await db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } });
+  for (const p of active) {
+    const existing = await db.job.findFirst({
+      where: {
+        type: "sync-prices",
+        status: { in: ["PENDING", "RUNNING"] },
+        payload: { equals: { provider: p.key } },
+      },
+    });
+    if (!existing) {
+      await db.job.create({ data: { type: "sync-prices", payload: { provider: p.key }, runAt: new Date() } });
+    }
+  }
+
+  const existingReconcile = await db.job.findFirst({
+    where: { type: "reconcile-paid-orders", status: { in: ["PENDING", "RUNNING"] } },
+  });
+  if (!existingReconcile) {
+    await db.job.create({ data: { type: "reconcile-paid-orders", payload: {}, runAt: new Date() } });
+  }
+}
+```
+
+Tidak perlu self-reschedule di dalam handler (beda dari `sync-prices` yang sengaja jarang jalan tiap 3 jam) — `reconcile-paid-orders` boleh jalan tiap tick cron (tiap menit), murah (query terindeks by `status`, `dispatchFulfillment` no-op untuk order yang bukan `PAID`/sudah diproses), dan `ensureRecurringJobs` otomatis membuat job baru begitu yang lama selesai (`status` berubah jadi `DONE`, tidak lagi cocok filter `PENDING/RUNNING`).
+
+- [ ] **Step 4: Jalankan test suite (regresi) + type-check**
+
+Run: `cd web && npx vitest run && npx tsc --noEmit`
+Expected: Semua test PASS (termasuk `jobs-runner.test.ts` yang menguji `computeBackoff`/`decideAfterFailure`, tidak disentuh task ini), `tsc` bersih.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add web/src/lib/jobs/runner.ts
+git commit -m "feat(fase4): job reconcile-paid-orders — pulihkan order PAID macet di jalur saldo"
+```
+
+---
+
 ### Task 5: UI checkout — pilih metode bayar + prefill email
 
 **Files:**
