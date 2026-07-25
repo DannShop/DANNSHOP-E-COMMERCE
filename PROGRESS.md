@@ -1,17 +1,38 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3 dimulai, sedang di tahap konsep design system, BELUM selesai)
+Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3: 13 task implementasi SELESAI + Task 13 verifikasi akhir SELESAI, tinggal final whole-branch review)
 
 ## Dokumen kunci
 
 - Design doc: `docs/superpowers/specs/2026-07-19-dannshop-topup-platform-design.md` (§12 = tabel roadmap Fase 1-7, §15 = addendum keputusan review 2026-07-24)
 - Rencana Fase 1: `docs/superpowers/plans/2026-07-19-fase-1-fondasi.md`
 - Rencana Fase 2: `docs/superpowers/plans/2026-07-24-fase-2-katalog-digiflazz.md` (14 task, katalog + integrasi Digiflazz)
-- Rencana Fase 3: `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md` (13 task: token desain Arah A, dark/light toggle, katalog publik, checkout, Midtrans, webhook, fulfillment, invoice+polling, verifikasi E2E) — **DIBUAT, MENUNGGU keputusan eksekusi user** (subagent-driven vs inline)
+- Rencana Fase 3: `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md` (13 task: token desain Arah A, dark/light toggle, katalog publik, checkout, Midtrans, webhook, fulfillment, invoice+polling, verifikasi E2E) — **SEMUA 13 TASK SELESAI DIEKSEKUSI** (lihat "Status Fase 3" di bawah)
 - Ledger eksekusi: `.superpowers/sdd/progress.md` (jangan dihapus)
 - **Branch Fase 1 & 2 SUDAH DIHAPUS** (lokal & remote, sudah di-merge ke `main` secara lokal — bukan lewat PR, karena ternyata tidak ada PR yang pernah benar-benar dibuat/di-merge di GitHub meski catatan sesi lalu mengira begitu). Branch kerja saat ini: **`fase-3-order-midtrans`** (dibuat dari `main` yang sudah update).
 
-## Status Fase 3 (mulai 2026-07-25) — BARU TAHAP KONSEP DESIGN SYSTEM, BELUM ADA PLAN/TASK
+## Status Fase 3 (mulai 2026-07-25) — 13 TASK IMPLEMENTASI + TASK 13 VERIFIKASI AKHIR SELESAI
+
+### Task 13 — Verifikasi akhir end-to-end (selesai, sesi 2026-07-25)
+
+Laporan lengkap: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/task-13-report.md` (WAJIB dibaca sebelum final whole-branch review — berisi rincian tiap langkah + mana yang tervalidasi penuh vs parsial).
+
+**Kredensial Midtrans sandbox ASLI tidak tersedia** di sesi ini (butuh signup manual pemilik produk) — dipakai strategi verifikasi pengganti (server key palsu konsisten + shim eksternal sementara untuk konfirmasi status Midtrans, TIDAK mengubah source code apa pun) supaya logic tetap tervalidasi. Ringkasan:
+
+- **Automated**: `npx vitest run` 80/80 PASS, `npx tsc --noEmit` bersih, `npm run build` sukses (semua route baru ter-generate). **`npm run lint` GAGAL** — 1 error baru ditemukan (lihat Temuan #1 di bawah).
+- **Manual FULL** (kode produksi asli, tanpa sintesis): checkout gagal-charge → order `FAILED` bukan macet `PENDING_PAYMENT` (fix Task 9 terbukti benar); webhook dedup (kirim 2x payload sama → `{deduped:true}`, tidak dobel dispatch); job `recheck-fulfillment` via `POST /api/cron/tick`; job `expire-order` via cron tick; signature invalid → 403; cron secret salah → 401.
+- **Manual PARSIAL** (sebagian disintesis karena tidak ada kredensial Midtrans asli): webhook `PAID→PROCESSING→dispatchFulfillment` (signature+dedup+state machine+panggilan Digiflazz semua ASLI, cuma re-konfirmasi status ke Midtrans disintesis via shim eksternal) — hasil `REFUND_PENDING` karena Digiflazz menolak IP (bukan bug, pola sama Fase 2); invoice polling SN tanpa reload (mekanisme polling ASLI, transisi ke `COMPLETED` dipicu manual di DB karena Digiflazz real tidak pernah sukses akibat IP-whitelist).
+- **Sama sekali tidak teruji** (gap pre-go-live, BUKAN blocker Fase 3): panggilan `chargeQris`/`getTransactionStatus` yang benar-benar sukses ke Midtrans sandbox asli. **Harus diulang begitu kredensial Midtrans sandbox asli tersedia**, sebelum go-live.
+
+**Temuan #1 (Important, BELUM diperbaiki — perlu fix round)**: `web/src/components/theme-toggle.tsx:10` — `npm run lint` error dari rule `react-hooks/set-state-in-effect` pada `useEffect(() => setMounted(true), [])`. File ini scope Fase 3 (commit `0d7b77b`). Brief mengharapkan lint bersih.
+
+**Temuan #2 (Minor, non-blocking)**: `invoice-status.tsx:140` warning `@next/next/no-img-element` untuk `<img>` render QRIS.
+
+Dev server (`npm run dev`) dipakai untuk verifikasi sudah dihentikan, port 3000 dikonfirmasi tidak listening lagi. Semua toggle data sementara (Product `mobile-legends.isActive`, 1 baris `ProviderSku` test) dikembalikan persis ke semula, dikonfirmasi via query ulang. Semua order/webhook-event test dihapus.
+
+**Langkah berikutnya**: fix Temuan #1 (lint), lalu final whole-branch review (pola sama Fase 1/2) sebelum push/PR.
+
+### Konsep design system & histori sebelum implementasi (arsip, sudah selesai/diputuskan)
 
 Fase 3 = "Order flow + Midtrans": checkout guest, QRIS, webhook, fulfillment otomatis, invoice + polling. DoD (spec §12): *"Beli 86 Diamonds end-to-end di sandbox: bayar → diamond terkirim → SN tampil."*
 
@@ -43,12 +64,17 @@ Riset sudah dijalankan pakai `ui-ux-pro-max` (`--design-system` + `--domain styl
 
 Catatan tambahan sesi ini: user minta semua komunikasi terminal pakai Bahasa Indonesia mulai sekarang (lihat memory `feedback_bahasa_indonesia`).
 
-### Langkah lanjut yang benar (JANGAN skip urutannya)
+### Langkah historis (SEMUA sudah selesai, arsip urutan yang dulu dipakai)
 
 1. ~~Bangun artifact HTML preview 2 arah desain~~ ✅ selesai. ~~Tunggu user pilih arah~~ ✅ **Arah A dipilih (2026-07-25).**
-2. **Langkah berikutnya:** `superpowers:writing-plans` untuk bikin rencana implementasi Fase 3 lengkap (order flow + Midtrans + terapkan token Arah A ke halaman publik).
-3. Plan di-approve user → `superpowers:subagent-driven-development` untuk eksekusi task-by-task (pola sama seperti Fase 1 & 2: implementer subagent + reviewer per task, lalu final whole-branch review).
-4. Setelah Fase 3 selesai: **JANGAN asumsikan ada PR** — cek dulu keberadaan PR asli via `gh api` atau GitHub web sebelum menganggap ada proses review tertunda (pelajaran sesi ini: catatan sebelumnya salah kira ada PR Fase 1 padahal tidak pernah benar-benar dibuat).
+2. ~~`superpowers:writing-plans` untuk rencana implementasi Fase 3~~ ✅ selesai — `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md`.
+3. ~~Eksekusi 13 task via `superpowers:subagent-driven-development`~~ ✅ selesai, termasuk Task 13 verifikasi akhir (lihat bagian "Status Fase 3" di atas).
+
+### Langkah berikutnya yang benar (JANGAN skip urutannya)
+
+1. Fix Temuan #1 dari Task 13 (`theme-toggle.tsx` lint error `react-hooks/set-state-in-effect`) — masuk fix round biasa sebelum review.
+2. Final whole-branch review (pola sama Fase 1/2: review menyeluruh commit range Fase 3, fix Critical/Important yang ditemukan, re-review).
+3. Setelah Fase 3 selesai: **JANGAN asumsikan ada PR** — cek dulu keberadaan PR asli via `gh api` atau GitHub web sebelum menganggap ada proses review tertunda (pelajaran sesi ini: catatan sebelumnya salah kira ada PR Fase 1 padahal tidak pernah benar-benar dibuat).
 
 ## Status Fase 2 (mulai 2026-07-24, subagent-driven) — SEMUA 14 TASK SELESAI
 
