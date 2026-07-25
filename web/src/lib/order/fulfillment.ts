@@ -104,27 +104,41 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
 
     if (decideRefundDestination(order.userId) === "wallet") {
       // Member — auto-refund ke saldo, atomik dalam satu transaksi (ledger double-entry)
-      await db.$transaction(async (tx) => {
-        const wallet = await tx.wallet.update({
-          where: { userId: order.userId! },
-          data: { balance: { increment: order.total } },
+      try {
+        await db.$transaction(async (tx) => {
+          const wallet = await tx.wallet.update({
+            where: { userId: order.userId! },
+            data: { balance: { increment: order.total } },
+          });
+          await tx.walletLedger.create({
+            data: {
+              walletId: wallet.id,
+              type: "REFUND",
+              amount: order.total,
+              balanceAfter: wallet.balance,
+              referenceType: "order",
+              referenceId: order.id,
+              idempotencyKey: `order-refund:${order.id}`,
+            },
+          });
+          await tx.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } });
         });
-        await tx.walletLedger.create({
+        await db.orderStatusHistory.create({
+          data: { orderId: order.id, toStatus: "REFUNDED", note: `Auto-refund ke saldo: ${result.message}` },
+        });
+      } catch (e) {
+        console.error("applyFulfillmentResult: auto-refund ke saldo gagal, eskalasi ke NEEDS_REVIEW", {
+          orderId: order.id, error: e,
+        });
+        await db.order.update({ where: { id: order.id }, data: { status: "NEEDS_REVIEW" } });
+        await db.orderStatusHistory.create({
           data: {
-            walletId: wallet.id,
-            type: "REFUND",
-            amount: order.total,
-            balanceAfter: wallet.balance,
-            referenceType: "order",
-            referenceId: order.id,
-            idempotencyKey: `order-refund:${order.id}`,
+            orderId: order.id,
+            toStatus: "NEEDS_REVIEW",
+            note: `Auto-refund gagal: ${e instanceof Error ? e.message : String(e)}`,
           },
         });
-        await tx.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } });
-      });
-      await db.orderStatusHistory.create({
-        data: { orderId: order.id, toStatus: "REFUNDED", note: `Auto-refund ke saldo: ${result.message}` },
-      });
+      }
     } else {
       // Guest — antrean manual admin (Fase 7), tidak berubah dari Fase 3
       await db.order.update({ where: { id: order.id }, data: { status: "REFUND_PENDING" } });
