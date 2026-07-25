@@ -1,6 +1,6 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (**Fase 1+2+3 SELESAI TOTAL dan SUDAH DI-MERGE ke `main` di GitHub.** PR #1 (`fase-3-order-midtrans` → `main`) di-merge oleh Wildan (merge commit `b0e234c`), lalu `main` lokal di-pull fast-forward dan branch `fase-3-order-midtrans` dihapus lokal+remote. Repo cuma punya 1 collaborator (`DannShop`) dan tidak ada CI/GitHub Actions — "review" PR = review manual pemilik repo sendiri, bukan proses eksternal. `gh` CLI terinstall & login di mesin ini sejak sesi ini, bisa dipakai untuk cek PR/issue ke depan. **Langkah berikutnya: mulai Fase 4 "Member + deposit"** — lihat §12 spec desain untuk detail DoD-nya.)
+Terakhir update: 2026-07-25 (Fase 1+2+3 SELESAI TOTAL, sudah di-merge ke `main` di GitHub (PR #1, merge commit `b0e234c`). **Fase 4 "Member + deposit" BARU TAHAP DESAIN**: spec ditulis via `superpowers:brainstorming` dan sudah di-commit ke `docs/superpowers/specs/2026-07-25-fase-4-member-deposit-design.md` (addendum teknis atas spec utama §4/§6/§7/§12 — checkout terhubung sesi login, bayar pakai saldo, deposit via QRIS reuse `chargeQris`, auto-refund ke saldo untuk member saat fulfillment gagal, halaman `/account/*`). **BELUM ada rencana implementasi (plan) dan BELUM mulai coding** — user eksplisit minta jangan eksekusi sebelum diperintah lanjut. Langkah berikutnya kalau diminta lanjut: `superpowers:writing-plans` → plan di-approve → `superpowers:subagent-driven-development`, pola sama seperti Fase 1-3.)
 
 ## Dokumen kunci
 
