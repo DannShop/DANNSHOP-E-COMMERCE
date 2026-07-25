@@ -4,6 +4,7 @@ export const checkoutSchema = z.object({
   productItemId: z.string().min(1, "Item wajib dipilih"),
   buyerEmail: z.string().email("Email tidak valid"),
   target: z.record(z.string(), z.string().min(1, "Wajib diisi")),
+  paymentMethod: z.enum(["qris", "balance"]).default("qris"),
 });
 
 export function extractTargetFromFormData(formData: FormData): Record<string, string> {
