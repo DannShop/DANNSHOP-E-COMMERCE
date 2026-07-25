@@ -611,15 +611,62 @@ git commit -m "feat(fase4): job reconcile-paid-orders — pulihkan order PAID ma
 
 ### Task 5: UI checkout — pilih metode bayar + prefill email
 
+**Kualitas desain wajib dijaga di task ini:** komponen pilih-metode-bayar BUKAN radio HTML mentah — pakai primitive `@base-ui/react/radio-group` (sudah terinstall, lihat `node_modules/@base-ui/react/radio-group` & `radio`) dibungkus jadi komponen shared baru `web/src/components/ui/radio-group.tsx`, mengikuti PERSIS pola `web/src/components/ui/checkbox.tsx` yang sudah ada (base-ui primitive + `cn()` + Tailwind, style pakai `data-checked:`/`data-disabled:` self-variant, BUKAN `useState` manual buat state checked/disabled — base-ui yang urus). Setiap opsi metode bayar tampil sebagai kartu chunky penuh (`rounded-[var(--radius)]`, border 2px, padding cukup buat touch target ≥44px) yang berubah warna border+bg saat terpilih (`data-checked:border-primary data-checked:bg-primary/10`, pola sama seperti Arah A "Vibrant & Block-based") — bukan radio dot kecil terpisah dari teks tanpa area klik yang jelas.
+
 **Files:**
+- Create: `web/src/components/ui/radio-group.tsx`
 - Modify: `web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx`
 - Modify: `web/src/app/(public)/[categorySlug]/[productSlug]/product-detail-client.tsx`
 
 **Interfaces:**
 - Consumes: `hasSufficientBalance` (Task 2), field `paymentMethod` yang sudah dikonsumsi `createCheckoutOrder` (Task 4).
-- Produces: `ProductDetailClient` menerima prop baru `session: { email: string; walletBalance: bigint } | null`.
+- Produces: `RadioGroup`, `RadioGroupItem` diekspor dari `web/src/components/ui/radio-group.tsx` (dipakai lagi kalau ada radio group lain di fase depan). `ProductDetailClient` menerima prop baru `session: { email: string; walletBalance: bigint } | null`.
 
-- [ ] **Step 1: Ganti isi `page.tsx`**
+- [ ] **Step 1: Buat `web/src/components/ui/radio-group.tsx`**
+
+```tsx
+"use client"
+
+import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group"
+import { Radio as RadioPrimitive } from "@base-ui/react/radio"
+
+import { cn } from "@/lib/utils"
+
+function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
+  return (
+    <RadioGroupPrimitive
+      data-slot="radio-group"
+      className={cn("flex flex-col gap-3", className)}
+      {...props}
+    />
+  )
+}
+
+function RadioGroupItem({ className, children, ...props }: RadioPrimitive.Root.Props) {
+  return (
+    <RadioPrimitive.Root
+      data-slot="radio-group-item"
+      className={cn(
+        "flex cursor-pointer items-center gap-3 rounded-[var(--radius)] border-2 border-border bg-background p-4 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:border-primary data-checked:bg-primary/10 data-disabled:cursor-not-allowed data-disabled:opacity-50",
+        className
+      )}
+      {...props}
+    >
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-input">
+        <RadioPrimitive.Indicator
+          data-slot="radio-group-item-indicator"
+          className="size-2.5 rounded-full bg-primary"
+        />
+      </span>
+      {children}
+    </RadioPrimitive.Root>
+  )
+}
+
+export { RadioGroup, RadioGroupItem }
+```
+
+- [ ] **Step 2: Ganti isi `page.tsx`**
 
 ```tsx
 // web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx
@@ -649,7 +696,7 @@ export default async function ProductDetailPage({
 }
 ```
 
-- [ ] **Step 2: Ganti isi `product-detail-client.tsx`**
+- [ ] **Step 3: Ganti isi `product-detail-client.tsx`**
 
 ```tsx
 "use client";
@@ -659,6 +706,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { createCheckoutOrder, type CheckoutResult } from "@/app/actions/checkout";
 import { hasSufficientBalance } from "@/lib/wallet/decisions";
 import type { ProductForCheckout } from "@/lib/catalog/public";
@@ -685,7 +733,6 @@ export function ProductDetailClient({
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
   const selectedItem = purchasableItems.find((i) => i.id === selectedItemId) ?? purchasableItems[0];
-  const [paymentMethod, setPaymentMethod] = useState<"qris" | "balance">("qris");
 
   const router = useRouter();
   const [state, formAction, pending] = useActionState(withPrevState(createCheckoutOrder), INITIAL_STATE);
@@ -713,7 +760,6 @@ export function ProductDetailClient({
 
       <form action={formAction} className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-5">
         <input type="hidden" name="productItemId" value={selectedItemId} />
-        <input type="hidden" name="paymentMethod" value={paymentMethod} />
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="item-select">Pilih Nominal</Label>
@@ -762,23 +808,12 @@ export function ProductDetailClient({
         {session && (
           <div className="flex flex-col gap-2">
             <Label>Metode Pembayaran</Label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                checked={paymentMethod === "qris"}
-                onChange={() => setPaymentMethod("qris")}
-              />
-              QRIS
-            </label>
-            <label className={`flex items-center gap-2 text-sm ${!canPayWithBalance ? "opacity-50" : ""}`}>
-              <input
-                type="radio"
-                disabled={!canPayWithBalance}
-                checked={paymentMethod === "balance"}
-                onChange={() => setPaymentMethod("balance")}
-              />
-              Saldo ({formatRupiah(session.walletBalance)})
-            </label>
+            <RadioGroup name="paymentMethod" defaultValue="qris">
+              <RadioGroupItem value="qris">QRIS</RadioGroupItem>
+              <RadioGroupItem value="balance" disabled={!canPayWithBalance}>
+                Saldo ({formatRupiah(session.walletBalance)})
+              </RadioGroupItem>
+            </RadioGroup>
             {!canPayWithBalance && (
               <p className="text-xs text-muted-foreground">
                 Saldo tidak cukup.{" "}
@@ -801,15 +836,19 @@ export function ProductDetailClient({
 }
 ```
 
-- [ ] **Step 3: Jalankan test suite (regresi) + type-check**
+Catatan penting soal desain ini (biar tidak dikira bug saat review):
+- Tidak ada lagi `useState` untuk `paymentMethod` maupun `<input type="hidden" name="paymentMethod">` manual — `RadioGroup` dari base-ui merender `<input type="radio" name="paymentMethod">` tersembunyi otomatis di tiap `RadioGroupItem` (terhubung via context `name` dari `RadioGroup`), jadi nilainya otomatis ikut ke `FormData` saat submit, persis seperti radio HTML native biasa. Ini BUKAN oversight — konfirmasi dari tipe `RadioRoot.Props`: "Renders a `<span>` element and a hidden `<input>` beside."
+- **Edge case yang disengaja tidak ditangani (YAGNI, aman secara uang):** kalau user pilih "Saldo" untuk item murah lalu ganti dropdown nominal ke item yang lebih mahal (saldo jadi tidak cukup), opsi "Saldo" otomatis `disabled` lewat `canPayWithBalance` — tapi karena `RadioGroup` di sini uncontrolled, radio yang sudah keburu dicentang tetap "checked" secara visual walau kini disabled. Perilaku HTML native: input yang `disabled` TIDAK ikut ter-submit sama sekali walau `checked` — jadi kalau user submit dalam kondisi ganjil ini, `formData.get("paymentMethod")` balik `null`, dan `createCheckoutOrder` (Task 4) sudah menangani ini dengan fallback `?? "qris"` — otomatis coba bayar QRIS, BUKAN diam-diam tetap coba bayar saldo yang sudah tidak valid. Aman, tidak perlu ditambah `useEffect` buat reset seleksi.
 
-Run: `cd web && npx vitest run && npx tsc --noEmit`
-Expected: Semua test PASS, `tsc` bersih.
+- [ ] **Step 4: Jalankan test suite (regresi) + type-check + lint**
 
-- [ ] **Step 4: Commit**
+Run: `cd web && npx vitest run && npx tsc --noEmit && npm run lint`
+Expected: Semua test PASS, `tsc` bersih, lint bersih.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add "web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx" "web/src/app/(public)/[categorySlug]/[productSlug]/product-detail-client.tsx"
+git add web/src/components/ui/radio-group.tsx "web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx" "web/src/app/(public)/[categorySlug]/[productSlug]/product-detail-client.tsx"
 git commit -m "feat(fase4): UI pilih metode bayar (QRIS/saldo) + prefill email member"
 ```
 
@@ -1308,6 +1347,8 @@ git commit -m "feat(fase4): webhook Midtrans proses notifikasi deposit (kredit s
 
 ### Task 9: Halaman deposit (form + status QR)
 
+**Kualitas desain wajib dijaga di task ini** (dicek terhadap panduan `ui-ux-pro-max`, domain `ux`): tombol preset nominal punya touch target ≥44px (`min-h-11`), `focus-visible:ring` buat keyboard nav, `aria-pressed` biar screen reader tahu status terpilih (bukan sekadar visual warna doang — WCAG "color-not-only"), dan radius `rounded-[var(--radius)]` konsisten dengan chunky style Arah A (bukan `rounded-md` generik).
+
 **Files:**
 - Create: `web/src/app/account/deposit/page.tsx`
 - Create: `web/src/app/account/deposit/deposit-form.tsx`
@@ -1380,8 +1421,9 @@ export function DepositForm() {
           <button
             key={preset.toString()}
             type="button"
+            aria-pressed={selected === preset}
             onClick={() => setSelected(preset)}
-            className={`rounded-md border px-3 py-2 text-sm font-medium ${
+            className={`min-h-11 rounded-[var(--radius)] border-2 px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
               selected === preset ? "border-primary bg-primary/10 text-primary" : "border-border"
             }`}
           >
@@ -1390,8 +1432,9 @@ export function DepositForm() {
         ))}
         <button
           type="button"
+          aria-pressed={selected === "custom"}
           onClick={() => setSelected("custom")}
-          className={`rounded-md border px-3 py-2 text-sm font-medium ${
+          className={`min-h-11 rounded-[var(--radius)] border-2 px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
             selected === "custom" ? "border-primary bg-primary/10 text-primary" : "border-border"
           }`}
         >
