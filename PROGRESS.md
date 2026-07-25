@@ -1,6 +1,16 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (Fase 1+2+3 SELESAI TOTAL, sudah di-merge ke `main` di GitHub (PR #1, merge commit `b0e234c`). **Fase 4 "Member + deposit" — spec DAN rencana implementasi SUDAH SELESAI DITULIS, BELUM DIEKSEKUSI:** spec di `docs/superpowers/specs/2026-07-25-fase-4-member-deposit-design.md`, plan 11-task di `docs/superpowers/plans/2026-07-25-fase-4-member-deposit.md` (Task 1-2 fungsi pure TDD; Task 3-6 checkout attach userId + bayar saldo + auto-refund wallet; Task 7-9 deposit via QRIS Midtrans + webhook + job `expire-deposit` + UI; Task 10 dashboard `/account`; Task 11 verifikasi akhir). **BELUM ada kode yang ditulis** — user eksplisit minta jangan eksekusi sebelum diperintah lanjut. Langkah berikutnya kalau diminta lanjut: pilih mode eksekusi (`superpowers:subagent-driven-development` — direkomendasikan, atau `superpowers:executing-plans`) lalu jalankan plan task-by-task, pola sama seperti Fase 1-3.)
+Terakhir update: 2026-07-25 (Fase 1+2+3 SELESAI TOTAL, sudah di-merge ke `main` di GitHub. **Fase 4 "Member + deposit" SEDANG DIEKSEKUSI via `superpowers:subagent-driven-development`, DIJEDA SEMENTARA atas permintaan user (istirahat) — lihat kotak "⚠️ LANGKAH PERTAMA SESI BERIKUTNYA" di bawah.**)
+
+## ⚠️ LANGKAH PERTAMA SESI BERIKUTNYA (jangan lewati/lupa)
+
+Eksekusi Fase 4 sedang berjalan di worktree `D:\Coding VSC\DannShop-PPOB\.claude\worktrees\fase-4-member-deposit-sdd` (branch `worktree-fase-4-member-deposit-sdd`, dibuat via native tool `EnterWorktree` — BUKAN `.worktrees/` folder biasa). **Task 1-6 + Task 4b (job reconcile tambahan) SUDAH SELESAI, direview bersih, sudah commit.** Task 7-11 BELUM dikerjakan.
+
+1. Masuk lagi ke worktree itu (`EnterWorktree` dengan `path` ke direktori di atas, atau kalau sesi baru mulai dari root repo langsung, buka working directory ke path itu).
+2. Baca ledger SDD: `.superpowers/sdd/2026-07-25-fase-4-member-deposit/progress.md` (di dalam worktree) — baris terakhir "PAUSED 2026-07-25" menjelaskan persis titik berhenti: Task 7 brief SUDAH di-generate (`task-7-brief.md`, BASE commit `260d7b6`) tapi implementer BELUM di-dispatch, tidak ada kerjaan setengah jalan.
+3. Lanjutkan `superpowers:subagent-driven-development` dari Task 7 (dispatch implementer pakai brief yang sudah ada, atau regenerate kalau file itu sudah hilang/job tmp dibersihkan) sampai Task 11 selesai, lalu final whole-branch review, lalu `superpowers:finishing-a-development-branch`.
+4. Plan yang dipakai **BUKAN LAGI** file asli `docs/superpowers/plans/2026-07-25-fase-4-member-deposit.md` versi awal — sudah direvisi 2x DI DALAM WORKTREE (commit `befc82d` menyisipkan Task 4b setelah gap keamanan uang ditemukan saat review Task 4; commit `d17a175` merombak Task 5 pakai komponen `RadioGroup` base-ui + skill `ui-ux-pro-max` alih-alih radio HTML mentah, dan poles Task 9). **Baca plan versi worktree (bukan versi `main`) sebagai sumber kebenaran task 7-11.**
+5. Task todos (TaskCreate/TaskUpdate) sudah tercatat di sesi sebelumnya (#1-12) — task #7 statusnya `pending` (brief sudah dibuat tapi belum in_progress lagi, sengaja dikembalikan ke pending karena implementer belum di-dispatch).
 
 ## Dokumen kunci
 
