@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { verifyMidtransSignature } from "@/lib/midtrans/signature";
 import { getTransactionStatus } from "@/lib/midtrans/client";
@@ -28,18 +29,32 @@ export async function POST(request: Request) {
   }
 
   const eventKey = `midtrans:${notif.order_id}:${notif.transaction_status}`;
-  const alreadyProcessed = await db.webhookEvent.findUnique({ where: { eventKey } });
-  if (alreadyProcessed) return NextResponse.json({ ok: true, deduped: true });
 
-  await db.webhookEvent.create({
-    data: {
-      source: "midtrans",
-      externalRef: notif.order_id,
-      eventKey,
-      rawBody,
-      headers: Object.fromEntries(request.headers),
-    },
-  });
+  let webhookEvent = await db.webhookEvent.findUnique({ where: { eventKey } });
+  if (webhookEvent?.processedAt) {
+    return NextResponse.json({ ok: true, deduped: true });
+  }
+  if (!webhookEvent) {
+    try {
+      webhookEvent = await db.webhookEvent.create({
+        data: {
+          source: "midtrans",
+          externalRef: notif.order_id,
+          eventKey,
+          rawBody,
+          headers: Object.fromEntries(request.headers),
+        },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        // race: request lain barusan insert row yang sama - ambil ulang, lanjut proses row itu
+        webhookEvent = await db.webhookEvent.findUnique({ where: { eventKey } });
+        if (webhookEvent?.processedAt) return NextResponse.json({ ok: true, deduped: true });
+      } else {
+        throw e;
+      }
+    }
+  }
 
   const markProcessed = (result: string) =>
     db.webhookEvent.update({ where: { eventKey }, data: { processedAt: new Date(), processResult: result } });
@@ -55,39 +70,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // Best practice Midtrans: konfirmasi ulang via GET status, jangan percaya body notifikasi mentah (spec §6)
-  const confirmed = await getTransactionStatus(notif.order_id);
-  const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
+  try {
+    // Best practice Midtrans: konfirmasi ulang via GET status, jangan percaya body notifikasi mentah (spec §6)
+    const confirmed = await getTransactionStatus(notif.order_id);
+    const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
 
-  if (mapped === "paid") {
-    const claimed = await db.order.updateMany({
-      where: { id: order.id, status: "PENDING_PAYMENT" },
-      data: { status: "PAID" },
-    });
-    if (claimed.count > 0) {
-      await db.orderPayment.update({
-        where: { orderId: order.id },
-        data: { status: "PAID", rawResponse: confirmed.raw as object },
+    if (mapped === "paid") {
+      const claimed = await db.order.updateMany({
+        where: { id: order.id, status: "PENDING_PAYMENT" },
+        data: { status: "PAID" },
       });
-      await db.orderStatusHistory.create({
-        data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", note: "Midtrans settlement" },
+      if (claimed.count > 0) {
+        await db.orderPayment.update({
+          where: { orderId: order.id },
+          data: { status: "PAID", rawResponse: confirmed.raw as object },
+        });
+        await db.orderStatusHistory.create({
+          data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", note: "Midtrans settlement" },
+        });
+        await dispatchFulfillment(order.id);
+      }
+    } else if (mapped === "failed" || mapped === "expired") {
+      const newStatus = mapped === "expired" ? "EXPIRED" : "FAILED";
+      const claimed = await db.order.updateMany({
+        where: { id: order.id, status: "PENDING_PAYMENT" },
+        data: { status: newStatus },
       });
-      await dispatchFulfillment(order.id);
+      if (claimed.count > 0) {
+        await db.orderPayment.update({ where: { orderId: order.id }, data: { status: newStatus } });
+        await db.orderStatusHistory.create({
+          data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: newStatus, note: "Midtrans notification" },
+        });
+      }
     }
-  } else if (mapped === "failed" || mapped === "expired") {
-    const newStatus = mapped === "expired" ? "EXPIRED" : "FAILED";
-    const claimed = await db.order.updateMany({
-      where: { id: order.id, status: "PENDING_PAYMENT" },
-      data: { status: newStatus },
-    });
-    if (claimed.count > 0) {
-      await db.orderPayment.update({ where: { orderId: order.id }, data: { status: newStatus } });
-      await db.orderStatusHistory.create({
-        data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: newStatus, note: "Midtrans notification" },
-      });
-    }
+
+    await markProcessed(mapped);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("Webhook Midtrans: gagal proses", { orderId: order.id, eventKey, error: e });
+    // JANGAN markProcessed di sini - biarkan processedAt tetap null supaya retry Midtrans bisa reprocess penuh
+    return NextResponse.json({ error: "Gagal memproses notifikasi, akan dicoba lagi" }, { status: 500 });
   }
-
-  await markProcessed(mapped);
-  return NextResponse.json({ ok: true });
 }
