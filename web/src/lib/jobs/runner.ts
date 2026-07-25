@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 import type { ProviderKey } from "@prisma/client";
-import { applyFulfillmentResult } from "@/lib/order/fulfillment";
+import { applyFulfillmentResult, dispatchFulfillment } from "@/lib/order/fulfillment";
 import { getAdapter } from "@/lib/providers/registry";
 import { buildCustomerNo } from "@/lib/order/customer-no";
 
@@ -60,6 +60,20 @@ export const handlers: Record<string, JobHandler> = {
       data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "EXPIRED", note: "Auto-expire cron" },
     });
     return "expired";
+  },
+
+  "reconcile-paid-orders": async () => {
+    const STALE_MINUTES = 5;
+    const staleThreshold = new Date(Date.now() - STALE_MINUTES * 60_000);
+    const staleOrders = await db.order.findMany({
+      where: { status: "PAID", updatedAt: { lte: staleThreshold } },
+      select: { id: true },
+      take: 20,
+    });
+    for (const order of staleOrders) {
+      await dispatchFulfillment(order.id);
+    }
+    return `reconciled=${staleOrders.length}`;
   },
 
   "recheck-fulfillment": async (payload) => {
@@ -121,6 +135,13 @@ export async function ensureRecurringJobs(): Promise<void> {
     if (!existing) {
       await db.job.create({ data: { type: "sync-prices", payload: { provider: p.key }, runAt: new Date() } });
     }
+  }
+
+  const existingReconcile = await db.job.findFirst({
+    where: { type: "reconcile-paid-orders", status: { in: ["PENDING", "RUNNING"] } },
+  });
+  if (!existingReconcile) {
+    await db.job.create({ data: { type: "reconcile-paid-orders", payload: {}, runAt: new Date() } });
   }
 }
 
