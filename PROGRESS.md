@@ -1,14 +1,50 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (FASE 2 SELESAI TOTAL — 14 task, whole-branch review Ready to merge: Yes, di-push ke remote, PR menunggu dibuat manual)
+Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3 dimulai, sedang di tahap konsep design system, BELUM selesai)
 
 ## Dokumen kunci
 
-- Design doc: `docs/superpowers/specs/2026-07-19-dannshop-topup-platform-design.md`
+- Design doc: `docs/superpowers/specs/2026-07-19-dannshop-topup-platform-design.md` (§12 = tabel roadmap Fase 1-7, §15 = addendum keputusan review 2026-07-24)
 - Rencana Fase 1: `docs/superpowers/plans/2026-07-19-fase-1-fondasi.md`
 - Rencana Fase 2: `docs/superpowers/plans/2026-07-24-fase-2-katalog-digiflazz.md` (14 task, katalog + integrasi Digiflazz)
+- Rencana Fase 3: **BELUM DITULIS** — masih tahap konsep design system dulu (lihat bawah), baru nanti pakai `superpowers:writing-plans`
 - Ledger eksekusi: `.superpowers/sdd/progress.md` (jangan dihapus)
-- Branch kerja Fase 1: `fase-1-fondasi` — Branch kerja Fase 2: `fase-2-katalog` (dibuat dari `fase-1-fondasi` karena PR Fase 1 belum di-merge saat itu)
+- **Branch Fase 1 & 2 SUDAH DIHAPUS** (lokal & remote, sudah di-merge ke `main` secara lokal — bukan lewat PR, karena ternyata tidak ada PR yang pernah benar-benar dibuat/di-merge di GitHub meski catatan sesi lalu mengira begitu). Branch kerja saat ini: **`fase-3-order-midtrans`** (dibuat dari `main` yang sudah update).
+
+## Status Fase 3 (mulai 2026-07-25) — BARU TAHAP KONSEP DESIGN SYSTEM, BELUM ADA PLAN/TASK
+
+Fase 3 = "Order flow + Midtrans": checkout guest, QRIS, webhook, fulfillment otomatis, invoice + polling. DoD (spec §12): *"Beli 86 Diamonds end-to-end di sandbox: bayar → diamond terkirim → SN tampil."*
+
+**Wajib dikerjakan LEBIH DULU sebelum plan/coding** (spec §15 addendum poin 2): bikin design system dual-theme (light + dark) pakai skill `ui-ux-pro-max` + `frontend-design`, **dipresentasikan ke Wildan untuk approval** sebelum diterapkan ke halaman publik. Referensi rasa: Codashop (terang/playful) untuk light, UniPin (gelap/gaming) untuk dark — dua tema, bukan pilih salah satu.
+
+### Progress konsep design system (sesi 2026-07-25, BELUM DIPRESENTASIKAN ke user)
+
+Riset sudah dijalankan pakai `ui-ux-pro-max` (`--design-system` + `--domain style/color/typography`). Hasil: 2 arah kandidat sudah dirancang, **BELUM dibuat jadi artifact preview visual, belum di-approve user**:
+
+- **Arah A "Ceria & Berani"** (gaya "Vibrant & Block-based" — performa bagus, full light+dark, Tailwind 10/10): Light bg `#F5F3FF`, primary indigo `#4F46E5` (tombol solid pakai `#4338CA` demi kontras), accent oranye `#EA580C`. Dark bg `#0F0F23` (palet "Gaming" dari database), primary ungu neon `#7C3AED`, accent rose `#F43F5E`. Radius besar 20px (chunky/blocky). Font: **Baloo 2** (bold, rounded, playful) untuk heading/display, body pakai system-ui stack.
+- **Arah B "Bersih & Tepercaya"** (gaya "Flat Design" — performa Excellent, WCAG AAA, cocok untuk kategori pulsa/PLN/e-money yang butuh kesan tepercaya): Light bg `#F7FBF9`, primary emerald `#059669` (tombol `#047857`), accent amber `#D97706`. Dark bg `#0B1120`, primary emerald muda `#34D399` (tombol `#10B981`, teks tombol gelap `#052e22` demi kontras), accent amber `#F59E0B`. Radius kecil 8px (flat/utility), tanpa shadow. Font: **IBM Plex Sans SemiBold** untuk heading/display, body system-ui.
+- Kedua arah pakai token warna semantik sama (success/warning/danger) buat status transaksi (Berhasil/Diproses/Gagal — dipetakan dari fitur test-transaction Fase 2 yang sudah nyata ada).
+- Font Baloo 2 (bold, subset karakter yang dipakai saja, ~9.6KB woff2) dan IBM Plex Sans SemiBold (subset, ~13KB woff2) **sudah di-download & di-base64-encode** (dari Google Fonts, subset via param `&text=`) untuk di-embed langsung ke artifact HTML (CSP artifact block font CDN, jadi harus data-URI). **File base64 tersimpan di job tmp dir sesi itu (`$CLAUDE_JOB_DIR/tmp/baloo2_b64.txt` & `ibmplex_b64.txt`) — kemungkinan BESAR SUDAH HILANG di sesi baru** karena itu direktori job sementara. Kalau hilang, ulangi dengan resep ini (cepat, <1 menit):
+  ```bash
+  # Baloo 2 bold, subset karakter DannShop-relevant:
+  curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36" \
+    "https://fonts.googleapis.com/css2?family=Baloo+2:wght@700&display=swap&text=DannShopabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-%20RpDiamondsMobileLegendsFreeFire" \
+    -o /tmp/baloo2_subset.css
+  # ambil URL woff2 dari file itu (grep src: url(...)), curl -o /tmp/baloo2.woff2 "$URL", lalu base64 -w0
+
+  # IBM Plex Sans SemiBold, subset serupa (tambah kata: PulsaDataEMoneyPLNVoucherTokenTagihanBeliSekarangBerhasilPending)
+  curl -s -A "...sama..." \
+    "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@600&display=swap&text=<subset>" \
+    -o /tmp/ibmplex_subset.css
+  ```
+- **Belum dibuat**: artifact HTML preview (2 arah side-by-side, toggle light/dark, mockup produk ML/FF + kategori pill + status badge pakai konten asli) untuk dipresentasikan ke user. Ini next step paling pertama saat lanjut sesi.
+
+### Langkah lanjut yang benar (JANGAN skip urutannya)
+
+1. Bangun artifact HTML preview 2 arah desain di atas (pakai skill `artifact-design` + font base64 di atas), presentasikan ke user, user pilih salah satu arah (atau minta revisi).
+2. Setelah arah desain di-approve → `superpowers:writing-plans` untuk bikin rencana implementasi Fase 3 lengkap (order flow + Midtrans + terapkan design system yang dipilih).
+3. Plan di-approve user → `superpowers:subagent-driven-development` untuk eksekusi task-by-task (pola sama seperti Fase 1 & 2: implementer subagent + reviewer per task, lalu final whole-branch review).
+4. Setelah Fase 3 selesai: **JANGAN asumsikan ada PR** — cek dulu keberadaan PR asli via `gh api` atau GitHub web sebelum menganggap ada proses review tertunda (pelajaran sesi ini: catatan sebelumnya salah kira ada PR Fase 1 padahal tidak pernah benar-benar dibuat).
 
 ## Status Fase 2 (mulai 2026-07-24, subagent-driven) — SEMUA 14 TASK SELESAI
 
@@ -56,7 +92,9 @@ Catatan penting sesi Task 11 (masih relevan):
 | 7. Layout UI publik + admin shell | ✅ selesai + review approved (1 fix: koreksi laporan, bukan kode) | `28c710d` |
 | Final whole-branch review | ✅ Ready to merge: Yes (opus) + 1 fix commit + re-review approved | `2a1a846` |
 
-## Langkah pertama saat lanjut
+## [HISTORIS — sudah tidak berlaku] Langkah pertama saat lanjut (ditulis akhir sesi Fase 1)
+
+> Catatan 2026-07-25: paragraf di bawah ini SALAH — mengira PR Fase 1 sudah dibuat, padahal setelah dicek ulang tidak pernah ada PR nyata di GitHub sama sekali (`gh api repos/.../pulls` return array kosong). Fase 1 & 2 akhirnya di-merge LANGSUNG ke `main` secara lokal (tanpa PR) di sesi 2026-07-25. Lihat bagian "Status Fase 3" di atas untuk state yang benar. Dibiarkan di sini sebagai jejak historis, jangan diikuti.
 
 **Fase 1 selesai total dan sudah di-PR-kan.** Remote `origin` = `https://github.com/DannShop/DANNSHOP-E-COMMERCE.git` (baru ditambahkan sesi ini, sebelumnya repo ini gak punya remote). `main` dan `fase-1-fondasi` sudah di-push. PR dari `fase-1-fondasi` → `main` sudah dibuat manual oleh user (link waktu itu: `https://github.com/DannShop/DANNSHOP-E-COMMERCE/pull/new/fase-1-fondasi` — cek GitHub buat nomor PR aktualnya). `gh` CLI TIDAK terinstall di environment ini — kalau butuh operasi PR/issue via CLI, install dulu atau lakukan manual via web.
 
