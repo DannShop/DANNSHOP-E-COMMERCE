@@ -2,10 +2,12 @@
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { auth } from "@/lib/auth";
 import { checkoutSchema, extractTargetFromFormData } from "@/lib/validation/checkout";
 import { generateOrderNumber } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { chargeQris } from "@/lib/midtrans/client";
+import { dispatchFulfillment } from "@/lib/order/fulfillment";
 
 const EXPIRY_MINUTES = 15;
 
@@ -14,6 +16,8 @@ export interface CheckoutResult {
   error?: string;
   orderNumber?: string;
 }
+
+class InsufficientBalanceError extends Error {}
 
 async function createOrderWithRetry(data: Parameters<typeof db.order.create>[0]["data"]) {
   try {
@@ -35,8 +39,16 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     productItemId: formData.get("productItemId"),
     buyerEmail: formData.get("buyerEmail"),
     target: extractTargetFromFormData(formData),
+    paymentMethod: formData.get("paymentMethod") ?? "qris",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
+
+  if (parsed.data.paymentMethod === "balance" && !userId) {
+    return { error: "Harus login untuk bayar pakai saldo." };
+  }
 
   const item = await db.productItem.findUnique({
     where: { id: parsed.data.productItemId, isActive: true },
@@ -55,28 +67,112 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
 
   const now = new Date();
   const orderNumber = generateOrderNumber(now);
-  const expiredAt = new Date(now.getTime() + EXPIRY_MINUTES * 60_000);
+
+  if (parsed.data.paymentMethod === "balance") {
+    return createBalanceOrder({ userId: userId!, orderNumber, item, target: parsed.data.target, buyerEmail: parsed.data.buyerEmail });
+  }
+
+  return createMidtransOrder({ userId, orderNumber, item, target: parsed.data.target, buyerEmail: parsed.data.buyerEmail, now });
+}
+
+async function createBalanceOrder(input: {
+  userId: string;
+  orderNumber: string;
+  item: { id: string; sellingPrice: bigint; product: { name: string }; name: string };
+  target: Record<string, string>;
+  buyerEmail: string;
+}): Promise<CheckoutResult> {
+  const order = await createOrderWithRetry({
+    orderNumber: input.orderNumber,
+    status: "PENDING_PAYMENT",
+    userId: input.userId,
+    productItemId: input.item.id,
+    productName: input.item.product.name,
+    itemName: input.item.name,
+    target: input.target,
+    buyerEmail: input.buyerEmail,
+    paidVia: "BALANCE",
+    sellingPrice: input.item.sellingPrice,
+    total: input.item.sellingPrice,
+    payment: { create: { method: "balance", status: "PENDING" } },
+  });
+  await db.orderStatusHistory.create({
+    data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout bayar saldo" },
+  });
+
+  try {
+    await db.$transaction(async (tx) => {
+      const debited = await tx.wallet.updateMany({
+        where: { userId: input.userId, balance: { gte: order.total } },
+        data: { balance: { decrement: order.total } },
+      });
+      if (debited.count === 0) throw new InsufficientBalanceError();
+
+      const wallet = await tx.wallet.findUniqueOrThrow({ where: { userId: input.userId } });
+      await tx.walletLedger.create({
+        data: {
+          walletId: wallet.id,
+          type: "ORDER_PAYMENT",
+          amount: -order.total,
+          balanceAfter: wallet.balance,
+          referenceType: "order",
+          referenceId: order.id,
+          idempotencyKey: `order-payment:${order.id}`,
+        },
+      });
+      await tx.order.update({ where: { id: order.id }, data: { status: "PAID" } });
+      await tx.orderPayment.update({ where: { orderId: order.id }, data: { status: "PAID" } });
+      await tx.orderStatusHistory.create({
+        data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", note: "Bayar pakai saldo" },
+      });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientBalanceError) {
+      await db.order.update({ where: { id: order.id }, data: { status: "FAILED" } });
+      await db.orderPayment.update({ where: { orderId: order.id }, data: { status: "FAILED" } });
+      await db.orderStatusHistory.create({
+        data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "FAILED", note: "Saldo tidak cukup" },
+      });
+      return { error: "Saldo tidak cukup (mungkin berubah). Coba lagi atau pakai QRIS." };
+    }
+    throw e;
+  }
+
+  await dispatchFulfillment(order.id);
+  return { ok: "Order dibuat.", orderNumber: order.orderNumber };
+}
+
+async function createMidtransOrder(input: {
+  userId: string | null;
+  orderNumber: string;
+  item: { id: string; sellingPrice: bigint; product: { name: string }; name: string };
+  target: Record<string, string>;
+  buyerEmail: string;
+  now: Date;
+}): Promise<CheckoutResult> {
+  const expiredAt = new Date(input.now.getTime() + EXPIRY_MINUTES * 60_000);
 
   const order = await createOrderWithRetry({
-    orderNumber,
+    orderNumber: input.orderNumber,
     status: "PENDING_PAYMENT",
-    productItemId: item.id,
-    productName: item.product.name,
-    itemName: item.name,
-    target: parsed.data.target,
-    buyerEmail: parsed.data.buyerEmail,
+    userId: input.userId,
+    productItemId: input.item.id,
+    productName: input.item.product.name,
+    itemName: input.item.name,
+    target: input.target,
+    buyerEmail: input.buyerEmail,
     paidVia: "MIDTRANS",
-    sellingPrice: item.sellingPrice,
-    total: item.sellingPrice,
+    sellingPrice: input.item.sellingPrice,
+    total: input.item.sellingPrice,
     expiredAt,
     payment: { create: { method: "qris", status: "PENDING", expiredAt } },
   });
   await db.orderStatusHistory.create({
-    data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout guest" },
+    data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout" },
   });
 
   try {
-    const charge = await chargeQris({ orderId: order.orderNumber, grossAmount: Number(item.sellingPrice) });
+    const charge = await chargeQris({ orderId: order.orderNumber, grossAmount: Number(input.item.sellingPrice) });
     await db.orderPayment.update({
       where: { orderId: order.id },
       data: {
