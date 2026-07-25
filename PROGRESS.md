@@ -1,6 +1,17 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3: 13 task + final whole-branch review SEMUA SELESAI, branch `fase-3-order-midtrans-sdd` siap digabung ke `fase-3-order-midtrans`)
+Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3: 13 task + final whole-branch review SEMUA SELESAI, 81/81 test lulus. **MENUNGGU MERGE LOKAL** — user sudah pilih opsi "merge lokal" tapi minta ditunda ke sesi berikutnya, lihat kotak "LANGKAH PERTAMA SESI BERIKUTNYA" di bawah.)
+
+## ⚠️ LANGKAH PERTAMA SESI BERIKUTNYA (jangan lewati/lupa)
+
+Semua kerjaan Fase 3 SUDAH SELESAI dan SUDAH DI-REVIEW (final whole-branch review clean, 81/81 test). User eksplisit sudah pilih **opsi 1 (merge lokal)** dari skill `finishing-a-development-branch`, cuma minta ditunda karena mau istirahat. **JANGAN mulai kerjaan baru atau tanya ulang pilihan integrasi — langsung eksekusi merge ini:**
+
+1. Dari root repo (`D:\Coding VSC\DannShop-PPOB`, BUKAN worktree): `git checkout fase-3-order-midtrans` lalu `git merge fase-3-order-midtrans-sdd` (branch sumbernya ada di worktree `D:\Coding VSC\DannShop-PPOB\.worktrees\fase-3-order-midtrans` — pastikan masih ada; kalau somehow hilang, commit terakhirnya `e8248d0`, cek `git log --all` atau `git reflog` untuk temukan lagi).
+2. Jalankan test di hasil merge (`cd web && npx vitest run`) — harus tetap 81/81 PASS. Kalau gagal, STOP, jangan lanjut cleanup, investigasi dulu.
+3. Kalau hijau: hapus worktree (`git worktree remove ".worktrees/fase-3-order-midtrans"` dari root repo) + `git worktree prune` + hapus branch sementara (`git branch -d fase-3-order-midtrans-sdd`).
+4. Update PROGRESS.md ini: hapus kotak peringatan ini, catat merge selesai, branch `fase-3-order-midtrans` sekarang berisi seluruh Fase 3.
+5. **Setelah merge**: tanyakan ke user apakah mau push branch `fase-3-order-midtrans` + buat PR (belum ditanyakan — user cuma memutuskan soal merge LOKAL dulu, keputusan push/PR belum diambil).
+6. Baca bagian "Follow-up PRE-GO-LIVE" di bawah — itu daftar temuan non-blocking dari final review yang belum diperbaiki (bukan bug baru, sudah diketahui & didokumentasikan, prioritaskan sebelum production beneran, bukan sebelum merge ini).
 
 ## Dokumen kunci
 
