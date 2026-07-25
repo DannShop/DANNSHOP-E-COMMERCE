@@ -7,7 +7,7 @@ Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3 dimula
 - Design doc: `docs/superpowers/specs/2026-07-19-dannshop-topup-platform-design.md` (§12 = tabel roadmap Fase 1-7, §15 = addendum keputusan review 2026-07-24)
 - Rencana Fase 1: `docs/superpowers/plans/2026-07-19-fase-1-fondasi.md`
 - Rencana Fase 2: `docs/superpowers/plans/2026-07-24-fase-2-katalog-digiflazz.md` (14 task, katalog + integrasi Digiflazz)
-- Rencana Fase 3: **BELUM DITULIS** — masih tahap konsep design system dulu (lihat bawah), baru nanti pakai `superpowers:writing-plans`
+- Rencana Fase 3: `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md` (13 task: token desain Arah A, dark/light toggle, katalog publik, checkout, Midtrans, webhook, fulfillment, invoice+polling, verifikasi E2E) — **DIBUAT, MENUNGGU keputusan eksekusi user** (subagent-driven vs inline)
 - Ledger eksekusi: `.superpowers/sdd/progress.md` (jangan dihapus)
 - **Branch Fase 1 & 2 SUDAH DIHAPUS** (lokal & remote, sudah di-merge ke `main` secara lokal — bukan lewat PR, karena ternyata tidak ada PR yang pernah benar-benar dibuat/di-merge di GitHub meski catatan sesi lalu mengira begitu). Branch kerja saat ini: **`fase-3-order-midtrans`** (dibuat dari `main` yang sudah update).
 
@@ -37,12 +37,16 @@ Riset sudah dijalankan pakai `ui-ux-pro-max` (`--design-system` + `--domain styl
     "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@600&display=swap&text=<subset>" \
     -o /tmp/ibmplex_subset.css
   ```
-- **Belum dibuat**: artifact HTML preview (2 arah side-by-side, toggle light/dark, mockup produk ML/FF + kategori pill + status badge pakai konten asli) untuk dipresentasikan ke user. Ini next step paling pertama saat lanjut sesi.
+- **Artifact preview SUDAH DIBUAT & DIPRESENTASIKAN** (sesi 2026-07-25, lanjutan): dibangun via subagent implementer (pola sama Fase 1/2) dari spec token di atas + 2 font base64 (masih ada di `C:\Users\ASUS\.claude\jobs\afe12054\tmp\{baloo2,ibmplex}_b64.txt`), lalu direview manual (tag balance, isi konten, kontras) sebelum dipublish. Validasi kontras WCAG dijalankan dulu pakai `ui-ux-pro-max` + perhitungan manual (rumus relative luminance) — 2 kombinasi tombol yang dikhawatirkan (teks putih di tombol ungu dark-mode Arah A, teks gelap di tombol hijau dark-mode Arah B) **lolos AA** (5.70:1 dan 5.83:1). Badge status (Menunggu Pembayaran/Diproses/Berhasil/Gagal) dibuat pola chip tint-bg + teks lebih gelap (bukan warna mentah di atas bg polos) karena warna semantik mentah sebagai teks kecil cuma dapat ~3.2:1 (gagal AA teks normal). Link artifact: `https://claude.ai/code/artifact/d8d7b7e8-277f-4235-95ab-0c1e40293361` (privat, belum di-share user).
+
+**KEPUTUSAN USER (2026-07-25): Arah A "Ceria & Berani" dipilih.** Token final yang dipakai untuk implementasi nanti = spec Arah A persis seperti di atas (light bg `#F5F3FF`/primary `#4F46E5`/btn `#4338CA`/accent `#EA580C`; dark bg `#0F0F23`/primary `#7C3AED`/accent `#F43F5E`; radius 20px; font Baloo 2 700 display + system-ui body). Arah B tidak dipakai — tapi tetap disimpan di histori kalau-kalau user mau revisi balik.
+
+Catatan tambahan sesi ini: user minta semua komunikasi terminal pakai Bahasa Indonesia mulai sekarang (lihat memory `feedback_bahasa_indonesia`).
 
 ### Langkah lanjut yang benar (JANGAN skip urutannya)
 
-1. Bangun artifact HTML preview 2 arah desain di atas (pakai skill `artifact-design` + font base64 di atas), presentasikan ke user, user pilih salah satu arah (atau minta revisi).
-2. Setelah arah desain di-approve → `superpowers:writing-plans` untuk bikin rencana implementasi Fase 3 lengkap (order flow + Midtrans + terapkan design system yang dipilih).
+1. ~~Bangun artifact HTML preview 2 arah desain~~ ✅ selesai. ~~Tunggu user pilih arah~~ ✅ **Arah A dipilih (2026-07-25).**
+2. **Langkah berikutnya:** `superpowers:writing-plans` untuk bikin rencana implementasi Fase 3 lengkap (order flow + Midtrans + terapkan token Arah A ke halaman publik).
 3. Plan di-approve user → `superpowers:subagent-driven-development` untuk eksekusi task-by-task (pola sama seperti Fase 1 & 2: implementer subagent + reviewer per task, lalu final whole-branch review).
 4. Setelah Fase 3 selesai: **JANGAN asumsikan ada PR** — cek dulu keberadaan PR asli via `gh api` atau GitHub web sebelum menganggap ada proses review tertunda (pelajaran sesi ini: catatan sebelumnya salah kira ada PR Fase 1 padahal tidak pernah benar-benar dibuat).
 
