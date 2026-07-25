@@ -21,7 +21,9 @@ describe("depositSchema", () => {
     expect(depositSchema.safeParse({ amount: String(MAX_DEPOSIT) }).success).toBe(true);
   });
 
-  it("bukan angka ditolak", () => {
-    expect(depositSchema.safeParse({ amount: "abc" }).success).toBe(false);
+  it("bukan angka ditolak, pesan Bahasa Indonesia", () => {
+    const result = depositSchema.safeParse({ amount: "abc" });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0].message).toBe("Nominal harus berupa angka");
   });
 });

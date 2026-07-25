@@ -5,7 +5,7 @@ export const MAX_DEPOSIT = 5_000_000n;
 
 export const depositSchema = z.object({
   amount: z.coerce
-    .bigint()
+    .bigint({ message: "Nominal harus berupa angka" })
     .min(MIN_DEPOSIT, `Nominal minimal Rp${MIN_DEPOSIT.toLocaleString("id-ID")}`)
     .max(MAX_DEPOSIT, `Nominal maksimal Rp${MAX_DEPOSIT.toLocaleString("id-ID")}`),
 });
