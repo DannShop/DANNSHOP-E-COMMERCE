@@ -1,6 +1,6 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3: 13 task implementasi SELESAI + Task 13 verifikasi akhir SELESAI, tinggal final whole-branch review)
+Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3: 13 task + final whole-branch review SEMUA SELESAI, branch `fase-3-order-midtrans-sdd` siap digabung ke `fase-3-order-midtrans`)
 
 ## Dokumen kunci
 
@@ -30,7 +30,23 @@ Laporan lengkap: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/task-13-repo
 
 Dev server (`npm run dev`) dipakai untuk verifikasi sudah dihentikan, port 3000 dikonfirmasi tidak listening lagi. Semua toggle data sementara (Product `mobile-legends.isActive`, 1 baris `ProviderSku` test) dikembalikan persis ke semula, dikonfirmasi via query ulang. Semua order/webhook-event test dihapus.
 
-**Langkah berikutnya**: fix Temuan #1 (lint), lalu final whole-branch review (pola sama Fase 1/2) sebelum push/PR.
+### Final whole-branch review (selesai, sesi 2026-07-25)
+
+Review menyeluruh 17 commit (opus, range `733bb88..c7948cf`) sebelum merge: **Ready to merge: With fixes**. Ditemukan 1 **Critical** (C1) + 8 Important (I1-I8). 2 temuan yang sebelumnya di-park sebagai "minor" di ledger per-task ternyata TERBUKTI SALAH penilaiannya oleh review menyeluruh (naik jadi Important) — dicatat di sini supaya pelajaran ini tidak hilang:
+
+- **C1 (Critical, DIPERBAIKI — commit `b01b17b`)**: kalau `dispatchFulfillment` gagal (network error ke Digiflazz) SETELAH order sudah diklaim `PAID`, order bisa macet permanen di `PROCESSING` — uang masuk, barang tidak terkirim, tanpa retry maupun refund_pending. Fix: guard `dispatchFulfillment` jadi klaim atomik (aman dipanggil ulang), job `recheck-fulfillment` dijadwalkan SEBELUM panggil adapter (bukan cuma setelah hasil "pending"), panggilan adapter dibungkus try/catch, webhook coba dispatch ulang kalau retry menemukan order masih `PAID`.
+- **I1 (Important, DIPERBAIKI — commit `b01b17b`)**: ruling ledger Task 5 sebelumnya ("sudah tercegah oleh zod checkoutSchema") **TERBUKTI SALAH** — `z.record` ternyata meloloskan `target: {}` (objek kosong). Fix: validasi eksplisit semua `inputFields` produk terisi di `createCheckoutOrder`, sebelum order dibuat/di-charge.
+- **I6 (Important, DIPERBAIKI — commit `b01b17b`)**: `MIDTRANS_SERVER_KEY` kosong bikin verifikasi signature webhook bisa dipalsukan (dihitung dengan key `""`). Ledger Task 6 sebelumnya menilai ini "cuma DX" — TERLALU RINGAN. Fix: webhook fail-fast (500) di awal kalau env var itu tidak di-set.
+
+Re-review scoped setelah fix wave: SEMUA 3 di atas **ADDRESSED**, 81/81 test pass, tidak ada regresi/breakage baru. Laporan lengkap: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/final-review-fix-report.md`.
+
+**Follow-up PRE-GO-LIVE (non-blocking untuk merge Fase 3, tapi WAJIB sebelum production — catat di rencana Fase 4/7):**
+1. Kredensial Midtrans sandbox ASLI belum pernah diuji lewat jaringan nyata (charge sukses + getTransactionStatus asli) — ulangi Task 13 langkah 3.2/3.3 begitu kredensial tersedia.
+2. C1 belum 100% tertutup: window sempit antara klaim atomik dan `db.job.create`/order lookup (kalau DB error/crash proses tepat di situ) masih bisa meninggalkan order `PROCESSING` tanpa fulfillment row & tanpa job recheck. Job `recheck-fulfillment` yang `FAILED` permanen (5x attempt gagal) juga tidak eskalasi ke `NEEDS_REVIEW` — order bisa macet diam-diam tanpa terlihat (belum ada halaman admin orders di Fase 3).
+3. I2-I5, I7, I8 dari final review (belum diperbaiki, sengaja diparkir): pembayaran sukses tapi order sudah bukan `PENDING_PAYMENT` hilang tanpa jejak; expiry lokal tidak sinkron dengan expiry Midtrans; notifikasi `settlement` yang reconfirm-nya `pending` bisa ke-dedup permanen; `orderNumber` 10rb kombinasi/hari (entropi rendah, `Math.random()`, bisa dienumerasi — SN/voucher berisiko dipanen lewat endpoint status tanpa auth); QRIS string dikirim ke pihak ketiga (`api.qrserver.com`); 2 mapping status uang (`fulfillment.ts`, webhook) belum di-unit-test (masih inline, bukan fungsi pure terpisah).
+4. `web/src/lib/midtrans/client.ts` masih fallback `?? ""` untuk server key di `chargeQris`/`getTransactionStatus` (sengaja di luar scope fix I6 — beda risiko, bukan lubang keamanan, cuma bikin auth gagal ke Midtrans).
+
+**Langkah berikutnya**: gunakan `superpowers:finishing-a-development-branch` untuk integrasi branch (`fase-3-order-midtrans-sdd` → `fase-3-order-midtrans`).
 
 ### Konsep design system & histori sebelum implementasi (arsip, sudah selesai/diputuskan)
 
