@@ -40,4 +40,13 @@ describe("checkoutSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("target kosong lolos di level schema (validasi kecocokan dgn inputFields dilakukan terpisah di createCheckoutOrder)", () => {
+    const result = checkoutSchema.safeParse({
+      productItemId: "item-1",
+      buyerEmail: "a@b.com",
+      target: {},
+    });
+    expect(result.success).toBe(true); // schema sendiri memang tidak tahu inputFields produk - itu tugas createCheckoutOrder
+  });
 });

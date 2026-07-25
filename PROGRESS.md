@@ -8,7 +8,7 @@ Terakhir update: 2026-07-25 (Fase 1+2 SUDAH DI-MERGE ke `main` — Fase 3: 13 ta
 - Rencana Fase 1: `docs/superpowers/plans/2026-07-19-fase-1-fondasi.md`
 - Rencana Fase 2: `docs/superpowers/plans/2026-07-24-fase-2-katalog-digiflazz.md` (14 task, katalog + integrasi Digiflazz)
 - Rencana Fase 3: `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md` (13 task: token desain Arah A, dark/light toggle, katalog publik, checkout, Midtrans, webhook, fulfillment, invoice+polling, verifikasi E2E) — **SEMUA 13 TASK SELESAI DIEKSEKUSI** (lihat "Status Fase 3" di bawah)
-- Ledger eksekusi: `.superpowers/sdd/progress.md` (jangan dihapus)
+- Ledger eksekusi: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/progress.md` (jangan dihapus)
 - **Branch Fase 1 & 2 SUDAH DIHAPUS** (lokal & remote, sudah di-merge ke `main` secara lokal — bukan lewat PR, karena ternyata tidak ada PR yang pernah benar-benar dibuat/di-merge di GitHub meski catatan sesi lalu mengira begitu). Branch kerja saat ini: **`fase-3-order-midtrans`** (dibuat dari `main` yang sudah update).
 
 ## Status Fase 3 (mulai 2026-07-25) — 13 TASK IMPLEMENTASI + TASK 13 VERIFIKASI AKHIR SELESAI
@@ -24,7 +24,7 @@ Laporan lengkap: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/task-13-repo
 - **Manual PARSIAL** (sebagian disintesis karena tidak ada kredensial Midtrans asli): webhook `PAID→PROCESSING→dispatchFulfillment` (signature+dedup+state machine+panggilan Digiflazz semua ASLI, cuma re-konfirmasi status ke Midtrans disintesis via shim eksternal) — hasil `REFUND_PENDING` karena Digiflazz menolak IP (bukan bug, pola sama Fase 2); invoice polling SN tanpa reload (mekanisme polling ASLI, transisi ke `COMPLETED` dipicu manual di DB karena Digiflazz real tidak pernah sukses akibat IP-whitelist).
 - **Sama sekali tidak teruji** (gap pre-go-live, BUKAN blocker Fase 3): panggilan `chargeQris`/`getTransactionStatus` yang benar-benar sukses ke Midtrans sandbox asli. **Harus diulang begitu kredensial Midtrans sandbox asli tersedia**, sebelum go-live.
 
-**Temuan #1 (Important, BELUM diperbaiki — perlu fix round)**: `web/src/components/theme-toggle.tsx:10` — `npm run lint` error dari rule `react-hooks/set-state-in-effect` pada `useEffect(() => setMounted(true), [])`. File ini scope Fase 3 (commit `0d7b77b`). Brief mengharapkan lint bersih.
+**Temuan #1 (Important, sudah diperbaiki — commit `c7948cf`)**: `web/src/components/theme-toggle.tsx:10` — `npm run lint` error dari rule `react-hooks/set-state-in-effect` pada `useEffect(() => setMounted(true), [])`. File ini scope Fase 3 (commit `0d7b77b`). Brief mengharapkan lint bersih.
 
 **Temuan #2 (Minor, non-blocking)**: `invoice-status.tsx:140` warning `@next/next/no-img-element` untuk `<img>` render QRIS.
 
@@ -72,7 +72,7 @@ Catatan tambahan sesi ini: user minta semua komunikasi terminal pakai Bahasa Ind
 
 ### Langkah berikutnya yang benar (JANGAN skip urutannya)
 
-1. Fix Temuan #1 dari Task 13 (`theme-toggle.tsx` lint error `react-hooks/set-state-in-effect`) — masuk fix round biasa sebelum review.
+1. ~~Fix Temuan #1 dari Task 13 (`theme-toggle.tsx` lint error `react-hooks/set-state-in-effect`)~~ ✅ sudah diperbaiki (commit `c7948cf`).
 2. Final whole-branch review (pola sama Fase 1/2: review menyeluruh commit range Fase 3, fix Critical/Important yang ditemukan, re-review).
 3. Setelah Fase 3 selesai: **JANGAN asumsikan ada PR** — cek dulu keberadaan PR asli via `gh api` atau GitHub web sebelum menganggap ada proses review tertunda (pelajaran sesi ini: catatan sebelumnya salah kira ada PR Fase 1 padahal tidak pernah benar-benar dibuat).
 

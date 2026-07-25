@@ -16,6 +16,11 @@ const notifSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!process.env.MIDTRANS_SERVER_KEY) {
+    console.error("Webhook Midtrans: MIDTRANS_SERVER_KEY tidak di-set di environment");
+    return NextResponse.json({ error: "Konfigurasi server tidak lengkap" }, { status: 500 });
+  }
+
   const rawBody = await request.text();
 
   let notif: z.infer<typeof notifSchema>;
@@ -59,7 +64,7 @@ export async function POST(request: Request) {
   const markProcessed = (result: string) =>
     db.webhookEvent.update({ where: { eventKey }, data: { processedAt: new Date(), processResult: result } });
 
-  if (!verifyMidtransSignature(notif, process.env.MIDTRANS_SERVER_KEY ?? "")) {
+  if (!verifyMidtransSignature(notif, process.env.MIDTRANS_SERVER_KEY!)) {
     await markProcessed("signature_invalid");
     return NextResponse.json({ error: "Signature tidak valid" }, { status: 403 });
   }
@@ -89,6 +94,16 @@ export async function POST(request: Request) {
           data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", note: "Midtrans settlement" },
         });
         await dispatchFulfillment(order.id);
+      } else {
+        // Order sudah bukan PENDING_PAYMENT lagi - kemungkinan webhook retry
+        // setelah percobaan sebelumnya sempat klaim PAID tapi belum sempat
+        // dispatch (proses mati di tengah). dispatchFulfillment sekarang aman
+        // dipanggil ulang (klaim atomik PAID->PROCESSING di dalamnya, no-op
+        // kalau order sudah PROCESSING/status lain).
+        const current = await db.order.findUnique({ where: { id: order.id }, select: { status: true } });
+        if (current?.status === "PAID") {
+          await dispatchFulfillment(order.id);
+        }
       }
     } else if (mapped === "failed" || mapped === "expired") {
       const newStatus = mapped === "expired" ? "EXPIRED" : "FAILED";

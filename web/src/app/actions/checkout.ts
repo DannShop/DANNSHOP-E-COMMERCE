@@ -44,6 +44,12 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   });
   if (!item || !item.product.isActive) return { error: "Produk tidak ditemukan atau tidak aktif." };
 
+  const inputFields = item.product.inputFields as { name: string; label: string }[];
+  const missingField = inputFields.find((f) => !parsed.data.target[f.name]?.trim());
+  if (missingField) {
+    return { error: `${missingField.label} wajib diisi.` };
+  }
+
   const decision = selectFulfillmentSku({ sellingPrice: item.sellingPrice }, item.providerSkus);
   if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
 

@@ -6,15 +6,18 @@ import { generateRefId } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 
 export async function dispatchFulfillment(orderId: string): Promise<void> {
-  const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
-  if (order.status !== "PAID") return; // sudah diproses / bukan giliran fulfillment
+  const claimed = await db.order.updateMany({
+    where: { id: orderId, status: "PAID" },
+    data: { status: "PROCESSING" },
+  });
+  if (claimed.count === 0) return; // sudah PROCESSING/status lain - sedang/sudah diproses pemanggil lain
 
+  const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
   const item = await db.productItem.findUniqueOrThrow({
     where: { id: order.productItemId! },
     include: { providerSkus: true, product: true },
   });
 
-  await db.order.update({ where: { id: order.id }, data: { status: "PROCESSING" } });
   await db.orderStatusHistory.create({
     data: { orderId: order.id, fromStatus: "PAID", toStatus: "PROCESSING" },
   });
@@ -45,22 +48,32 @@ export async function dispatchFulfillment(orderId: string): Promise<void> {
     item.product.inputFields as { name: string }[],
     order.target as Record<string, string>,
   );
-  const adapter = await getAdapter(decision.sku.provider);
-  const result = await adapter.createTransaction({
-    skuCode: decision.sku.providerSkuCode,
-    target,
-    refId: ourRefId,
-  });
-  await applyFulfillmentResult(fulfillment.id, result);
 
-  if (result.status === "pending") {
-    await db.job.create({
-      data: {
-        type: "recheck-fulfillment",
-        payload: { fulfillmentId: fulfillment.id, attempt: 1 },
-        runAt: new Date(Date.now() + 60_000),
-      },
+  // Jadwalkan jaring pengaman recheck SEBELUM panggil adapter - supaya kalau
+  // adapter.createTransaction throw (timeout/error jaringan), tetap ada job
+  // yang akan checkStatus ulang nanti alih-alih order macet permanen.
+  await db.job.create({
+    data: {
+      type: "recheck-fulfillment",
+      payload: { fulfillmentId: fulfillment.id, attempt: 1 },
+      runAt: new Date(Date.now() + 60_000),
+    },
+  });
+
+  try {
+    const adapter = await getAdapter(decision.sku.provider);
+    const result = await adapter.createTransaction({
+      skuCode: decision.sku.providerSkuCode,
+      target,
+      refId: ourRefId,
     });
+    await applyFulfillmentResult(fulfillment.id, result);
+  } catch (e) {
+    console.error("dispatchFulfillment: adapter.createTransaction gagal, mengandalkan job recheck-fulfillment", {
+      orderId: order.id, fulfillmentId: fulfillment.id, error: e,
+    });
+    // JANGAN throw - job recheck-fulfillment yang sudah dijadwalkan akan coba checkStatus nanti.
+    // Fulfillment row tetap berstatus SENT, itu status valid untuk recheck job mengambil alih.
   }
 }
 
