@@ -2,10 +2,13 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { createCheckoutOrder, type CheckoutResult } from "@/app/actions/checkout";
+import { hasSufficientBalance } from "@/lib/wallet/decisions";
 import type { ProductForCheckout } from "@/lib/catalog/public";
 
 const INITIAL_STATE: CheckoutResult = {};
@@ -20,7 +23,13 @@ function formatRupiah(amount: bigint): string {
   );
 }
 
-export function ProductDetailClient({ product }: { product: ProductForCheckout }) {
+export function ProductDetailClient({
+  product,
+  session,
+}: {
+  product: ProductForCheckout;
+  session: { email: string; walletBalance: bigint } | null;
+}) {
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
   const selectedItem = purchasableItems.find((i) => i.id === selectedItemId) ?? purchasableItems[0];
@@ -39,6 +48,8 @@ export function ProductDetailClient({ product }: { product: ProductForCheckout }
       </div>
     );
   }
+
+  const canPayWithBalance = session ? hasSufficientBalance(session.walletBalance, selectedItem?.sellingPrice ?? 0n) : false;
 
   return (
     <div className="grid gap-8 md:grid-cols-2">
@@ -84,8 +95,36 @@ export function ProductDetailClient({ product }: { product: ProductForCheckout }
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="buyerEmail">Email (untuk invoice)</Label>
-          <Input id="buyerEmail" name="buyerEmail" type="email" required className="h-11 text-base" />
+          <Input
+            id="buyerEmail"
+            name="buyerEmail"
+            type="email"
+            required
+            defaultValue={session?.email ?? undefined}
+            className="h-11 text-base"
+          />
         </div>
+
+        {session && (
+          <div className="flex flex-col gap-2">
+            <Label>Metode Pembayaran</Label>
+            <RadioGroup name="paymentMethod" defaultValue="qris">
+              <RadioGroupItem value="qris">QRIS</RadioGroupItem>
+              <RadioGroupItem value="balance" disabled={!canPayWithBalance}>
+                Saldo ({formatRupiah(session.walletBalance)})
+              </RadioGroupItem>
+            </RadioGroup>
+            {!canPayWithBalance && (
+              <p className="text-xs text-muted-foreground">
+                Saldo tidak cukup.{" "}
+                <Link href="/account/deposit" className="text-primary underline">
+                  Isi saldo dulu
+                </Link>
+                .
+              </p>
+            )}
+          </div>
+        )}
 
         {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}
         <Button type="submit" disabled={pending} className="h-11 w-full text-base font-heading">
