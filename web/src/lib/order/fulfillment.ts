@@ -65,14 +65,17 @@ export async function dispatchFulfillment(orderId: string): Promise<void> {
 }
 
 export async function applyFulfillmentResult(fulfillmentId: string, result: ProviderTrxResult): Promise<void> {
-  const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: fulfillmentId } });
-  if (fulfillment.status === "SUCCESS" || fulfillment.status === "FAILED") return; // sudah final, idempotent
-
   const status = result.status === "success" ? "SUCCESS" : result.status === "failed" ? "FAILED" : "PROCESSING";
-  await db.orderFulfillment.update({
-    where: { id: fulfillmentId },
+
+  // Klaim atomik: hanya satu pemanggil konkuren (webhook vs. job recheck-fulfillment)
+  // yang berhasil flip dari status non-final ke status baru.
+  const claimed = await db.orderFulfillment.updateMany({
+    where: { id: fulfillmentId, status: { notIn: ["SUCCESS", "FAILED"] } },
     data: { status, sn: result.sn, message: result.message, rawCallback: result.raw as object },
   });
+  if (claimed.count === 0) return; // sudah final (SUCCESS/FAILED) oleh pemanggil lain, idempotent
+
+  const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: fulfillmentId } });
 
   if (status === "SUCCESS") {
     await db.order.update({
