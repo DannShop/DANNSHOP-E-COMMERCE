@@ -4,6 +4,7 @@ import type { ProviderTrxResult } from "@/lib/providers/types";
 import { buildCustomerNo } from "@/lib/order/customer-no";
 import { generateRefId } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
+import { decideRefundDestination } from "@/lib/wallet/decisions";
 
 export async function dispatchFulfillment(orderId: string): Promise<void> {
   const claimed = await db.order.updateMany({
@@ -99,11 +100,37 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
       data: { orderId: fulfillment.orderId, toStatus: "COMPLETED", note: `SN: ${result.sn ?? "-"}` },
     });
   } else if (status === "FAILED") {
-    // Fase 3 cuma 1 provider (Digiflazz) — tidak ada fallback provider lain (itu Fase 6).
-    // Guest checkout → refund_pending (antrean manual admin), sesuai spec §7.
-    await db.order.update({ where: { id: fulfillment.orderId }, data: { status: "REFUND_PENDING" } });
-    await db.orderStatusHistory.create({
-      data: { orderId: fulfillment.orderId, toStatus: "REFUND_PENDING", note: result.message },
-    });
+    const order = await db.order.findUniqueOrThrow({ where: { id: fulfillment.orderId } });
+
+    if (decideRefundDestination(order.userId) === "wallet") {
+      // Member — auto-refund ke saldo, atomik dalam satu transaksi (ledger double-entry)
+      await db.$transaction(async (tx) => {
+        const wallet = await tx.wallet.update({
+          where: { userId: order.userId! },
+          data: { balance: { increment: order.total } },
+        });
+        await tx.walletLedger.create({
+          data: {
+            walletId: wallet.id,
+            type: "REFUND",
+            amount: order.total,
+            balanceAfter: wallet.balance,
+            referenceType: "order",
+            referenceId: order.id,
+            idempotencyKey: `order-refund:${order.id}`,
+          },
+        });
+        await tx.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } });
+      });
+      await db.orderStatusHistory.create({
+        data: { orderId: order.id, toStatus: "REFUNDED", note: `Auto-refund ke saldo: ${result.message}` },
+      });
+    } else {
+      // Guest — antrean manual admin (Fase 7), tidak berubah dari Fase 3
+      await db.order.update({ where: { id: order.id }, data: { status: "REFUND_PENDING" } });
+      await db.orderStatusHistory.create({
+        data: { orderId: order.id, toStatus: "REFUND_PENDING", note: result.message },
+      });
+    }
   }
 }
