@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 import type { ProviderKey } from "@prisma/client";
+import { applyFulfillmentResult } from "@/lib/order/fulfillment";
+import { getAdapter } from "@/lib/providers/registry";
+import { buildCustomerNo } from "@/lib/order/customer-no";
 
 export type JobHandler = (payload: unknown) => Promise<string | void>;
 
@@ -19,6 +22,11 @@ export function decideAfterFailure(
   return { status: "PENDING", runAt: new Date(now.getTime() + computeBackoff(job.attempts) * 60_000) };
 }
 
+export function shouldEscalateRecheck(attempt: number, status: "success" | "pending" | "failed"): boolean {
+  if (status !== "pending") return false;
+  return attempt >= 30;
+}
+
 export const handlers: Record<string, JobHandler> = {
   // payload: { provider: "DIGIFLAZZ" }
   "sync-prices": async (payload) => {
@@ -33,6 +41,70 @@ export const handlers: Record<string, JobHandler> = {
       },
     });
     return `updated=${result.updated} missing=${result.missing}`;
+  },
+
+  "expire-order": async (payload) => {
+    const { orderId } = payload as { orderId: string };
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
+    if (order.status !== "PENDING_PAYMENT") return "no-op: status sudah berubah";
+    if (order.expiredAt && order.expiredAt > new Date()) return "no-op: belum jatuh tempo";
+
+    const claimed = await db.order.updateMany({
+      where: { id: order.id, status: "PENDING_PAYMENT" },
+      data: { status: "EXPIRED" },
+    });
+    if (claimed.count === 0) return "no-op: sudah diklaim proses lain";
+
+    await db.orderPayment.updateMany({ where: { orderId: order.id }, data: { status: "EXPIRED" } });
+    await db.orderStatusHistory.create({
+      data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "EXPIRED", note: "Auto-expire cron" },
+    });
+    return "expired";
+  },
+
+  "recheck-fulfillment": async (payload) => {
+    const { fulfillmentId, attempt } = payload as { fulfillmentId: string; attempt: number };
+    const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: fulfillmentId } });
+    if (fulfillment.status !== "SENT" && fulfillment.status !== "PROCESSING") {
+      return "no-op: fulfillment sudah final";
+    }
+
+    const order = await db.order.findUniqueOrThrow({ where: { id: fulfillment.orderId } });
+    const item = await db.productItem.findUniqueOrThrow({
+      where: { id: order.productItemId! },
+      include: { product: true },
+    });
+    const target = buildCustomerNo(
+      item.product.inputFields as { name: string }[],
+      order.target as Record<string, string>,
+    );
+
+    const adapter = await getAdapter(fulfillment.provider);
+    const result = await adapter.checkStatus({
+      skuCode: fulfillment.providerSkuCode,
+      target,
+      refId: fulfillment.ourRefId,
+    });
+    await applyFulfillmentResult(fulfillment.id, result);
+
+    if (shouldEscalateRecheck(attempt, result.status)) {
+      await db.order.update({ where: { id: order.id }, data: { status: "NEEDS_REVIEW" } });
+      await db.orderStatusHistory.create({
+        data: { orderId: order.id, toStatus: "NEEDS_REVIEW", note: "Eskalasi: 30x recheck tanpa hasil final" },
+      });
+      return "escalated";
+    }
+    if (result.status === "pending") {
+      await db.job.create({
+        data: {
+          type: "recheck-fulfillment",
+          payload: { fulfillmentId, attempt: attempt + 1 },
+          runAt: new Date(Date.now() + 60_000),
+        },
+      });
+      return `still-pending attempt=${attempt}`;
+    }
+    return "resolved";
   },
 };
 

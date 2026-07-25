@@ -1,14 +1,96 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (FASE 2 SELESAI TOTAL — 14 task, whole-branch review Ready to merge: Yes, di-push ke remote, PR menunggu dibuat manual)
+Terakhir update: 2026-07-25 (Fase 1+2+3 SUDAH DI-MERGE ke branch `fase-3-order-midtrans` — 81/81 test lulus setelah merge, branch sudah di-push, **PR #1 sudah dibuat** (`fase-3-order-midtrans` → `main`, OPEN, mergeable): `https://github.com/DannShop/DANNSHOP-E-COMMERCE/pull/1`. `gh` CLI sudah terinstall & login sesi ini — bisa dipakai untuk cek status PR/CI ke depannya. Menunggu review/merge PR di GitHub oleh user.)
 
 ## Dokumen kunci
 
-- Design doc: `docs/superpowers/specs/2026-07-19-dannshop-topup-platform-design.md`
+- Design doc: `docs/superpowers/specs/2026-07-19-dannshop-topup-platform-design.md` (§12 = tabel roadmap Fase 1-7, §15 = addendum keputusan review 2026-07-24)
 - Rencana Fase 1: `docs/superpowers/plans/2026-07-19-fase-1-fondasi.md`
 - Rencana Fase 2: `docs/superpowers/plans/2026-07-24-fase-2-katalog-digiflazz.md` (14 task, katalog + integrasi Digiflazz)
-- Ledger eksekusi: `.superpowers/sdd/progress.md` (jangan dihapus)
-- Branch kerja Fase 1: `fase-1-fondasi` — Branch kerja Fase 2: `fase-2-katalog` (dibuat dari `fase-1-fondasi` karena PR Fase 1 belum di-merge saat itu)
+- Rencana Fase 3: `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md` (13 task: token desain Arah A, dark/light toggle, katalog publik, checkout, Midtrans, webhook, fulfillment, invoice+polling, verifikasi E2E) — **SEMUA 13 TASK SELESAI DIEKSEKUSI** (lihat "Status Fase 3" di bawah)
+- Ledger eksekusi: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/progress.md` (jangan dihapus)
+- **Branch Fase 1 & 2 SUDAH DIHAPUS** (lokal & remote, sudah di-merge ke `main` secara lokal — bukan lewat PR, karena ternyata tidak ada PR yang pernah benar-benar dibuat/di-merge di GitHub meski catatan sesi lalu mengira begitu). Branch kerja saat ini: **`fase-3-order-midtrans`** (dibuat dari `main` yang sudah update).
+
+## Status Fase 3 (mulai 2026-07-25) — 13 TASK IMPLEMENTASI + TASK 13 VERIFIKASI AKHIR SELESAI
+
+### Task 13 — Verifikasi akhir end-to-end (selesai, sesi 2026-07-25)
+
+Laporan lengkap: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/task-13-report.md` (WAJIB dibaca sebelum final whole-branch review — berisi rincian tiap langkah + mana yang tervalidasi penuh vs parsial).
+
+**Kredensial Midtrans sandbox ASLI tidak tersedia** di sesi ini (butuh signup manual pemilik produk) — dipakai strategi verifikasi pengganti (server key palsu konsisten + shim eksternal sementara untuk konfirmasi status Midtrans, TIDAK mengubah source code apa pun) supaya logic tetap tervalidasi. Ringkasan:
+
+- **Automated**: `npx vitest run` 80/80 PASS, `npx tsc --noEmit` bersih, `npm run build` sukses (semua route baru ter-generate). **`npm run lint` GAGAL** — 1 error baru ditemukan (lihat Temuan #1 di bawah).
+- **Manual FULL** (kode produksi asli, tanpa sintesis): checkout gagal-charge → order `FAILED` bukan macet `PENDING_PAYMENT` (fix Task 9 terbukti benar); webhook dedup (kirim 2x payload sama → `{deduped:true}`, tidak dobel dispatch); job `recheck-fulfillment` via `POST /api/cron/tick`; job `expire-order` via cron tick; signature invalid → 403; cron secret salah → 401.
+- **Manual PARSIAL** (sebagian disintesis karena tidak ada kredensial Midtrans asli): webhook `PAID→PROCESSING→dispatchFulfillment` (signature+dedup+state machine+panggilan Digiflazz semua ASLI, cuma re-konfirmasi status ke Midtrans disintesis via shim eksternal) — hasil `REFUND_PENDING` karena Digiflazz menolak IP (bukan bug, pola sama Fase 2); invoice polling SN tanpa reload (mekanisme polling ASLI, transisi ke `COMPLETED` dipicu manual di DB karena Digiflazz real tidak pernah sukses akibat IP-whitelist).
+- **Sama sekali tidak teruji** (gap pre-go-live, BUKAN blocker Fase 3): panggilan `chargeQris`/`getTransactionStatus` yang benar-benar sukses ke Midtrans sandbox asli. **Harus diulang begitu kredensial Midtrans sandbox asli tersedia**, sebelum go-live.
+
+**Temuan #1 (Important, sudah diperbaiki — commit `c7948cf`)**: `web/src/components/theme-toggle.tsx:10` — `npm run lint` error dari rule `react-hooks/set-state-in-effect` pada `useEffect(() => setMounted(true), [])`. File ini scope Fase 3 (commit `0d7b77b`). Brief mengharapkan lint bersih.
+
+**Temuan #2 (Minor, non-blocking)**: `invoice-status.tsx:140` warning `@next/next/no-img-element` untuk `<img>` render QRIS.
+
+Dev server (`npm run dev`) dipakai untuk verifikasi sudah dihentikan, port 3000 dikonfirmasi tidak listening lagi. Semua toggle data sementara (Product `mobile-legends.isActive`, 1 baris `ProviderSku` test) dikembalikan persis ke semula, dikonfirmasi via query ulang. Semua order/webhook-event test dihapus.
+
+### Final whole-branch review (selesai, sesi 2026-07-25)
+
+Review menyeluruh 17 commit (opus, range `733bb88..c7948cf`) sebelum merge: **Ready to merge: With fixes**. Ditemukan 1 **Critical** (C1) + 8 Important (I1-I8). 2 temuan yang sebelumnya di-park sebagai "minor" di ledger per-task ternyata TERBUKTI SALAH penilaiannya oleh review menyeluruh (naik jadi Important) — dicatat di sini supaya pelajaran ini tidak hilang:
+
+- **C1 (Critical, DIPERBAIKI — commit `b01b17b`)**: kalau `dispatchFulfillment` gagal (network error ke Digiflazz) SETELAH order sudah diklaim `PAID`, order bisa macet permanen di `PROCESSING` — uang masuk, barang tidak terkirim, tanpa retry maupun refund_pending. Fix: guard `dispatchFulfillment` jadi klaim atomik (aman dipanggil ulang), job `recheck-fulfillment` dijadwalkan SEBELUM panggil adapter (bukan cuma setelah hasil "pending"), panggilan adapter dibungkus try/catch, webhook coba dispatch ulang kalau retry menemukan order masih `PAID`.
+- **I1 (Important, DIPERBAIKI — commit `b01b17b`)**: ruling ledger Task 5 sebelumnya ("sudah tercegah oleh zod checkoutSchema") **TERBUKTI SALAH** — `z.record` ternyata meloloskan `target: {}` (objek kosong). Fix: validasi eksplisit semua `inputFields` produk terisi di `createCheckoutOrder`, sebelum order dibuat/di-charge.
+- **I6 (Important, DIPERBAIKI — commit `b01b17b`)**: `MIDTRANS_SERVER_KEY` kosong bikin verifikasi signature webhook bisa dipalsukan (dihitung dengan key `""`). Ledger Task 6 sebelumnya menilai ini "cuma DX" — TERLALU RINGAN. Fix: webhook fail-fast (500) di awal kalau env var itu tidak di-set.
+
+Re-review scoped setelah fix wave: SEMUA 3 di atas **ADDRESSED**, 81/81 test pass, tidak ada regresi/breakage baru. Laporan lengkap: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/final-review-fix-report.md`.
+
+**Follow-up PRE-GO-LIVE (non-blocking untuk merge Fase 3, tapi WAJIB sebelum production — catat di rencana Fase 4/7):**
+1. Kredensial Midtrans sandbox ASLI belum pernah diuji lewat jaringan nyata (charge sukses + getTransactionStatus asli) — ulangi Task 13 langkah 3.2/3.3 begitu kredensial tersedia.
+2. C1 belum 100% tertutup: window sempit antara klaim atomik dan `db.job.create`/order lookup (kalau DB error/crash proses tepat di situ) masih bisa meninggalkan order `PROCESSING` tanpa fulfillment row & tanpa job recheck. Job `recheck-fulfillment` yang `FAILED` permanen (5x attempt gagal) juga tidak eskalasi ke `NEEDS_REVIEW` — order bisa macet diam-diam tanpa terlihat (belum ada halaman admin orders di Fase 3).
+3. I2-I5, I7, I8 dari final review (belum diperbaiki, sengaja diparkir): pembayaran sukses tapi order sudah bukan `PENDING_PAYMENT` hilang tanpa jejak; expiry lokal tidak sinkron dengan expiry Midtrans; notifikasi `settlement` yang reconfirm-nya `pending` bisa ke-dedup permanen; `orderNumber` 10rb kombinasi/hari (entropi rendah, `Math.random()`, bisa dienumerasi — SN/voucher berisiko dipanen lewat endpoint status tanpa auth); QRIS string dikirim ke pihak ketiga (`api.qrserver.com`); 2 mapping status uang (`fulfillment.ts`, webhook) belum di-unit-test (masih inline, bukan fungsi pure terpisah).
+4. `web/src/lib/midtrans/client.ts` masih fallback `?? ""` untuk server key di `chargeQris`/`getTransactionStatus` (sengaja di luar scope fix I6 — beda risiko, bukan lubang keamanan, cuma bikin auth gagal ke Midtrans).
+
+**Langkah berikutnya**: gunakan `superpowers:finishing-a-development-branch` untuk integrasi branch (`fase-3-order-midtrans-sdd` → `fase-3-order-midtrans`).
+
+### Konsep design system & histori sebelum implementasi (arsip, sudah selesai/diputuskan)
+
+Fase 3 = "Order flow + Midtrans": checkout guest, QRIS, webhook, fulfillment otomatis, invoice + polling. DoD (spec §12): *"Beli 86 Diamonds end-to-end di sandbox: bayar → diamond terkirim → SN tampil."*
+
+**Wajib dikerjakan LEBIH DULU sebelum plan/coding** (spec §15 addendum poin 2): bikin design system dual-theme (light + dark) pakai skill `ui-ux-pro-max` + `frontend-design`, **dipresentasikan ke Wildan untuk approval** sebelum diterapkan ke halaman publik. Referensi rasa: Codashop (terang/playful) untuk light, UniPin (gelap/gaming) untuk dark — dua tema, bukan pilih salah satu.
+
+### Progress konsep design system (sesi 2026-07-25, BELUM DIPRESENTASIKAN ke user)
+
+Riset sudah dijalankan pakai `ui-ux-pro-max` (`--design-system` + `--domain style/color/typography`). Hasil: 2 arah kandidat sudah dirancang, **BELUM dibuat jadi artifact preview visual, belum di-approve user**:
+
+- **Arah A "Ceria & Berani"** (gaya "Vibrant & Block-based" — performa bagus, full light+dark, Tailwind 10/10): Light bg `#F5F3FF`, primary indigo `#4F46E5` (tombol solid pakai `#4338CA` demi kontras), accent oranye `#EA580C`. Dark bg `#0F0F23` (palet "Gaming" dari database), primary ungu neon `#7C3AED`, accent rose `#F43F5E`. Radius besar 20px (chunky/blocky). Font: **Baloo 2** (bold, rounded, playful) untuk heading/display, body pakai system-ui stack.
+- **Arah B "Bersih & Tepercaya"** (gaya "Flat Design" — performa Excellent, WCAG AAA, cocok untuk kategori pulsa/PLN/e-money yang butuh kesan tepercaya): Light bg `#F7FBF9`, primary emerald `#059669` (tombol `#047857`), accent amber `#D97706`. Dark bg `#0B1120`, primary emerald muda `#34D399` (tombol `#10B981`, teks tombol gelap `#052e22` demi kontras), accent amber `#F59E0B`. Radius kecil 8px (flat/utility), tanpa shadow. Font: **IBM Plex Sans SemiBold** untuk heading/display, body system-ui.
+- Kedua arah pakai token warna semantik sama (success/warning/danger) buat status transaksi (Berhasil/Diproses/Gagal — dipetakan dari fitur test-transaction Fase 2 yang sudah nyata ada).
+- Font Baloo 2 (bold, subset karakter yang dipakai saja, ~9.6KB woff2) dan IBM Plex Sans SemiBold (subset, ~13KB woff2) **sudah di-download & di-base64-encode** (dari Google Fonts, subset via param `&text=`) untuk di-embed langsung ke artifact HTML (CSP artifact block font CDN, jadi harus data-URI). **File base64 tersimpan di job tmp dir sesi itu (`$CLAUDE_JOB_DIR/tmp/baloo2_b64.txt` & `ibmplex_b64.txt`) — kemungkinan BESAR SUDAH HILANG di sesi baru** karena itu direktori job sementara. Kalau hilang, ulangi dengan resep ini (cepat, <1 menit):
+  ```bash
+  # Baloo 2 bold, subset karakter DannShop-relevant:
+  curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36" \
+    "https://fonts.googleapis.com/css2?family=Baloo+2:wght@700&display=swap&text=DannShopabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-%20RpDiamondsMobileLegendsFreeFire" \
+    -o /tmp/baloo2_subset.css
+  # ambil URL woff2 dari file itu (grep src: url(...)), curl -o /tmp/baloo2.woff2 "$URL", lalu base64 -w0
+
+  # IBM Plex Sans SemiBold, subset serupa (tambah kata: PulsaDataEMoneyPLNVoucherTokenTagihanBeliSekarangBerhasilPending)
+  curl -s -A "...sama..." \
+    "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@600&display=swap&text=<subset>" \
+    -o /tmp/ibmplex_subset.css
+  ```
+- **Artifact preview SUDAH DIBUAT & DIPRESENTASIKAN** (sesi 2026-07-25, lanjutan): dibangun via subagent implementer (pola sama Fase 1/2) dari spec token di atas + 2 font base64 (masih ada di `C:\Users\ASUS\.claude\jobs\afe12054\tmp\{baloo2,ibmplex}_b64.txt`), lalu direview manual (tag balance, isi konten, kontras) sebelum dipublish. Validasi kontras WCAG dijalankan dulu pakai `ui-ux-pro-max` + perhitungan manual (rumus relative luminance) — 2 kombinasi tombol yang dikhawatirkan (teks putih di tombol ungu dark-mode Arah A, teks gelap di tombol hijau dark-mode Arah B) **lolos AA** (5.70:1 dan 5.83:1). Badge status (Menunggu Pembayaran/Diproses/Berhasil/Gagal) dibuat pola chip tint-bg + teks lebih gelap (bukan warna mentah di atas bg polos) karena warna semantik mentah sebagai teks kecil cuma dapat ~3.2:1 (gagal AA teks normal). Link artifact: `https://claude.ai/code/artifact/d8d7b7e8-277f-4235-95ab-0c1e40293361` (privat, belum di-share user).
+
+**KEPUTUSAN USER (2026-07-25): Arah A "Ceria & Berani" dipilih.** Token final yang dipakai untuk implementasi nanti = spec Arah A persis seperti di atas (light bg `#F5F3FF`/primary `#4F46E5`/btn `#4338CA`/accent `#EA580C`; dark bg `#0F0F23`/primary `#7C3AED`/accent `#F43F5E`; radius 20px; font Baloo 2 700 display + system-ui body). Arah B tidak dipakai — tapi tetap disimpan di histori kalau-kalau user mau revisi balik.
+
+Catatan tambahan sesi ini: user minta semua komunikasi terminal pakai Bahasa Indonesia mulai sekarang (lihat memory `feedback_bahasa_indonesia`).
+
+### Langkah historis (SEMUA sudah selesai, arsip urutan yang dulu dipakai)
+
+1. ~~Bangun artifact HTML preview 2 arah desain~~ ✅ selesai. ~~Tunggu user pilih arah~~ ✅ **Arah A dipilih (2026-07-25).**
+2. ~~`superpowers:writing-plans` untuk rencana implementasi Fase 3~~ ✅ selesai — `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md`.
+3. ~~Eksekusi 13 task via `superpowers:subagent-driven-development`~~ ✅ selesai, termasuk Task 13 verifikasi akhir (lihat bagian "Status Fase 3" di atas).
+
+### Langkah berikutnya yang benar (JANGAN skip urutannya)
+
+1. ~~Fix Temuan #1 dari Task 13 (`theme-toggle.tsx` lint error `react-hooks/set-state-in-effect`)~~ ✅ sudah diperbaiki (commit `c7948cf`).
+2. Final whole-branch review (pola sama Fase 1/2: review menyeluruh commit range Fase 3, fix Critical/Important yang ditemukan, re-review).
+3. Setelah Fase 3 selesai: **JANGAN asumsikan ada PR** — cek dulu keberadaan PR asli via `gh api` atau GitHub web sebelum menganggap ada proses review tertunda (pelajaran sesi ini: catatan sebelumnya salah kira ada PR Fase 1 padahal tidak pernah benar-benar dibuat).
 
 ## Status Fase 2 (mulai 2026-07-24, subagent-driven) — SEMUA 14 TASK SELESAI
 
@@ -56,7 +138,9 @@ Catatan penting sesi Task 11 (masih relevan):
 | 7. Layout UI publik + admin shell | ✅ selesai + review approved (1 fix: koreksi laporan, bukan kode) | `28c710d` |
 | Final whole-branch review | ✅ Ready to merge: Yes (opus) + 1 fix commit + re-review approved | `2a1a846` |
 
-## Langkah pertama saat lanjut
+## [HISTORIS — sudah tidak berlaku] Langkah pertama saat lanjut (ditulis akhir sesi Fase 1)
+
+> Catatan 2026-07-25: paragraf di bawah ini SALAH — mengira PR Fase 1 sudah dibuat, padahal setelah dicek ulang tidak pernah ada PR nyata di GitHub sama sekali (`gh api repos/.../pulls` return array kosong). Fase 1 & 2 akhirnya di-merge LANGSUNG ke `main` secara lokal (tanpa PR) di sesi 2026-07-25. Lihat bagian "Status Fase 3" di atas untuk state yang benar. Dibiarkan di sini sebagai jejak historis, jangan diikuti.
 
 **Fase 1 selesai total dan sudah di-PR-kan.** Remote `origin` = `https://github.com/DannShop/DANNSHOP-E-COMMERCE.git` (baru ditambahkan sesi ini, sebelumnya repo ini gak punya remote). `main` dan `fase-1-fondasi` sudah di-push. PR dari `fase-1-fondasi` → `main` sudah dibuat manual oleh user (link waktu itu: `https://github.com/DannShop/DANNSHOP-E-COMMERCE/pull/new/fase-1-fondasi` — cek GitHub buat nomor PR aktualnya). `gh` CLI TIDAK terinstall di environment ini — kalau butuh operasi PR/issue via CLI, install dulu atau lakukan manual via web.
 

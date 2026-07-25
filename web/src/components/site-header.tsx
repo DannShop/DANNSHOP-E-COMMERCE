@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth, signOut } from "@/lib/auth";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function SiteHeader() {
   const session = await auth();
@@ -13,6 +14,7 @@ export async function SiteHeader() {
           DannShop
         </Link>
         <nav className="flex items-center gap-2">
+          <ThemeToggle />
           {session?.user ? (
             <>
               {session.user.role === "ADMIN" && (
