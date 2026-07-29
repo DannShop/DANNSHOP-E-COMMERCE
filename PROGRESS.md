@@ -1,16 +1,10 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-25 (Fase 1+2+3 SELESAI TOTAL, sudah di-merge ke `main` di GitHub. **Fase 4 "Member + deposit" SEDANG DIEKSEKUSI via `superpowers:subagent-driven-development`, DIJEDA SEMENTARA atas permintaan user (istirahat) — lihat kotak "⚠️ LANGKAH PERTAMA SESI BERIKUTNYA" di bawah.**)
+Terakhir update: 2026-07-29 (Fase 1+2+3 SELESAI TOTAL, sudah di-merge ke `main` di GitHub. **Fase 4 "Member + deposit" SELESAI TOTAL dieksekusi + final whole-branch review, MENUNGGU `superpowers:finishing-a-development-branch` — lihat "Status Fase 4" di bawah.**)
 
 ## ⚠️ LANGKAH PERTAMA SESI BERIKUTNYA (jangan lewati/lupa)
 
-Eksekusi Fase 4 sedang berjalan di worktree `D:\Coding VSC\DannShop-PPOB\.claude\worktrees\fase-4-member-deposit-sdd` (branch `worktree-fase-4-member-deposit-sdd`, dibuat via native tool `EnterWorktree` — BUKAN `.worktrees/` folder biasa). **Task 1-6 + Task 4b (job reconcile tambahan) SUDAH SELESAI, direview bersih, sudah commit.** Task 7-11 BELUM dikerjakan.
-
-1. Masuk lagi ke worktree itu (`EnterWorktree` dengan `path` ke direktori di atas, atau kalau sesi baru mulai dari root repo langsung, buka working directory ke path itu).
-2. Baca ledger SDD: `.superpowers/sdd/2026-07-25-fase-4-member-deposit/progress.md` (di dalam worktree) — baris terakhir "PAUSED 2026-07-25" menjelaskan persis titik berhenti: Task 7 brief SUDAH di-generate (`task-7-brief.md`, BASE commit `260d7b6`) tapi implementer BELUM di-dispatch, tidak ada kerjaan setengah jalan.
-3. Lanjutkan `superpowers:subagent-driven-development` dari Task 7 (dispatch implementer pakai brief yang sudah ada, atau regenerate kalau file itu sudah hilang/job tmp dibersihkan) sampai Task 11 selesai, lalu final whole-branch review, lalu `superpowers:finishing-a-development-branch`.
-4. Plan yang dipakai **BUKAN LAGI** file asli `docs/superpowers/plans/2026-07-25-fase-4-member-deposit.md` versi awal — sudah direvisi 2x DI DALAM WORKTREE (commit `befc82d` menyisipkan Task 4b setelah gap keamanan uang ditemukan saat review Task 4; commit `d17a175` merombak Task 5 pakai komponen `RadioGroup` base-ui + skill `ui-ux-pro-max` alih-alih radio HTML mentah, dan poles Task 9). **Baca plan versi worktree (bukan versi `main`) sebagai sumber kebenaran task 7-11.**
-5. Task todos (TaskCreate/TaskUpdate) sudah tercatat di sesi sebelumnya (#1-12) — task #7 statusnya `pending` (brief sudah dibuat tapi belum in_progress lagi, sengaja dikembalikan ke pending karena implementer belum di-dispatch).
+Fase 4 sudah selesai dieksekusi total (Task 1-11 + Task 4b + final whole-branch review + 1 fix wave, semua clean) di worktree `D:\Coding VSC\DannShop-PPOB\.claude\worktrees\fase-4-member-deposit-sdd` (branch `worktree-fase-4-member-deposit-sdd`). Yang BELUM dilakukan: integrasi branch. Lanjutkan dengan `superpowers:finishing-a-development-branch` dari worktree itu — belum sempat dijalankan di sesi yang menyelesaikan eksekusi. Lihat "Status Fase 4" di bawah untuk ringkasan lengkap apa yang sudah beres sebelum memutuskan cara integrasi (merge/PR/dst).
 
 ## Dokumen kunci
 
@@ -20,6 +14,36 @@ Eksekusi Fase 4 sedang berjalan di worktree `D:\Coding VSC\DannShop-PPOB\.claude
 - Rencana Fase 3: `docs/superpowers/plans/2026-07-25-fase-3-order-midtrans.md` (13 task: token desain Arah A, dark/light toggle, katalog publik, checkout, Midtrans, webhook, fulfillment, invoice+polling, verifikasi E2E) — **SEMUA 13 TASK SELESAI DIEKSEKUSI** (lihat "Status Fase 3" di bawah)
 - Ledger eksekusi: `.superpowers/sdd/2026-07-25-fase-3-order-midtrans/progress.md` (jangan dihapus)
 - **Branch Fase 1 & 2 SUDAH DIHAPUS** (lokal & remote, sudah di-merge ke `main` secara lokal — bukan lewat PR, karena ternyata tidak ada PR yang pernah benar-benar dibuat/di-merge di GitHub meski catatan sesi lalu mengira begitu). Branch kerja saat ini: **`fase-3-order-midtrans`** (dibuat dari `main` yang sudah update).
+
+## Status Fase 4 (2026-07-25 mulai, 2026-07-29 selesai total) — 11 TASK + TASK 4b + FINAL REVIEW SELESAI
+
+Rencana: `docs/superpowers/plans/2026-07-25-fase-4-member-deposit.md` **versi worktree** (direvisi 2x selama eksekusi — lihat poin di bawah, plan versi `main` sudah usang). Spec: `docs/superpowers/specs/2026-07-25-fase-4-member-deposit-design.md`. Dieksekusi via `superpowers:subagent-driven-development` di worktree `.claude/worktrees/fase-4-member-deposit-sdd`, branch `worktree-fase-4-member-deposit-sdd`. Sesi eksekusi terpecah 2: Task 1-6+4b selesai 2026-07-25, dijeda istirahat; Task 7-11 + final review selesai 2026-07-29.
+
+**Fitur:** deposit saldo via QRIS Midtrans (`/account/deposit`), bayar checkout pakai saldo (alternatif QRIS), auto-refund ke saldo untuk member kalau fulfillment gagal (guest tetap `REFUND_PENDING`, tidak berubah), dashboard member (`/account`, `/account/orders`, `/account/deposits`).
+
+**2 revisi plan selama eksekusi (2026-07-25):**
+1. Commit `befc82d` menyisipkan **Task 4b** (job `reconcile-paid-orders`) setelah review Task 4 menemukan gap uang nyata: order bayar-saldo bisa macet `PAID` selamanya kalau proses crash tepat antara commit transaksi debit dan panggilan `dispatchFulfillment`. User pilih fix sekarang.
+2. Commit `d17a175` merombak **Task 5** pakai skill `ui-ux-pro-max` + `frontend-design` (komponen shared baru `radio-group.tsx` base-ui, bukan radio HTML mentah) setelah user menegur dispatch pertama yang masih pakai markup polos; Task 9 juga dipoles standar aksesibilitas yang sama (touch target ≥44px, `focus-visible:ring`, `aria-pressed`).
+
+**Task 7-11 (sesi 2026-07-29) — 2 gap uang lagi ditemukan & diperbaiki lewat task review, keduanya plan-mandated (kode dari brief), user diminta pilih fix-sekarang vs terima-gap, keduanya pilih fix sekarang:**
+- Task 8 (webhook deposit): klaim status `PENDING→PAID` awalnya di luar `db.$transaction` yang mengkredit saldo — kalau crash di antara keduanya, deposit macet `PAID` tanpa saldo masuk & retry webhook silent-skip. Fix: pindah klaim ke dalam transaksi yang sama (commit `844d183`).
+- Task 9 (halaman + endpoint status deposit): tidak ada cek kepemilikan (`deposit.userId` vs sesi) — IDOR-shaped, siapa saja yang tahu `depositId` bisa lihat nominal/status deposit member lain. Fix: tambah `auth()` + cek `deposit.userId`, 404 tidak membedakan not-found vs not-yours (commit `3da11c7`).
+
+**Task 11 (verifikasi akhir E2E):** semua 8 sub-langkah **PASS**, termasuk 2 invariant paling kritis dengan kode produksi asli 100% (hanya panggilan jaringan Midtrans yang disintesis, source code tidak diubah): ledger refund order-saldo persis 2 baris tanpa duplikasi (`ORDER_PAYMENT` -X lalu `REFUND` +X, `balanceAfter` cocok saldo aktual), dan regresi guest tetap `REFUND_PENDING` (bukan `REFUNDED`) — Task 6 tidak mengubah perilaku guest checkout Fase 3. Playwright MCP tidak tersedia di sesi ini, diganti library `playwright` npm langsung (browser Chromium asli, hasil setara). Kredensial Midtrans sandbox ASLI masih belum ada (gap pre-go-live sama seperti Fase 3, non-blocking). Laporan lengkap (dikomit): `.superpowers/sdd/2026-07-25-fase-4-member-deposit/task-11-report.md` — **catatan: seluruh direktori `.superpowers/sdd/*` di-gitignore kecuali file yang eksplisit di-`git add -f`, jadi ledger & brief task akan hilang begitu worktree dibersihkan; hanya laporan yang sengaja di-force-add yang bertahan.**
+
+**Final whole-branch review (opus, range `d276f7a..e646a0d`, 19 commit):** Ready to merge: With fixes. **Invariant ledger double-entry LULUS 100%** — audit menyeluruh menemukan tepat 3 situs mutasi `Wallet.balance` (`checkout.ts` debit, `fulfillment.ts` refund, webhook deposit kredit), semuanya atomik dalam `$transaction` bareng `WalletLedger` ber-`idempotencyKey` unik. 2 Important baru ditemukan (interaksi lintas-task yang tidak terlihat dari scope task manapun sendirian, bukan plan-mandated) & langsung diperbaiki (commit `87bd581`):
+1. Job `reconcile-paid-orders` (satu-satunya jaring pengaman order saldo macet `PAID`) bisa macet `RUNNING` selamanya kalau proses mati di tengah 20 panggilan fulfillment berurutan (~300 detik worst-case), dan `ensureRecurringJobs` menganggap job `RUNNING` masih hidup selamanya — jaring pengaman mati diam-diam tanpa alert. Fix: `take` 20→5 (muat dalam budget waktu wajar), + `ensureRecurringJobs` anggap `RUNNING` basi kalau `updatedAt` >10 menit (pakai field `@updatedAt` yang sudah ada, tanpa migrasi).
+2. Webhook deposit menelan diam-diam settlement "paid" yang datang setelah deposit lokal sudah `EXPIRED`/`FAILED` (race jam kadaluarsa lokal vs Midtrans, karena `chargeQris` tidak kirim `custom_expiry`) — uang masuk Midtrans, saldo tidak pernah bertambah, nol jejak audit. Fix: baca ulang status kalau klaim gagal, log error + `WebhookEvent.processResult="paid_but_not_pending"` (bukan diam-diam `"paid"`) kalau bukan duplikat sah dari deposit yang sudah `PAID`.
+
+Re-review scoped (sonnet) atas fix wave: **semua ADDRESSED, tidak ada breakage baru.** 1 minor residual (belum ada test khusus untuk 2 branch baru) diparkir non-blocking.
+
+**2 temuan Important lain dari final review SENGAJA DIPARKIR** (reviewer sendiri merekomendasikan tidak diperbaiki di branch ini):
+- Order bayar-saldo bisa yatim permanen di `PENDING_PAYMENT` (tanpa `expiredAt`/job `expire-order`) kalau `db.$transaction` di `checkout.ts` throw error non-`InsufficientBalance` (infra/koneksi DB) — frekuensi rendah, perbaikan butuh sedikit desain (perluas `reconcile-paid-orders` pakai `WalletLedger` sebagai source of truth). Boleh dikerjakan setelah merge.
+- Kelas kerentanan IDOR yang sama seperti Task 9 ternyata SUDAH ADA sejak Fase 3 di `/invoice/[orderNumber]` + `/api/orders/[orderNumber]/status` (orderNumber cuma 4 digit/hari, bisa dienumerasi, expose `sn`/total tanpa auth) — bukan regresi Fase 4, tapi jadi lebih relevan sekarang karena Fase 4 attach `userId` ke SEMUA order termasuk jalur QRIS. Reviewer eksplisit: JANGAN diperbaiki di branch ini (di luar scope, berisiko menyentuh jalur guest Fase 3 menjelang merge) — **catat ke backlog Fase 7** (bareng admin/refund queue).
+
+4 Minor baru dicatat non-blocking (utang teknis kapan saja): `deposit-status.tsx` duplikat `STATUS_LABEL` vs `status-labels.ts`; `formatRupiah` ternyata terduplikasi 5x (bukan 3x seperti perkiraan awal); hasil `reconciled=N` dari `reconcile-paid-orders` dibuang tanpa disimpan (nol observability); kemungkinan starvation ringan reconcile vs job lain di antrean `runDueJobs`.
+
+**Langkah berikutnya:** `superpowers:finishing-a-development-branch` untuk integrasi branch (`worktree-fase-4-member-deposit-sdd` → `main`) — BELUM dijalankan.
 
 ## Status Fase 3 (mulai 2026-07-25) — 13 TASK IMPLEMENTASI + TASK 13 VERIFIKASI AKHIR SELESAI
 
