@@ -68,7 +68,7 @@ export default async function AdminOrderDetailPage({
               <ul className="flex flex-col gap-2 text-sm">
                 {order.fulfillments.map((f) => (
                   <li key={f.id} className="rounded border p-2">
-                    <p>Attempt {f.attemptNo} · {f.provider} · <Badge variant="muted">{f.status}</Badge></p>
+                    <p>Attempt {f.attemptNo} · {f.provider} ({f.providerSkuCode}) · <Badge variant="muted">{f.status}</Badge></p>
                     {f.sn && <p className="text-xs text-muted-foreground">SN: {f.sn}</p>}
                     {f.message && <p className="text-xs text-muted-foreground">{f.message}</p>}
                   </li>
