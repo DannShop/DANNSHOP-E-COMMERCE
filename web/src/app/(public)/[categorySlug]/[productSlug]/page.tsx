@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { getProductForCheckout } from "@/lib/catalog/public";
 import { ProductDetailClient } from "./product-detail-client";
 
@@ -11,5 +13,12 @@ export default async function ProductDetailPage({
   const product = await getProductForCheckout(categorySlug, productSlug);
   if (!product) notFound();
 
-  return <ProductDetailClient product={product} />;
+  const authSession = await auth();
+  let session: { email: string; walletBalance: bigint } | null = null;
+  if (authSession?.user?.id) {
+    const wallet = await db.wallet.findUnique({ where: { userId: authSession.user.id } });
+    session = { email: authSession.user.email ?? "", walletBalance: wallet?.balance ?? 0n };
+  }
+
+  return <ProductDetailClient product={product} session={session} />;
 }

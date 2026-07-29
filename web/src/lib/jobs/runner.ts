@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 import type { ProviderKey } from "@prisma/client";
-import { applyFulfillmentResult } from "@/lib/order/fulfillment";
+import { applyFulfillmentResult, dispatchFulfillment } from "@/lib/order/fulfillment";
 import { getAdapter } from "@/lib/providers/registry";
 import { buildCustomerNo } from "@/lib/order/customer-no";
 
@@ -60,6 +60,38 @@ export const handlers: Record<string, JobHandler> = {
       data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "EXPIRED", note: "Auto-expire cron" },
     });
     return "expired";
+  },
+
+  "expire-deposit": async (payload) => {
+    const { depositId } = payload as { depositId: string };
+    const deposit = await db.deposit.findUniqueOrThrow({ where: { id: depositId } });
+    if (deposit.status !== "PENDING") return "no-op: status sudah berubah";
+    if (deposit.expiredAt && deposit.expiredAt > new Date()) return "no-op: belum jatuh tempo";
+
+    const claimed = await db.deposit.updateMany({
+      where: { id: deposit.id, status: "PENDING" },
+      data: { status: "EXPIRED" },
+    });
+    if (claimed.count === 0) return "no-op: sudah diklaim proses lain";
+
+    return "expired";
+  },
+
+  "reconcile-paid-orders": async () => {
+    const STALE_MINUTES = 5;
+    const staleThreshold = new Date(Date.now() - STALE_MINUTES * 60_000);
+    const staleOrders = await db.order.findMany({
+      where: { status: "PAID", updatedAt: { lte: staleThreshold } },
+      select: { id: true },
+      // Dibatasi kecil (bukan 20) supaya satu invocation pasti selesai dalam
+      // budget request/timeout cron-tick normal - tiap order bisa makan waktu
+      // sampai ~15s (timeout dispatchFulfillment ke provider).
+      take: 5,
+    });
+    for (const order of staleOrders) {
+      await dispatchFulfillment(order.id);
+    }
+    return `reconciled=${staleOrders.length}`;
   },
 
   "recheck-fulfillment": async (payload) => {
@@ -121,6 +153,25 @@ export async function ensureRecurringJobs(): Promise<void> {
     if (!existing) {
       await db.job.create({ data: { type: "sync-prices", payload: { provider: p.key }, runAt: new Date() } });
     }
+  }
+
+  // Job RUNNING dianggap basi (macet/prosesnya mati) kalau sudah RUNNING lebih
+  // lama dari threshold ini - jangan biarkan dia memblokir job pengganti selamanya.
+  // Threshold 10 menit jauh di atas waktu normal reconcile-paid-orders selesai
+  // (batch 5 order, tiap order maksimal ~15s dispatch = ~75s worst case).
+  const RECONCILE_RUNNING_STALE_MINUTES = 10;
+  const reconcileRunningFreshAfter = new Date(Date.now() - RECONCILE_RUNNING_STALE_MINUTES * 60_000);
+  const existingReconcile = await db.job.findFirst({
+    where: {
+      type: "reconcile-paid-orders",
+      OR: [
+        { status: "PENDING" },
+        { status: "RUNNING", updatedAt: { gt: reconcileRunningFreshAfter } },
+      ],
+    },
+  });
+  if (!existingReconcile) {
+    await db.job.create({ data: { type: "reconcile-paid-orders", payload: {}, runAt: new Date() } });
   }
 }
 

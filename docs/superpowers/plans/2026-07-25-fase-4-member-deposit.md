@@ -521,17 +521,152 @@ git commit -m "feat(fase4): checkout attach userId dari sesi + jalur bayar pakai
 
 ---
 
-### Task 5: UI checkout — pilih metode bayar + prefill email
+### Task 4b: Job reconcile order PAID macet (jalur bayar saldo)
+
+**Kenapa task ini ada:** ditambahkan setelah task review Task 4 menemukan gap nyata (Important, dikonfirmasi user) — order yang dibayar pakai saldo (Task 4) langsung `PAID` di dalam satu `db.$transaction`, lalu `dispatchFulfillment(order.id)` dipanggil TERPISAH sesudahnya (di luar transaksi, sesuai desain — panggilan network tidak boleh ikut lock DB). Kalau proses crash TEPAT di window sempit antara transaksi commit dan panggilan itu, order macet `PAID` selamanya. Beda dari jalur QRIS/Midtrans (dibangun di Fase 3): jalur itu punya jaring pengaman alami — Midtrans me-retry webhook notification kalau tidak dapat respons 200, dan `route.ts` sudah menangani "order sudah `PAID` tapi mungkin belum di-dispatch" dengan memanggil `dispatchFulfillment` lagi. Jalur saldo TIDAK PUNYA pemicu retry eksternal apa pun (tidak ada webhook), jadi butuh job reconcile sendiri.
 
 **Files:**
+- Modify: `web/src/lib/jobs/runner.ts`
+
+**Interfaces:**
+- Consumes: `dispatchFulfillment(orderId: string): Promise<void>` dari `@/lib/order/fulfillment` (sudah ada, idempotent — klaim atomik `PAID→PROCESSING` di dalamnya membuat pemanggilan ulang aman/no-op kalau order sudah diproses task lain).
+- Produces: tidak ada export baru — `ensureRecurringJobs()` dan `handlers` (keduanya sudah ada) diperluas.
+
+Tidak ada test otomatis baru (job handler, orkestrasi DB — pola sama seperti `expire-order`/`expire-deposit` yang juga tidak dites lewat DB tiruan).
+
+- [ ] **Step 1: Tambah import `dispatchFulfillment` di `web/src/lib/jobs/runner.ts`**
+
+Cek dulu apakah `dispatchFulfillment` sudah diimpor di file ini (kemungkinan besar BELUM — `runner.ts` cuma impor `applyFulfillmentResult`, bukan `dispatchFulfillment`). Kalau belum, tambah ke baris import yang sudah ada:
+
+```ts
+import { applyFulfillmentResult, dispatchFulfillment } from "@/lib/order/fulfillment";
+```
+
+- [ ] **Step 2: Tambah handler `reconcile-paid-orders` ke object `handlers`**
+
+Tambahkan entri baru (urutan bebas, taruh dekat `expire-order` biar mengelompok secara tematik):
+
+```ts
+  "reconcile-paid-orders": async () => {
+    const STALE_MINUTES = 5;
+    const staleThreshold = new Date(Date.now() - STALE_MINUTES * 60_000);
+    const staleOrders = await db.order.findMany({
+      where: { status: "PAID", updatedAt: { lte: staleThreshold } },
+      select: { id: true },
+      take: 20,
+    });
+    for (const order of staleOrders) {
+      await dispatchFulfillment(order.id);
+    }
+    return `reconciled=${staleOrders.length}`;
+  },
+```
+
+Catatan: `take: 20` membatasi jumlah order yang diproses per tick (pola sama seperti `runDueJobs` yang membatasi 10 job per tick) — cukup karena job ini dipanggil ulang tiap tick cron (tiap menit) lewat `ensureRecurringJobs`, jadi backlog akan habis dalam beberapa tick kalau pun ada lonjakan.
+
+- [ ] **Step 3: Perluas `ensureRecurringJobs()` supaya job ini selalu ada**
+
+Ganti isi fungsi `ensureRecurringJobs` (tambahkan blok baru di akhir fungsi, SETELAH loop `sync-prices` yang sudah ada, jangan hapus loop itu):
+
+```ts
+export async function ensureRecurringJobs(): Promise<void> {
+  const active = await db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } });
+  for (const p of active) {
+    const existing = await db.job.findFirst({
+      where: {
+        type: "sync-prices",
+        status: { in: ["PENDING", "RUNNING"] },
+        payload: { equals: { provider: p.key } },
+      },
+    });
+    if (!existing) {
+      await db.job.create({ data: { type: "sync-prices", payload: { provider: p.key }, runAt: new Date() } });
+    }
+  }
+
+  const existingReconcile = await db.job.findFirst({
+    where: { type: "reconcile-paid-orders", status: { in: ["PENDING", "RUNNING"] } },
+  });
+  if (!existingReconcile) {
+    await db.job.create({ data: { type: "reconcile-paid-orders", payload: {}, runAt: new Date() } });
+  }
+}
+```
+
+Tidak perlu self-reschedule di dalam handler (beda dari `sync-prices` yang sengaja jarang jalan tiap 3 jam) — `reconcile-paid-orders` boleh jalan tiap tick cron (tiap menit), murah (query terindeks by `status`, `dispatchFulfillment` no-op untuk order yang bukan `PAID`/sudah diproses), dan `ensureRecurringJobs` otomatis membuat job baru begitu yang lama selesai (`status` berubah jadi `DONE`, tidak lagi cocok filter `PENDING/RUNNING`).
+
+- [ ] **Step 4: Jalankan test suite (regresi) + type-check**
+
+Run: `cd web && npx vitest run && npx tsc --noEmit`
+Expected: Semua test PASS (termasuk `jobs-runner.test.ts` yang menguji `computeBackoff`/`decideAfterFailure`, tidak disentuh task ini), `tsc` bersih.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add web/src/lib/jobs/runner.ts
+git commit -m "feat(fase4): job reconcile-paid-orders — pulihkan order PAID macet di jalur saldo"
+```
+
+---
+
+### Task 5: UI checkout — pilih metode bayar + prefill email
+
+**Kualitas desain wajib dijaga di task ini:** komponen pilih-metode-bayar BUKAN radio HTML mentah — pakai primitive `@base-ui/react/radio-group` (sudah terinstall, lihat `node_modules/@base-ui/react/radio-group` & `radio`) dibungkus jadi komponen shared baru `web/src/components/ui/radio-group.tsx`, mengikuti PERSIS pola `web/src/components/ui/checkbox.tsx` yang sudah ada (base-ui primitive + `cn()` + Tailwind, style pakai `data-checked:`/`data-disabled:` self-variant, BUKAN `useState` manual buat state checked/disabled — base-ui yang urus). Setiap opsi metode bayar tampil sebagai kartu chunky penuh (`rounded-[var(--radius)]`, border 2px, padding cukup buat touch target ≥44px) yang berubah warna border+bg saat terpilih (`data-checked:border-primary data-checked:bg-primary/10`, pola sama seperti Arah A "Vibrant & Block-based") — bukan radio dot kecil terpisah dari teks tanpa area klik yang jelas.
+
+**Files:**
+- Create: `web/src/components/ui/radio-group.tsx`
 - Modify: `web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx`
 - Modify: `web/src/app/(public)/[categorySlug]/[productSlug]/product-detail-client.tsx`
 
 **Interfaces:**
 - Consumes: `hasSufficientBalance` (Task 2), field `paymentMethod` yang sudah dikonsumsi `createCheckoutOrder` (Task 4).
-- Produces: `ProductDetailClient` menerima prop baru `session: { email: string; walletBalance: bigint } | null`.
+- Produces: `RadioGroup`, `RadioGroupItem` diekspor dari `web/src/components/ui/radio-group.tsx` (dipakai lagi kalau ada radio group lain di fase depan). `ProductDetailClient` menerima prop baru `session: { email: string; walletBalance: bigint } | null`.
 
-- [ ] **Step 1: Ganti isi `page.tsx`**
+- [ ] **Step 1: Buat `web/src/components/ui/radio-group.tsx`**
+
+```tsx
+"use client"
+
+import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group"
+import { Radio as RadioPrimitive } from "@base-ui/react/radio"
+
+import { cn } from "@/lib/utils"
+
+function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
+  return (
+    <RadioGroupPrimitive
+      data-slot="radio-group"
+      className={cn("flex flex-col gap-3", className)}
+      {...props}
+    />
+  )
+}
+
+function RadioGroupItem({ className, children, ...props }: RadioPrimitive.Root.Props) {
+  return (
+    <RadioPrimitive.Root
+      data-slot="radio-group-item"
+      className={cn(
+        "flex cursor-pointer items-center gap-3 rounded-[var(--radius)] border-2 border-border bg-background p-4 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:border-primary data-checked:bg-primary/10 data-disabled:cursor-not-allowed data-disabled:opacity-50",
+        className
+      )}
+      {...props}
+    >
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-input">
+        <RadioPrimitive.Indicator
+          data-slot="radio-group-item-indicator"
+          className="size-2.5 rounded-full bg-primary"
+        />
+      </span>
+      {children}
+    </RadioPrimitive.Root>
+  )
+}
+
+export { RadioGroup, RadioGroupItem }
+```
+
+- [ ] **Step 2: Ganti isi `page.tsx`**
 
 ```tsx
 // web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx
@@ -561,7 +696,7 @@ export default async function ProductDetailPage({
 }
 ```
 
-- [ ] **Step 2: Ganti isi `product-detail-client.tsx`**
+- [ ] **Step 3: Ganti isi `product-detail-client.tsx`**
 
 ```tsx
 "use client";
@@ -571,6 +706,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { createCheckoutOrder, type CheckoutResult } from "@/app/actions/checkout";
 import { hasSufficientBalance } from "@/lib/wallet/decisions";
 import type { ProductForCheckout } from "@/lib/catalog/public";
@@ -597,7 +733,6 @@ export function ProductDetailClient({
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
   const selectedItem = purchasableItems.find((i) => i.id === selectedItemId) ?? purchasableItems[0];
-  const [paymentMethod, setPaymentMethod] = useState<"qris" | "balance">("qris");
 
   const router = useRouter();
   const [state, formAction, pending] = useActionState(withPrevState(createCheckoutOrder), INITIAL_STATE);
@@ -625,7 +760,6 @@ export function ProductDetailClient({
 
       <form action={formAction} className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-5">
         <input type="hidden" name="productItemId" value={selectedItemId} />
-        <input type="hidden" name="paymentMethod" value={paymentMethod} />
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="item-select">Pilih Nominal</Label>
@@ -674,23 +808,12 @@ export function ProductDetailClient({
         {session && (
           <div className="flex flex-col gap-2">
             <Label>Metode Pembayaran</Label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                checked={paymentMethod === "qris"}
-                onChange={() => setPaymentMethod("qris")}
-              />
-              QRIS
-            </label>
-            <label className={`flex items-center gap-2 text-sm ${!canPayWithBalance ? "opacity-50" : ""}`}>
-              <input
-                type="radio"
-                disabled={!canPayWithBalance}
-                checked={paymentMethod === "balance"}
-                onChange={() => setPaymentMethod("balance")}
-              />
-              Saldo ({formatRupiah(session.walletBalance)})
-            </label>
+            <RadioGroup name="paymentMethod" defaultValue="qris">
+              <RadioGroupItem value="qris">QRIS</RadioGroupItem>
+              <RadioGroupItem value="balance" disabled={!canPayWithBalance}>
+                Saldo ({formatRupiah(session.walletBalance)})
+              </RadioGroupItem>
+            </RadioGroup>
             {!canPayWithBalance && (
               <p className="text-xs text-muted-foreground">
                 Saldo tidak cukup.{" "}
@@ -713,15 +836,19 @@ export function ProductDetailClient({
 }
 ```
 
-- [ ] **Step 3: Jalankan test suite (regresi) + type-check**
+Catatan penting soal desain ini (biar tidak dikira bug saat review):
+- Tidak ada lagi `useState` untuk `paymentMethod` maupun `<input type="hidden" name="paymentMethod">` manual — `RadioGroup` dari base-ui merender `<input type="radio" name="paymentMethod">` tersembunyi otomatis di tiap `RadioGroupItem` (terhubung via context `name` dari `RadioGroup`), jadi nilainya otomatis ikut ke `FormData` saat submit, persis seperti radio HTML native biasa. Ini BUKAN oversight — konfirmasi dari tipe `RadioRoot.Props`: "Renders a `<span>` element and a hidden `<input>` beside."
+- **Edge case yang disengaja tidak ditangani (YAGNI, aman secara uang):** kalau user pilih "Saldo" untuk item murah lalu ganti dropdown nominal ke item yang lebih mahal (saldo jadi tidak cukup), opsi "Saldo" otomatis `disabled` lewat `canPayWithBalance` — tapi karena `RadioGroup` di sini uncontrolled, radio yang sudah keburu dicentang tetap "checked" secara visual walau kini disabled. Perilaku HTML native: input yang `disabled` TIDAK ikut ter-submit sama sekali walau `checked` — jadi kalau user submit dalam kondisi ganjil ini, `formData.get("paymentMethod")` balik `null`, dan `createCheckoutOrder` (Task 4) sudah menangani ini dengan fallback `?? "qris"` — otomatis coba bayar QRIS, BUKAN diam-diam tetap coba bayar saldo yang sudah tidak valid. Aman, tidak perlu ditambah `useEffect` buat reset seleksi.
 
-Run: `cd web && npx vitest run && npx tsc --noEmit`
-Expected: Semua test PASS, `tsc` bersih.
+- [ ] **Step 4: Jalankan test suite (regresi) + type-check + lint**
 
-- [ ] **Step 4: Commit**
+Run: `cd web && npx vitest run && npx tsc --noEmit && npm run lint`
+Expected: Semua test PASS, `tsc` bersih, lint bersih.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add "web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx" "web/src/app/(public)/[categorySlug]/[productSlug]/product-detail-client.tsx"
+git add web/src/components/ui/radio-group.tsx "web/src/app/(public)/[categorySlug]/[productSlug]/page.tsx" "web/src/app/(public)/[categorySlug]/[productSlug]/product-detail-client.tsx"
 git commit -m "feat(fase4): UI pilih metode bayar (QRIS/saldo) + prefill email member"
 ```
 
@@ -1220,6 +1347,8 @@ git commit -m "feat(fase4): webhook Midtrans proses notifikasi deposit (kredit s
 
 ### Task 9: Halaman deposit (form + status QR)
 
+**Kualitas desain wajib dijaga di task ini** (dicek terhadap panduan `ui-ux-pro-max`, domain `ux`): tombol preset nominal punya touch target ≥44px (`min-h-11`), `focus-visible:ring` buat keyboard nav, `aria-pressed` biar screen reader tahu status terpilih (bukan sekadar visual warna doang — WCAG "color-not-only"), dan radius `rounded-[var(--radius)]` konsisten dengan chunky style Arah A (bukan `rounded-md` generik).
+
 **Files:**
 - Create: `web/src/app/account/deposit/page.tsx`
 - Create: `web/src/app/account/deposit/deposit-form.tsx`
@@ -1292,8 +1421,9 @@ export function DepositForm() {
           <button
             key={preset.toString()}
             type="button"
+            aria-pressed={selected === preset}
             onClick={() => setSelected(preset)}
-            className={`rounded-md border px-3 py-2 text-sm font-medium ${
+            className={`min-h-11 rounded-[var(--radius)] border-2 px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
               selected === preset ? "border-primary bg-primary/10 text-primary" : "border-border"
             }`}
           >
@@ -1302,8 +1432,9 @@ export function DepositForm() {
         ))}
         <button
           type="button"
+          aria-pressed={selected === "custom"}
           onClick={() => setSelected("custom")}
-          className={`rounded-md border px-3 py-2 text-sm font-medium ${
+          className={`min-h-11 rounded-[var(--radius)] border-2 px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
             selected === "custom" ? "border-primary bg-primary/10 text-primary" : "border-border"
           }`}
         >

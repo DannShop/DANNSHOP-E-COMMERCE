@@ -50,3 +50,35 @@ describe("checkoutSchema", () => {
     expect(result.success).toBe(true); // schema sendiri memang tidak tahu inputFields produk - itu tugas createCheckoutOrder
   });
 });
+
+describe("checkoutSchema paymentMethod", () => {
+  it("default ke qris kalau tidak diisi", () => {
+    const result = checkoutSchema.safeParse({
+      productItemId: "item-1",
+      buyerEmail: "a@b.com",
+      target: { user_id: "123" },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.paymentMethod).toBe("qris");
+  });
+
+  it("terima 'balance' eksplisit", () => {
+    const result = checkoutSchema.safeParse({
+      productItemId: "item-1",
+      buyerEmail: "a@b.com",
+      target: { user_id: "123" },
+      paymentMethod: "balance",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("tolak nilai selain qris/balance", () => {
+    const result = checkoutSchema.safeParse({
+      productItemId: "item-1",
+      buyerEmail: "a@b.com",
+      target: { user_id: "123" },
+      paymentMethod: "credit_card",
+    });
+    expect(result.success).toBe(false);
+  });
+});
