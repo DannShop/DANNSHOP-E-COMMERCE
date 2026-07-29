@@ -3,6 +3,9 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { ORDER_STATUS_LABEL } from "@/lib/order/status-labels";
+import {
+  retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction,
+} from "@/app/actions/orders";
 import { OrderActions } from "./order-actions";
 
 function formatRupiah(amount: bigint): string {
@@ -96,6 +99,10 @@ export default async function AdminOrderDetailPage({
             orderNumber={order.orderNumber}
             status={order.status}
             canRetryRefund={canRetryRefund}
+            retryFulfillmentAction={retryFulfillmentAction}
+            retryRefundAction={retryRefundAction}
+            markCompletedManualAction={markCompletedManualAction}
+            markRefundedAction={markRefundedAction}
           />
         </div>
       </div>

@@ -3,12 +3,17 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction,
-} from "@/app/actions/orders";
-import { ActionMessage, INITIAL_STATE, withPrevState } from "../action-utils";
+import { ActionMessage, INITIAL_STATE, withPrevState, type ServerAction } from "../action-utils";
 
-function RetryFulfillmentForm({ orderId, orderNumber }: { orderId: string; orderNumber: string }) {
+// Actions server diterima lewat props dari page.tsx (Server Component), bukan
+// di-import langsung di file "use client" ini - actions/orders.ts memakai
+// "use server" inline per-fungsi, dan Next.js melarang inline "use server"
+// di-import langsung oleh Client Component. Pola sama persis dengan
+// provider-card.tsx (Task 9)/providers/page.tsx.
+
+function RetryFulfillmentForm({
+  orderId, orderNumber, retryFulfillmentAction,
+}: { orderId: string; orderNumber: string; retryFulfillmentAction: ServerAction }) {
   const [state, formAction, pending] = useActionState(withPrevState(retryFulfillmentAction), INITIAL_STATE);
   return (
     <form
@@ -26,7 +31,9 @@ function RetryFulfillmentForm({ orderId, orderNumber }: { orderId: string; order
   );
 }
 
-function RetryRefundForm({ orderId, orderNumber }: { orderId: string; orderNumber: string }) {
+function RetryRefundForm({
+  orderId, orderNumber, retryRefundAction,
+}: { orderId: string; orderNumber: string; retryRefundAction: ServerAction }) {
   const [state, formAction, pending] = useActionState(withPrevState(retryRefundAction), INITIAL_STATE);
   return (
     <form
@@ -44,7 +51,9 @@ function RetryRefundForm({ orderId, orderNumber }: { orderId: string; orderNumbe
   );
 }
 
-function MarkCompletedManualForm({ orderId, orderNumber }: { orderId: string; orderNumber: string }) {
+function MarkCompletedManualForm({
+  orderId, orderNumber, markCompletedManualAction,
+}: { orderId: string; orderNumber: string; markCompletedManualAction: ServerAction }) {
   const [state, formAction, pending] = useActionState(withPrevState(markCompletedManualAction), INITIAL_STATE);
   return (
     <form
@@ -66,7 +75,9 @@ function MarkCompletedManualForm({ orderId, orderNumber }: { orderId: string; or
   );
 }
 
-function MarkRefundedForm({ orderId, orderNumber }: { orderId: string; orderNumber: string }) {
+function MarkRefundedForm({
+  orderId, orderNumber, markRefundedAction,
+}: { orderId: string; orderNumber: string; markRefundedAction: ServerAction }) {
   const [state, formAction, pending] = useActionState(withPrevState(markRefundedAction), INITIAL_STATE);
   return (
     <form
@@ -90,22 +101,27 @@ function MarkRefundedForm({ orderId, orderNumber }: { orderId: string; orderNumb
 
 export function OrderActions({
   orderId, orderNumber, status, canRetryRefund,
+  retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction,
 }: {
   orderId: string;
   orderNumber: string;
   status: string;
   canRetryRefund: boolean;
+  retryFulfillmentAction: ServerAction;
+  retryRefundAction: ServerAction;
+  markCompletedManualAction: ServerAction;
+  markRefundedAction: ServerAction;
 }) {
   if (status === "NEEDS_REVIEW") {
     return (
       <div className="flex flex-col gap-4 rounded-xl ring-1 ring-foreground/10 p-4">
         <h2 className="text-sm font-semibold">Aksi</h2>
         {canRetryRefund ? (
-          <RetryRefundForm orderId={orderId} orderNumber={orderNumber} />
+          <RetryRefundForm orderId={orderId} orderNumber={orderNumber} retryRefundAction={retryRefundAction} />
         ) : (
-          <RetryFulfillmentForm orderId={orderId} orderNumber={orderNumber} />
+          <RetryFulfillmentForm orderId={orderId} orderNumber={orderNumber} retryFulfillmentAction={retryFulfillmentAction} />
         )}
-        <MarkCompletedManualForm orderId={orderId} orderNumber={orderNumber} />
+        <MarkCompletedManualForm orderId={orderId} orderNumber={orderNumber} markCompletedManualAction={markCompletedManualAction} />
       </div>
     );
   }
@@ -114,7 +130,7 @@ export function OrderActions({
     return (
       <div className="flex flex-col gap-4 rounded-xl ring-1 ring-foreground/10 p-4">
         <h2 className="text-sm font-semibold">Aksi</h2>
-        <MarkRefundedForm orderId={orderId} orderNumber={orderNumber} />
+        <MarkRefundedForm orderId={orderId} orderNumber={orderNumber} markRefundedAction={markRefundedAction} />
       </div>
     );
   }
@@ -123,7 +139,7 @@ export function OrderActions({
     return (
       <div className="flex flex-col gap-4 rounded-xl ring-1 ring-foreground/10 p-4">
         <h2 className="text-sm font-semibold">Aksi</h2>
-        <MarkCompletedManualForm orderId={orderId} orderNumber={orderNumber} />
+        <MarkCompletedManualForm orderId={orderId} orderNumber={orderNumber} markCompletedManualAction={markCompletedManualAction} />
       </div>
     );
   }
