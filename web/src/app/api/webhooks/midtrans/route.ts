@@ -71,12 +71,14 @@ async function handleDepositWebhook(
   const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
 
   if (mapped === "paid") {
+    let claimedCount = 0;
     try {
       await db.$transaction(async (tx) => {
         const claimed = await tx.deposit.updateMany({
           where: { id: deposit.id, status: "PENDING" },
           data: { status: "PAID" },
         });
+        claimedCount = claimed.count;
         if (claimed.count > 0) {
           const full = await tx.deposit.findUniqueOrThrow({ where: { id: deposit.id } });
           const wallet = await tx.wallet.update({
@@ -99,6 +101,23 @@ async function handleDepositWebhook(
     } catch (e) {
       console.error("Webhook Midtrans deposit: gagal kredit saldo", { depositId: deposit.id, eventKey: `midtrans:${notif.order_id}`, error: e });
       throw e;
+    }
+
+    if (claimedCount === 0) {
+      // Deposit sudah bukan PENDING lagi saat settlement "paid" ini masuk.
+      // Cek status terkini: kalau sudah PAID, ini cuma notifikasi duplikat
+      // (aman, no-op). Tapi kalau statusnya EXPIRED/FAILED, berarti dana
+      // sudah masuk di Midtrans tapi saldo member TIDAK pernah dikredit -
+      // kemungkinan race dengan job expire-deposit (klok expiry Midtrans
+      // beda titik mulai karena chargeQris tidak kirim custom_expiry).
+      const current = await db.deposit.findUnique({ where: { id: deposit.id }, select: { status: true } });
+      if (current?.status !== "PAID") {
+        console.error(
+          "Webhook Midtrans deposit: settlement 'paid' datang setelah deposit tidak lagi PENDING - saldo BELUM dikredit, perlu investigasi manual",
+          { depositId: deposit.id, statusSaatIni: current?.status, eventKey: `midtrans:${notif.order_id}` },
+        );
+        return "paid_but_not_pending";
+      }
     }
   } else if (mapped === "failed" || mapped === "expired") {
     const newStatus = mapped === "expired" ? "EXPIRED" : "FAILED";

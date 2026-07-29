@@ -83,7 +83,10 @@ export const handlers: Record<string, JobHandler> = {
     const staleOrders = await db.order.findMany({
       where: { status: "PAID", updatedAt: { lte: staleThreshold } },
       select: { id: true },
-      take: 20,
+      // Dibatasi kecil (bukan 20) supaya satu invocation pasti selesai dalam
+      // budget request/timeout cron-tick normal - tiap order bisa makan waktu
+      // sampai ~15s (timeout dispatchFulfillment ke provider).
+      take: 5,
     });
     for (const order of staleOrders) {
       await dispatchFulfillment(order.id);
@@ -152,8 +155,20 @@ export async function ensureRecurringJobs(): Promise<void> {
     }
   }
 
+  // Job RUNNING dianggap basi (macet/prosesnya mati) kalau sudah RUNNING lebih
+  // lama dari threshold ini - jangan biarkan dia memblokir job pengganti selamanya.
+  // Threshold 10 menit jauh di atas waktu normal reconcile-paid-orders selesai
+  // (batch 5 order, tiap order maksimal ~15s dispatch = ~75s worst case).
+  const RECONCILE_RUNNING_STALE_MINUTES = 10;
+  const reconcileRunningFreshAfter = new Date(Date.now() - RECONCILE_RUNNING_STALE_MINUTES * 60_000);
   const existingReconcile = await db.job.findFirst({
-    where: { type: "reconcile-paid-orders", status: { in: ["PENDING", "RUNNING"] } },
+    where: {
+      type: "reconcile-paid-orders",
+      OR: [
+        { status: "PENDING" },
+        { status: "RUNNING", updatedAt: { gt: reconcileRunningFreshAfter } },
+      ],
+    },
   });
   if (!existingReconcile) {
     await db.job.create({ data: { type: "reconcile-paid-orders", payload: {}, runAt: new Date() } });
