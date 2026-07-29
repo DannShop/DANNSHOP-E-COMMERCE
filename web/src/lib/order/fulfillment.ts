@@ -177,65 +177,99 @@ export async function retryOrderFulfillment(orderId: string): Promise<{ ok: true
   });
   if (claimed.count === 0) return { ok: false, error: "Order tidak dalam status yang bisa di-retry." };
 
-  const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
-  await db.orderStatusHistory.create({
-    data: { orderId, fromStatus: "NEEDS_REVIEW", toStatus: "PROCESSING", note: "Retry manual oleh admin" },
-  });
+  // Order sudah ter-claim (PROCESSING) di atas - bungkus semua langkah setelahnya dalam
+  // try/catch supaya kalau ADA throw tak terduga (mis. findUniqueOrThrow gagal, DB write
+  // lain gagal), order tidak macet permanen di PROCESSING (hilang dari antrean NEEDS_REVIEW
+  // admin, dan tidak bisa di-retry ulang karena guard klaim di atas butuh status NEEDS_REVIEW).
+  try {
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
+    await db.orderStatusHistory.create({
+      data: { orderId, fromStatus: "NEEDS_REVIEW", toStatus: "PROCESSING", note: "Retry manual oleh admin" },
+    });
 
+    const fulfillments = await db.orderFulfillment.findMany({
+      where: { orderId },
+      orderBy: { attemptNo: "desc" },
+      select: { id: true, attemptNo: true, status: true },
+    });
+    const decision = decideFulfillmentRetry(fulfillments);
+
+    if (decision.action === "not_eligible") {
+      await db.order.update({ where: { id: orderId }, data: { status: "NEEDS_REVIEW" } });
+      await db.orderStatusHistory.create({
+        data: { orderId, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note: decision.reason },
+      });
+      return { ok: false, error: decision.reason };
+    }
+
+    const item = await db.productItem.findUniqueOrThrow({
+      where: { id: order.productItemId! },
+      include: { providerSkus: true, product: true },
+    });
+
+    if (decision.action === "recheck_status") {
+      const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: decision.fulfillmentId } });
+      const target = buildCustomerNo(item.product.inputFields as { name: string }[], order.target as Record<string, string>);
+      try {
+        const adapter = await getAdapter(fulfillment.provider);
+        const result = await adapter.checkStatus({ skuCode: fulfillment.providerSkuCode, target, refId: fulfillment.ourRefId });
+        await applyFulfillmentResult(fulfillment.id, result);
+        if (result.status === "pending") {
+          await db.job.create({
+            data: { type: "recheck-fulfillment", payload: { fulfillmentId: fulfillment.id, attempt: 1 }, runAt: new Date(Date.now() + 60_000) },
+          });
+        }
+      } catch (e) {
+        console.error("retryOrderFulfillment: checkStatus gagal, menjadwalkan recheck job", { orderId, error: e });
+        // JANGAN biarkan order diam tanpa jaring pengaman - jadwalkan recheck job
+        // seperti dispatchFulfillment/selectAndSend melakukannya untuk attempt baru.
+        await db.job.create({
+          data: { type: "recheck-fulfillment", payload: { fulfillmentId: fulfillment.id, attempt: 1 }, runAt: new Date(Date.now() + 60_000) },
+        });
+      }
+      return { ok: true };
+    }
+
+    // decision.action === "send_fresh"
+    await selectAndSend(order, item, decision.nextAttemptNo);
+    return { ok: true };
+  } catch (e) {
+    // Order sudah "kita miliki" (PROCESSING) di sini, jadi bare update aman -
+    // kembalikan ke NEEDS_REVIEW supaya admin bisa coba retry lagi, jangan biarkan macet.
+    console.error("retryOrderFulfillment: gagal tak terduga setelah klaim, mengembalikan ke NEEDS_REVIEW", { orderId, error: e });
+    const message = e instanceof Error ? e.message : "Gagal melakukan retry.";
+    await db.order.update({ where: { id: orderId }, data: { status: "NEEDS_REVIEW" } });
+    await db.orderStatusHistory.create({
+      data: { orderId, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note: `Retry gagal: ${message}` },
+    });
+    return { ok: false, error: message };
+  }
+}
+
+// Retry manual oleh admin untuk order MEMBER yang gagal di-refund otomatis ke saldo wallet
+// (userId wajib ada - guest TIDAK lewat fungsi ini, guest dipegang via REFUND_PENDING +
+// antrean manual admin, bukan kredit saldo).
+export async function retryOrderRefund(orderId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
+  if (order.status !== "NEEDS_REVIEW" || !order.userId) {
+    return { ok: false, error: "Order ini bukan kasus refund-ke-saldo yang gagal." };
+  }
+
+  // Refund hanya boleh jalan kalau tidak ada percobaan fulfillment sama sekali, ATAU
+  // percobaan terakhir sudah FAILED (final). Kalau attempt terakhir masih SENT/PROCESSING/
+  // SUCCESS, barang bisa menyusul terkirim dari provider - jangan refund dulu, arahkan
+  // admin ke tombol "Coba Lagi" (retryOrderFulfillment), bukan refund.
   const fulfillments = await db.orderFulfillment.findMany({
     where: { orderId },
     orderBy: { attemptNo: "desc" },
     select: { id: true, attemptNo: true, status: true },
   });
-  const decision = decideFulfillmentRetry(fulfillments);
-
-  if (decision.action === "not_eligible") {
-    await db.order.update({ where: { id: orderId }, data: { status: "NEEDS_REVIEW" } });
-    await db.orderStatusHistory.create({
-      data: { orderId, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note: decision.reason },
-    });
-    return { ok: false, error: decision.reason };
-  }
-
-  const item = await db.productItem.findUniqueOrThrow({
-    where: { id: order.productItemId! },
-    include: { providerSkus: true, product: true },
-  });
-
-  if (decision.action === "recheck_status") {
-    const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: decision.fulfillmentId } });
-    const target = buildCustomerNo(item.product.inputFields as { name: string }[], order.target as Record<string, string>);
-    try {
-      const adapter = await getAdapter(fulfillment.provider);
-      const result = await adapter.checkStatus({ skuCode: fulfillment.providerSkuCode, target, refId: fulfillment.ourRefId });
-      await applyFulfillmentResult(fulfillment.id, result);
-      if (result.status === "pending") {
-        await db.job.create({
-          data: { type: "recheck-fulfillment", payload: { fulfillmentId: fulfillment.id, attempt: 1 }, runAt: new Date(Date.now() + 60_000) },
-        });
-      }
-    } catch (e) {
-      console.error("retryOrderFulfillment: checkStatus gagal, menjadwalkan recheck job", { orderId, error: e });
-      // JANGAN biarkan order diam tanpa jaring pengaman - jadwalkan recheck job
-      // seperti dispatchFulfillment/selectAndSend melakukannya untuk attempt baru.
-      await db.job.create({
-        data: { type: "recheck-fulfillment", payload: { fulfillmentId: fulfillment.id, attempt: 1 }, runAt: new Date(Date.now() + 60_000) },
-      });
-    }
-    return { ok: true };
-  }
-
-  // decision.action === "send_fresh"
-  await selectAndSend(order, item, decision.nextAttemptNo);
-  return { ok: true };
-}
-
-// Retry manual oleh admin untuk order guest yang gagal di-refund otomatis (refund tetap
-// dialihkan ke saldo wallet member internal, bukan dikembalikan sebagai uang tunai).
-export async function retryOrderRefund(orderId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
-  if (order.status !== "NEEDS_REVIEW" || !order.userId) {
-    return { ok: false, error: "Order ini bukan kasus refund-ke-saldo yang gagal." };
+  const lastAttempt = fulfillments[0];
+  if (lastAttempt && lastAttempt.status !== "FAILED") {
+    return {
+      ok: false,
+      error: "Order ini masih ada percobaan fulfillment yang belum final — gunakan tombol Coba Lagi, bukan refund.",
+    };
   }
 
   try {
@@ -257,7 +291,18 @@ export async function retryOrderRefund(orderId: string): Promise<{ ok: true } | 
           idempotencyKey: `order-refund:${order.id}`,
         },
       });
-      await tx.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } });
+      // Klaim atomik DI DALAM transaksi yang sama: kalau status order sudah berubah
+      // sejak dicek di atas (mis. race dengan retryOrderFulfillment yang sempat claim
+      // PROCESSING dan mengirim ke provider), count === 0 -> throw supaya SELURUH
+      // transaksi (termasuk kredit wallet & ledger di atas) ikut rollback. Tanpa ini,
+      // customer bisa dapat refund DAN barang tetap terkirim (dobel rugi).
+      const claimed = await tx.order.updateMany({
+        where: { id: order.id, status: "NEEDS_REVIEW" },
+        data: { status: "REFUNDED" },
+      });
+      if (claimed.count === 0) {
+        throw new Error("ORDER_STATUS_CHANGED");
+      }
     });
     await db.orderStatusHistory.create({
       data: { orderId: order.id, toStatus: "REFUNDED", note: "Refund ke saldo diulang manual oleh admin" },
@@ -266,6 +311,9 @@ export async function retryOrderRefund(orderId: string): Promise<{ ok: true } | 
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return { ok: false, error: "Refund untuk order ini sudah pernah berhasil sebelumnya." };
+    }
+    if (e instanceof Error && e.message === "ORDER_STATUS_CHANGED") {
+      return { ok: false, error: "Order sudah berubah status, refund dibatalkan." };
     }
     return { ok: false, error: e instanceof Error ? e.message : "Gagal mengulang refund." };
   }
