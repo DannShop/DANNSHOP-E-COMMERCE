@@ -79,12 +79,13 @@ export async function markCompletedManualAction(formData: FormData): Promise<Act
     return { error: "SN/kode voucher wajib diisi." };
   }
 
-  const order = await db.order.findUnique({ where: { id: orderId } });
-  if (!order || (order.status !== "NEEDS_REVIEW" && order.status !== "PROCESSING")) {
+  const claimed = await db.order.updateMany({
+    where: { id: orderId, status: { in: ["NEEDS_REVIEW", "PROCESSING"] } },
+    data: { status: "COMPLETED", completedAt: new Date() },
+  });
+  if (claimed.count === 0) {
     return { error: "Order tidak dalam status yang bisa ditandai selesai manual." };
   }
-
-  await db.order.update({ where: { id: orderId }, data: { status: "COMPLETED", completedAt: new Date() } });
   await db.orderStatusHistory.create({
     data: { orderId, toStatus: "COMPLETED", note: `Ditandai selesai manual oleh admin. SN: ${sn.trim()}` },
   });
