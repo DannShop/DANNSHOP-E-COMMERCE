@@ -19,13 +19,14 @@ export function formatOrderAlertMessage(
 
 // Tidak pernah throw - kegagalan kirim notifikasi tidak boleh mengganggu
 // jalur uang di fulfillment.ts/runner.ts yang memanggil fungsi ini.
+// Guard clause di dalam try untuk melindungi dari TypeError synchronous jika config malformed.
 export async function sendTelegramAlert(message: string, config: TelegramConfig = configFromEnv()): Promise<void> {
-  if (!config.botToken || !config.chatId) {
-    console.error("Telegram: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID belum di-set, notifikasi dilewati", { message });
-    return;
-  }
-
   try {
+    if (!config?.botToken || !config?.chatId) {
+      console.error("Telegram: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID belum di-set, notifikasi dilewati", { message });
+      return;
+    }
+
     const res = await fetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
