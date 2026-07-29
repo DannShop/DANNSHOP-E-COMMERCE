@@ -71,29 +71,34 @@ async function handleDepositWebhook(
   const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
 
   if (mapped === "paid") {
-    const claimed = await db.deposit.updateMany({
-      where: { id: deposit.id, status: "PENDING" },
-      data: { status: "PAID" },
-    });
-    if (claimed.count > 0) {
+    try {
       await db.$transaction(async (tx) => {
-        const full = await tx.deposit.findUniqueOrThrow({ where: { id: deposit.id } });
-        const wallet = await tx.wallet.update({
-          where: { userId: full.userId },
-          data: { balance: { increment: full.amount } },
+        const claimed = await tx.deposit.updateMany({
+          where: { id: deposit.id, status: "PENDING" },
+          data: { status: "PAID" },
         });
-        await tx.walletLedger.create({
-          data: {
-            walletId: wallet.id,
-            type: "DEPOSIT",
-            amount: full.amount,
-            balanceAfter: wallet.balance,
-            referenceType: "deposit",
-            referenceId: full.id,
-            idempotencyKey: `deposit:${full.id}`,
-          },
-        });
+        if (claimed.count > 0) {
+          const full = await tx.deposit.findUniqueOrThrow({ where: { id: deposit.id } });
+          const wallet = await tx.wallet.update({
+            where: { userId: full.userId },
+            data: { balance: { increment: full.amount } },
+          });
+          await tx.walletLedger.create({
+            data: {
+              walletId: wallet.id,
+              type: "DEPOSIT",
+              amount: full.amount,
+              balanceAfter: wallet.balance,
+              referenceType: "deposit",
+              referenceId: full.id,
+              idempotencyKey: `deposit:${full.id}`,
+            },
+          });
+        }
       });
+    } catch (e) {
+      console.error("Webhook Midtrans deposit: gagal kredit saldo", { depositId: deposit.id, eventKey: `midtrans:${notif.order_id}`, error: e });
+      throw e;
     }
   } else if (mapped === "failed" || mapped === "expired") {
     const newStatus = mapped === "expired" ? "EXPIRED" : "FAILED";
