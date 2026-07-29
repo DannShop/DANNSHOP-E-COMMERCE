@@ -62,6 +62,21 @@ export const handlers: Record<string, JobHandler> = {
     return "expired";
   },
 
+  "expire-deposit": async (payload) => {
+    const { depositId } = payload as { depositId: string };
+    const deposit = await db.deposit.findUniqueOrThrow({ where: { id: depositId } });
+    if (deposit.status !== "PENDING") return "no-op: status sudah berubah";
+    if (deposit.expiredAt && deposit.expiredAt > new Date()) return "no-op: belum jatuh tempo";
+
+    const claimed = await db.deposit.updateMany({
+      where: { id: deposit.id, status: "PENDING" },
+      data: { status: "EXPIRED" },
+    });
+    if (claimed.count === 0) return "no-op: sudah diklaim proses lain";
+
+    return "expired";
+  },
+
   "reconcile-paid-orders": async () => {
     const STALE_MINUTES = 5;
     const staleThreshold = new Date(Date.now() - STALE_MINUTES * 60_000);
