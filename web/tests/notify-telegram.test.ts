@@ -1,0 +1,53 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
+
+describe("formatOrderAlertMessage", () => {
+  it("menyusun pesan dengan nomor order, status, alasan, dan link admin", () => {
+    const msg = formatOrderAlertMessage(
+      { orderNumber: "INV-20260729-0001", status: "NEEDS_REVIEW", reason: "Tidak ada provider SKU tersedia" },
+      "https://dannshop.test",
+    );
+    expect(msg).toContain("INV-20260729-0001");
+    expect(msg).toContain("NEEDS_REVIEW");
+    expect(msg).toContain("Tidak ada provider SKU tersedia");
+    expect(msg).toContain("https://dannshop.test/admin/orders/INV-20260729-0001");
+  });
+});
+
+function mockFetchOnce(ok: boolean, status = 200) {
+  const fn = vi.fn().mockResolvedValue(new Response(ok ? "{}" : "error body", { status }));
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("sendTelegramAlert", () => {
+  const config = { botToken: "test-token", chatId: "12345" };
+
+  it("POST ke Telegram Bot API dengan chat_id dan text", async () => {
+    const fn = mockFetchOnce(true);
+    await sendTelegramAlert("Halo admin", config);
+
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("https://api.telegram.org/bottest-token/sendMessage");
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toEqual({ chat_id: "12345", text: "Halo admin" });
+  });
+
+  it("tidak throw kalau Telegram balas non-200", async () => {
+    mockFetchOnce(false, 401);
+    await expect(sendTelegramAlert("Halo admin", config)).resolves.toBeUndefined();
+  });
+
+  it("tidak throw kalau fetch gagal total (network error)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    await expect(sendTelegramAlert("Halo admin", config)).resolves.toBeUndefined();
+  });
+
+  it("tidak memanggil fetch sama sekali kalau botToken/chatId kosong", async () => {
+    const fn = mockFetchOnce(true);
+    await sendTelegramAlert("Halo admin", { botToken: "", chatId: "" });
+    expect(fn).not.toHaveBeenCalled();
+  });
+});
