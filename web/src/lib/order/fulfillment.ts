@@ -5,6 +5,7 @@ import { buildCustomerNo } from "@/lib/order/customer-no";
 import { generateRefId } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { decideRefundDestination } from "@/lib/wallet/decisions";
+import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
 
 export async function dispatchFulfillment(orderId: string): Promise<void> {
   const claimed = await db.order.updateMany({
@@ -25,10 +26,12 @@ export async function dispatchFulfillment(orderId: string): Promise<void> {
 
   const decision = selectFulfillmentSku({ sellingPrice: order.sellingPrice }, item.providerSkus);
   if (!decision.ok) {
+    const note = decision.reason === "no_provider" ? "Tidak ada provider SKU tersedia" : "Harga modal naik di atas harga jual";
     await db.order.update({ where: { id: order.id }, data: { status: "NEEDS_REVIEW" } });
     await db.orderStatusHistory.create({
-      data: { orderId: order.id, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note: decision.reason },
+      data: { orderId: order.id, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note },
     });
+    await sendTelegramAlert(formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "NEEDS_REVIEW", reason: note }));
     return;
   }
 
@@ -127,24 +130,25 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
           data: { orderId: order.id, toStatus: "REFUNDED", note: `Auto-refund ke saldo: ${result.message}` },
         });
       } catch (e) {
+        const note = `Auto-refund gagal: ${e instanceof Error ? e.message : String(e)}`;
         console.error("applyFulfillmentResult: auto-refund ke saldo gagal, eskalasi ke NEEDS_REVIEW", {
           orderId: order.id, error: e,
         });
         await db.order.update({ where: { id: order.id }, data: { status: "NEEDS_REVIEW" } });
         await db.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            toStatus: "NEEDS_REVIEW",
-            note: `Auto-refund gagal: ${e instanceof Error ? e.message : String(e)}`,
-          },
+          data: { orderId: order.id, toStatus: "NEEDS_REVIEW", note },
         });
+        await sendTelegramAlert(formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "NEEDS_REVIEW", reason: note }));
       }
     } else {
-      // Guest — antrean manual admin (Fase 7), tidak berubah dari Fase 3
+      // Guest — antrean manual admin (Fase 7a: halaman /admin/orders + notifikasi Telegram)
       await db.order.update({ where: { id: order.id }, data: { status: "REFUND_PENDING" } });
       await db.orderStatusHistory.create({
         data: { orderId: order.id, toStatus: "REFUND_PENDING", note: result.message },
       });
+      await sendTelegramAlert(
+        formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "REFUND_PENDING", reason: result.message }),
+      );
     }
   }
 }
