@@ -9,6 +9,14 @@ import { decideRefundDestination } from "@/lib/wallet/decisions";
 import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
 import { decideFulfillmentRetry } from "@/lib/order/retry-decision";
 
+// OrderStatusHistory.note adalah VARCHAR(191) di MySQL (default Prisma untuk
+// String? tanpa @db.Text) - pesan error/provider yang panjang bisa melebihi
+// itu dan bikin db.orderStatusHistory.create() throw, yang diam-diam
+// menggagalkan sendTelegramAlert() yang menyusul setelahnya. Potong dulu.
+function truncateNote(text: string): string {
+  return text.length > 191 ? `${text.slice(0, 188)}...` : text;
+}
+
 export async function dispatchFulfillment(orderId: string): Promise<void> {
   const claimed = await db.order.updateMany({
     where: { id: orderId, status: "PAID" },
@@ -139,10 +147,10 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
           await tx.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } });
         });
         await db.orderStatusHistory.create({
-          data: { orderId: order.id, toStatus: "REFUNDED", note: `Auto-refund ke saldo: ${result.message}` },
+          data: { orderId: order.id, toStatus: "REFUNDED", note: truncateNote(`Auto-refund ke saldo: ${result.message}`) },
         });
       } catch (e) {
-        const note = `Auto-refund gagal: ${e instanceof Error ? e.message : String(e)}`;
+        const note = truncateNote(`Auto-refund gagal: ${e instanceof Error ? e.message : String(e)}`);
         console.error("applyFulfillmentResult: auto-refund ke saldo gagal, eskalasi ke NEEDS_REVIEW", {
           orderId: order.id, error: e,
         });
@@ -156,7 +164,7 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
       // Guest — antrean manual admin (Fase 7a: halaman /admin/orders + notifikasi Telegram)
       await db.order.update({ where: { id: order.id }, data: { status: "REFUND_PENDING" } });
       await db.orderStatusHistory.create({
-        data: { orderId: order.id, toStatus: "REFUND_PENDING", note: result.message },
+        data: { orderId: order.id, toStatus: "REFUND_PENDING", note: truncateNote(result.message) },
       });
       await sendTelegramAlert(
         formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "REFUND_PENDING", reason: result.message }),
@@ -240,7 +248,7 @@ export async function retryOrderFulfillment(orderId: string): Promise<{ ok: true
     const message = e instanceof Error ? e.message : "Gagal melakukan retry.";
     await db.order.update({ where: { id: orderId }, data: { status: "NEEDS_REVIEW" } });
     await db.orderStatusHistory.create({
-      data: { orderId, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note: `Retry gagal: ${message}` },
+      data: { orderId, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note: truncateNote(`Retry gagal: ${message}`) },
     });
     return { ok: false, error: message };
   }
