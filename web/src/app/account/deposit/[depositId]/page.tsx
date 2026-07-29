@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DepositStatus } from "./deposit-status";
 
@@ -8,9 +9,12 @@ export default async function DepositStatusPage({
 }: {
   params: Promise<{ depositId: string }>;
 }) {
+  const session = await auth();
+  if (!session?.user?.id) notFound();
+
   const { depositId } = await params;
   const deposit = await db.deposit.findUnique({ where: { id: depositId } });
-  if (!deposit) notFound();
+  if (!deposit || deposit.userId !== session.user.id) notFound();
 
   const rawResponse = deposit.rawResponse as { qrString?: string } | null;
 
