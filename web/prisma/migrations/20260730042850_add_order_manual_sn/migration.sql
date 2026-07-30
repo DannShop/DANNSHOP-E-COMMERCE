@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `order` ADD COLUMN `manualSn` TEXT NULL;
+ALTER TABLE `Order` ADD COLUMN `manualSn` TEXT NULL;

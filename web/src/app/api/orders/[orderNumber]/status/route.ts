@@ -23,6 +23,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ord
     total: order.total.toString(),
     qrString: actions?.qrString ?? null,
     expiredAt: order.expiredAt,
-    sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : null,
+    sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,
   });
 }
