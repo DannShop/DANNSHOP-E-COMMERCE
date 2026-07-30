@@ -119,4 +119,24 @@ describe("checkRateLimit", () => {
     const result = await checkRateLimit("login:ip:1.2.3.4", 1, 60_000, new Date(), dbClient as never);
     expect(result.allowed).toBe(true);
   });
+
+  it("error pada updateMany race path → fail-open (allowed)", async () => {
+    const dbClient = {
+      rateLimit: {
+        create: async ({ data }: { data: { key: string; count: number } }) => {
+          // Simulasi race: throw P2002 untuk trigger path updateMany
+          throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+            code: "P2002",
+            clientVersion: "6.0.0",
+          });
+        },
+        updateMany: async () => {
+          // updateMany throws error (DB connection problem, timeout, etc)
+          throw new Error("connection refused on updateMany");
+        },
+      },
+    };
+    const result = await checkRateLimit("login:ip:1.2.3.4", 1, 60_000, new Date(), dbClient as never);
+    expect(result.allowed).toBe(true);
+  });
 });

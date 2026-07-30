@@ -53,10 +53,18 @@ export async function checkRateLimit(
     // race: request lain di window sama barusan insert row-nya duluan - lanjut ke klaim atomik di bawah
   }
 
-  const claimed = await dbClient.rateLimit.updateMany({
-    where: { key: fullKey, count: { lt: limit } },
-    data: { count: { increment: 1 } },
-  });
-  if (claimed.count === 0) return { allowed: false, retryAfterMs };
-  return { allowed: true };
+  try {
+    const claimed = await dbClient.rateLimit.updateMany({
+      where: { key: fullKey, count: { lt: limit } },
+      data: { count: { increment: 1 } },
+    });
+    if (claimed.count === 0) return { allowed: false, retryAfterMs };
+    return { allowed: true };
+  } catch (e) {
+    // DB error pada race recovery path - fail-open juga, jangan sampai updateMany
+    // yang dijalankan di hampir setiap request under traffic (setelah P2002 pada create)
+    // mengunci app
+    console.error("checkRateLimit: gagal update on race, fail-open", { key, error: e });
+    return { allowed: true };
+  }
 }
