@@ -33,4 +33,13 @@ describe("getAdapter", () => {
     const row = { key: "SERPUL", isActive: true, credentials: encryptJson({}) };
     await expect(getAdapter("SERPUL", fakeDb(row))).rejects.toThrow(/belum didukung/);
   });
+
+  it("isActive false → error jelas (kill-switch)", async () => {
+    const row = {
+      key: "DIGIFLAZZ",
+      isActive: false,
+      credentials: encryptJson({ username: "userX", apiKey: "keyY" }),
+    };
+    await expect(getAdapter("DIGIFLAZZ", fakeDb(row))).rejects.toThrow(/dinonaktifkan/);
+  });
 });

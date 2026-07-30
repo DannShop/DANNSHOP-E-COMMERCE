@@ -71,7 +71,9 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     return { error: `${missingField.label} wajib diisi.` };
   }
 
-  const decision = selectFulfillmentSku({ sellingPrice: item.sellingPrice }, item.providerSkus);
+  const activeProviderConfigs = await db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } });
+  const activeProviders = new Set(activeProviderConfigs.map((p) => p.key));
+  const decision = selectFulfillmentSku({ sellingPrice: item.sellingPrice }, item.providerSkus, activeProviders);
   if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
 
   const now = new Date();

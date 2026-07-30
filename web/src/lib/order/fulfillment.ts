@@ -113,9 +113,16 @@ async function selectAndSend(
   attemptNo: number,
   alertOnFailure: boolean = true,
 ): Promise<void> {
-  const decision = selectFulfillmentSku({ sellingPrice: order.sellingPrice }, item.providerSkus);
+  const activeProviderConfigs = await db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } });
+  const activeProviders = new Set(activeProviderConfigs.map((p) => p.key));
+  const decision = selectFulfillmentSku({ sellingPrice: order.sellingPrice }, item.providerSkus, activeProviders);
   if (!decision.ok) {
-    const note = decision.reason === "no_provider" ? "Tidak ada provider SKU tersedia" : "Harga modal naik di atas harga jual";
+    const note =
+      decision.reason === "no_provider"
+        ? "Tidak ada provider SKU tersedia"
+        : decision.reason === "provider_inactive"
+          ? "Provider sedang dinonaktifkan admin"
+          : "Harga modal naik di atas harga jual";
     await escalateOrder({
       orderId: order.id,
       orderNumber: order.orderNumber,

@@ -35,11 +35,14 @@ describe("buildCustomerNo", () => {
 
 describe("selectFulfillmentSku", () => {
   const item = { sellingPrice: 22000n };
+  const digiflazzActive = new Set<"DIGIFLAZZ" | "OKECONNECT" | "QIOSPAY" | "SERPUL">(["DIGIFLAZZ"]);
 
   it("pilih SKU DIGIFLAZZ yang ACTIVE", () => {
-    const result = selectFulfillmentSku(item, [
-      { provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 19750n, status: "ACTIVE" },
-    ]);
+    const result = selectFulfillmentSku(
+      item,
+      [{ provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 19750n, status: "ACTIVE" }],
+      digiflazzActive,
+    );
     expect(result).toEqual({
       ok: true,
       sku: { provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 19750n },
@@ -47,25 +50,40 @@ describe("selectFulfillmentSku", () => {
   });
 
   it("tidak ada SKU DIGIFLAZZ ACTIVE → no_provider", () => {
-    expect(selectFulfillmentSku(item, [])).toEqual({ ok: false, reason: "no_provider" });
+    expect(selectFulfillmentSku(item, [], digiflazzActive)).toEqual({ ok: false, reason: "no_provider" });
     expect(
-      selectFulfillmentSku(item, [
-        { provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 19750n, status: "UNAVAILABLE" },
-      ]),
+      selectFulfillmentSku(
+        item,
+        [{ provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 19750n, status: "UNAVAILABLE" }],
+        digiflazzActive,
+      ),
     ).toEqual({ ok: false, reason: "no_provider" });
   });
 
   it("costPrice > sellingPrice (harga modal naik) → price_increased", () => {
-    const result = selectFulfillmentSku(item, [
-      { provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 25000n, status: "ACTIVE" },
-    ]);
+    const result = selectFulfillmentSku(
+      item,
+      [{ provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 25000n, status: "ACTIVE" }],
+      digiflazzActive,
+    );
     expect(result).toEqual({ ok: false, reason: "price_increased" });
   });
 
   it("provider selain DIGIFLAZZ diabaikan (belum ada adapter di Fase 3)", () => {
-    const result = selectFulfillmentSku(item, [
-      { provider: "OKECONNECT", providerSkuCode: "X", costPrice: 15000n, status: "ACTIVE" },
-    ]);
+    const result = selectFulfillmentSku(
+      item,
+      [{ provider: "OKECONNECT", providerSkuCode: "X", costPrice: 15000n, status: "ACTIVE" }],
+      digiflazzActive,
+    );
     expect(result).toEqual({ ok: false, reason: "no_provider" });
+  });
+
+  it("DIGIFLAZZ ACTIVE tapi provider dinonaktifkan admin → provider_inactive", () => {
+    const result = selectFulfillmentSku(
+      item,
+      [{ provider: "DIGIFLAZZ", providerSkuCode: "ML86", costPrice: 19750n, status: "ACTIVE" }],
+      new Set(),
+    );
+    expect(result).toEqual({ ok: false, reason: "provider_inactive" });
   });
 });

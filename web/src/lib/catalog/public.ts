@@ -3,8 +3,11 @@ import type { ProviderKey, ProviderSkuStatus } from "@prisma/client";
 
 export function isItemPurchasable(
   providerSkus: { provider: ProviderKey; status: ProviderSkuStatus }[],
+  activeProviders: Set<ProviderKey>,
 ): boolean {
-  return providerSkus.some((s) => s.provider === "DIGIFLAZZ" && s.status === "ACTIVE");
+  return providerSkus.some(
+    (s) => s.provider === "DIGIFLAZZ" && s.status === "ACTIVE" && activeProviders.has(s.provider),
+  );
 }
 
 export async function getActiveCategories(): Promise<{ id: string; slug: string; name: string }[]> {
@@ -29,17 +32,22 @@ export async function getProductForCheckout(
   categorySlug: string,
   productSlug: string,
 ): Promise<ProductForCheckout | null> {
-  const product = await db.product.findFirst({
-    where: { slug: productSlug, isActive: true, category: { slug: categorySlug } },
-    include: {
-      items: {
-        where: { isActive: true },
-        orderBy: { sortOrder: "asc" },
-        include: { providerSkus: { select: { provider: true, status: true } } },
+  const [product, activeProviderConfigs] = await Promise.all([
+    db.product.findFirst({
+      where: { slug: productSlug, isActive: true, category: { slug: categorySlug } },
+      include: {
+        items: {
+          where: { isActive: true },
+          orderBy: { sortOrder: "asc" },
+          include: { providerSkus: { select: { provider: true, status: true } } },
+        },
       },
-    },
-  });
+    }),
+    db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } }),
+  ]);
   if (!product) return null;
+
+  const activeProviders = new Set(activeProviderConfigs.map((p) => p.key));
 
   return {
     id: product.id,
@@ -53,7 +61,7 @@ export async function getProductForCheckout(
       name: item.name,
       sellingPrice: item.sellingPrice,
       memberPrice: item.memberPrice,
-      purchasable: isItemPurchasable(item.providerSkus),
+      purchasable: isItemPurchasable(item.providerSkus, activeProviders),
     })),
   };
 }
