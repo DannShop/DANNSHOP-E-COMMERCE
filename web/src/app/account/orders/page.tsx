@@ -30,7 +30,7 @@ export default async function AccountOrdersPage() {
           {orders.map((order) => (
             <Link
               key={order.id}
-              href={`/invoice/${order.orderNumber}`}
+              href={`/invoice/${order.publicToken}`}
               className="flex items-center justify-between rounded-md border bg-card px-4 py-3 text-sm hover:bg-muted"
             >
               <div>

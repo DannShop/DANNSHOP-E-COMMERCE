@@ -69,17 +69,17 @@ const STATUS_ICON: Record<string, typeof Clock> = {
 const SPINNING_STATUSES = new Set(["PAID", "PROCESSING"]);
 
 export function InvoiceStatus({
-  orderNumber,
+  token,
   initial,
 }: {
-  orderNumber: string;
+  token: string;
   initial: OrderStatusResponse;
 }) {
   const [copied, setCopied] = useState(false);
   const { data, isFetching } = useQuery<OrderStatusResponse>({
-    queryKey: ["order-status", orderNumber],
+    queryKey: ["order-status", token],
     queryFn: async () => {
-      const res = await fetch(`/api/orders/${orderNumber}/status`);
+      const res = await fetch(`/api/orders/${token}/status`);
       if (!res.ok) throw new Error("Gagal memuat status order");
       return res.json();
     },

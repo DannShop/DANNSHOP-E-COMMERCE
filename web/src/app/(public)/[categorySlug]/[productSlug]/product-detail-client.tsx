@@ -38,8 +38,8 @@ export function ProductDetailClient({
   const [state, formAction, pending] = useActionState(withPrevState(createCheckoutOrder), INITIAL_STATE);
 
   useEffect(() => {
-    if (state.orderNumber) router.push(`/invoice/${state.orderNumber}`);
-  }, [state.orderNumber, router]);
+    if (state.publicToken) router.push(`/invoice/${state.publicToken}`);
+  }, [state.publicToken, router]);
 
   if (purchasableItems.length === 0) {
     return (

@@ -17,6 +17,7 @@ export interface CheckoutResult {
   ok?: string;
   error?: string;
   orderNumber?: string;
+  publicToken?: string;
 }
 
 class InsufficientBalanceError extends Error {}
@@ -147,7 +148,7 @@ async function createBalanceOrder(input: {
   }
 
   await dispatchFulfillment(order.id);
-  return { ok: "Order dibuat.", orderNumber: order.orderNumber };
+  return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
 }
 
 async function createMidtransOrder(input: {
@@ -208,5 +209,5 @@ async function createMidtransOrder(input: {
     // tidak throw — order & pembayaran tetap valid untuk user, cuma auto-expire-nya berisiko tidak jalan
   }
 
-  return { ok: "Order dibuat.", orderNumber: order.orderNumber };
+  return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
 }
