@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type OrderStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getAdapter } from "@/lib/providers/registry";
 import type { ProviderTrxResult } from "@/lib/providers/types";
@@ -8,14 +8,22 @@ import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { decideRefundDestination } from "@/lib/wallet/decisions";
 import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
 import { decideFulfillmentRetry } from "@/lib/order/retry-decision";
+import { truncateNote } from "@/lib/order/status-note";
 
-// OrderStatusHistory.note adalah VARCHAR(191) di MySQL (default Prisma untuk
-// String? tanpa @db.Text) - pesan error/provider yang panjang bisa melebihi
-// itu dan bikin db.orderStatusHistory.create() throw, yang diam-diam
-// menggagalkan sendTelegramAlert() yang menyusul setelahnya. Potong dulu.
-function truncateNote(text: string): string {
-  return text.length > 191 ? `${text.slice(0, 188)}...` : text;
-}
+// Status order yang TIDAK BOLEH ditimpa oleh proses otomatis (webhook, job
+// recheck-fulfillment, job runner). Begitu order mencapai salah satu status ini,
+// hanya aksi admin eksplisit (mis. markRefundedAction, yang pakai updateMany
+// terkunci status) boleh mengubahnya lagi. Ini mencegah double-payout: order yang
+// sudah ditandai selesai manual oleh admin (COMPLETED) lalu di-overwrite jadi
+// REFUNDED/REFUND_PENDING oleh hasil fulfillment yang datang belakangan dari job
+// recheck yang lupa dibatalkan.
+export const ORDER_STATUSES_NOT_OVERWRITABLE_BY_AUTOMATION = [
+  "COMPLETED",
+  "REFUNDED",
+  "EXPIRED",
+  "FAILED",
+  "REFUND_PENDING",
+] as const;
 
 export async function dispatchFulfillment(orderId: string): Promise<void> {
   const claimed = await db.order.updateMany({
@@ -43,18 +51,79 @@ type ItemForFulfillment = {
   product: { inputFields: unknown };
 };
 
+// Helper bersama untuk "eskalasi order + histori + alert Telegram" dipakai di 4 titik
+// (selectAndSend gagal pilih SKU, applyFulfillmentResult auto-refund crash, applyFulfillmentResult
+// jalur guest REFUND_PENDING, runner.ts eskalasi 30x-recheck). Menjamin invariant inti Fase 7a:
+// alert Telegram SELALU terkirim kalau klaim status order berhasil, walau orderStatusHistory.create
+// gagal (mis. overflow VARCHAR(191) yang sudah pernah kejadian, deadlock, dsb) - jangan sampai
+// gagal tulis histori diam-diam menggagalkan notifikasi yang menyusul setelahnya.
+export async function escalateOrder(params: {
+  orderId: string;
+  orderNumber: string;
+  fromStatus?: OrderStatus;
+  toStatus: "NEEDS_REVIEW" | "REFUND_PENDING";
+  note: string;
+  // default true - dipakai selectAndSend jalur retry manual admin (Fix 3, plan Fase 7a) supaya
+  // tidak kirim alert Telegram dobel untuk aksi yang admin sendiri picu.
+  alertOnFailure?: boolean;
+}): Promise<{ claimed: boolean }> {
+  const claimed = await db.order.updateMany({
+    where: { id: params.orderId, status: { notIn: [...ORDER_STATUSES_NOT_OVERWRITABLE_BY_AUTOMATION] } },
+    data: { status: params.toStatus },
+  });
+  if (claimed.count === 0) {
+    console.error("escalateOrder: order sudah di status final/tidak bisa ditimpa otomasi, skip", {
+      orderId: params.orderId, toStatus: params.toStatus,
+    });
+    return { claimed: false };
+  }
+
+  try {
+    await db.orderStatusHistory.create({
+      data: {
+        orderId: params.orderId,
+        fromStatus: params.fromStatus,
+        toStatus: params.toStatus,
+        note: truncateNote(params.note),
+      },
+    });
+  } catch (e) {
+    console.error("escalateOrder: orderStatusHistory.create gagal, tetap lanjut kirim alert", {
+      orderId: params.orderId, error: e,
+    });
+  }
+
+  if (params.alertOnFailure ?? true) {
+    await sendTelegramAlert(
+      formatOrderAlertMessage({ orderNumber: params.orderNumber, status: params.toStatus, reason: params.note }),
+    );
+  }
+  return { claimed: true };
+}
+
 // Logika inti "pilih SKU provider lalu kirim transaksi" - dipakai baik untuk
 // pengiriman pertama (dispatchFulfillment) maupun retry manual oleh admin
 // (retryOrderFulfillment), supaya perilakunya konsisten di kedua jalur.
-async function selectAndSend(order: OrderForFulfillment, item: ItemForFulfillment, attemptNo: number): Promise<void> {
+// alertOnFailure=false dipakai retryOrderFulfillment (retry dipicu admin sendiri) supaya
+// kegagalan "tidak ada SKU provider"/"harga modal naik" di jalur retry tidak kirim alert
+// Telegram dobel - admin yang mengklik retry sudah tahu order ini bermasalah.
+async function selectAndSend(
+  order: OrderForFulfillment,
+  item: ItemForFulfillment,
+  attemptNo: number,
+  alertOnFailure: boolean = true,
+): Promise<void> {
   const decision = selectFulfillmentSku({ sellingPrice: order.sellingPrice }, item.providerSkus);
   if (!decision.ok) {
     const note = decision.reason === "no_provider" ? "Tidak ada provider SKU tersedia" : "Harga modal naik di atas harga jual";
-    await db.order.update({ where: { id: order.id }, data: { status: "NEEDS_REVIEW" } });
-    await db.orderStatusHistory.create({
-      data: { orderId: order.id, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note },
+    await escalateOrder({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      fromStatus: "PROCESSING",
+      toStatus: "NEEDS_REVIEW",
+      note,
+      alertOnFailure,
     });
-    await sendTelegramAlert(formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "NEEDS_REVIEW", reason: note }));
     return;
   }
 
@@ -115,12 +184,22 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
   const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: fulfillmentId } });
 
   if (status === "SUCCESS") {
-    await db.order.update({
-      where: { id: fulfillment.orderId },
+    // Klaim atomik terhadap status order: kalau order sudah di status final/tidak-bisa-
+    // ditimpa (mis. admin sudah pakai "Tandai Selesai Manual" sementara hasil SUCCESS ini
+    // datang belakangan dari job recheck-fulfillment yang lupa dibatalkan), JANGAN timpa -
+    // itu akan bikin histori order jadi salah/ambigu walau tidak ada dampak uang di sini.
+    const claimedOrder = await db.order.updateMany({
+      where: { id: fulfillment.orderId, status: { notIn: [...ORDER_STATUSES_NOT_OVERWRITABLE_BY_AUTOMATION] } },
       data: { status: "COMPLETED", completedAt: new Date() },
     });
+    if (claimedOrder.count === 0) {
+      console.error("applyFulfillmentResult: hasil SUCCESS datang untuk order yang sudah final di status lain (mis. sudah ditandai selesai manual oleh admin), dilewati", {
+        orderId: fulfillment.orderId, fulfillmentId,
+      });
+      return;
+    }
     await db.orderStatusHistory.create({
-      data: { orderId: fulfillment.orderId, toStatus: "COMPLETED", note: `SN: ${result.sn ?? "-"}` },
+      data: { orderId: fulfillment.orderId, toStatus: "COMPLETED", note: truncateNote(`SN: ${result.sn ?? "-"}`) },
     });
   } else if (status === "FAILED") {
     const order = await db.order.findUniqueOrThrow({ where: { id: fulfillment.orderId } });
@@ -144,31 +223,45 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
               idempotencyKey: `order-refund:${order.id}`,
             },
           });
-          await tx.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } });
+          // Klaim atomik DI DALAM transaksi: kalau order sudah di status final/tidak-bisa-ditimpa
+          // (mis. admin sudah "Tandai Selesai Manual" saat FAILED ini masih diproses), throw supaya
+          // SELURUH transaksi (termasuk kredit wallet & ledger di atas) ikut rollback - mencegah
+          // double-payout (member dapat saldo refund PADAHAL admin sudah anggap order selesai/dikirim).
+          const claimedTx = await tx.order.updateMany({
+            where: { id: order.id, status: { notIn: [...ORDER_STATUSES_NOT_OVERWRITABLE_BY_AUTOMATION] } },
+            data: { status: "REFUNDED" },
+          });
+          if (claimedTx.count === 0) {
+            throw new Error("ORDER_ALREADY_TERMINAL");
+          }
         });
         await db.orderStatusHistory.create({
           data: { orderId: order.id, toStatus: "REFUNDED", note: truncateNote(`Auto-refund ke saldo: ${result.message}`) },
         });
       } catch (e) {
+        if (e instanceof Error && e.message === "ORDER_ALREADY_TERMINAL") {
+          // Transaksi sudah di-rollback oleh Prisma (kredit wallet & ledger TIDAK jadi ditulis) -
+          // tidak ada apa pun yang perlu dibatalkan. JANGAN jalankan fallback eskalasi NEEDS_REVIEW
+          // di bawah - order ini sudah selesai lewat jalur lain (admin), bukan kegagalan yang nyata.
+          console.error("applyFulfillmentResult: auto-refund dibatalkan (rollback) - order sudah final di status lain (mis. sudah ditandai selesai manual oleh admin)", {
+            orderId: order.id,
+          });
+          return;
+        }
         const note = truncateNote(`Auto-refund gagal: ${e instanceof Error ? e.message : String(e)}`);
         console.error("applyFulfillmentResult: auto-refund ke saldo gagal, eskalasi ke NEEDS_REVIEW", {
           orderId: order.id, error: e,
         });
-        await db.order.update({ where: { id: order.id }, data: { status: "NEEDS_REVIEW" } });
-        await db.orderStatusHistory.create({
-          data: { orderId: order.id, toStatus: "NEEDS_REVIEW", note },
-        });
-        await sendTelegramAlert(formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "NEEDS_REVIEW", reason: note }));
+        await escalateOrder({ orderId: order.id, orderNumber: order.orderNumber, toStatus: "NEEDS_REVIEW", note });
       }
     } else {
       // Guest — antrean manual admin (Fase 7a: halaman /admin/orders + notifikasi Telegram)
-      await db.order.update({ where: { id: order.id }, data: { status: "REFUND_PENDING" } });
-      await db.orderStatusHistory.create({
-        data: { orderId: order.id, toStatus: "REFUND_PENDING", note: truncateNote(result.message) },
+      await escalateOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        toStatus: "REFUND_PENDING",
+        note: result.message,
       });
-      await sendTelegramAlert(
-        formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "REFUND_PENDING", reason: result.message }),
-      );
     }
   }
 }
@@ -239,14 +332,25 @@ export async function retryOrderFulfillment(orderId: string): Promise<{ ok: true
     }
 
     // decision.action === "send_fresh"
-    await selectAndSend(order, item, decision.nextAttemptNo);
+    // alertOnFailure=false: ini retry yang dipicu admin sendiri, jangan kirim alert Telegram
+    // dobel kalau attempt baru ini gagal lagi dengan alasan "no_provider"/harga modal naik
+    // (Fase 7a plan: alert Telegram hanya untuk transisi status OTOMATIS, bukan aksi admin).
+    await selectAndSend(order, item, decision.nextAttemptNo, false);
     return { ok: true };
   } catch (e) {
-    // Order sudah "kita miliki" (PROCESSING) di sini, jadi bare update aman -
-    // kembalikan ke NEEDS_REVIEW supaya admin bisa coba retry lagi, jangan biarkan macet.
+    // Order sudah "kita miliki" (PROCESSING) di sini, jadi klaim guarded tetap dipakai untuk
+    // konsistensi dengan pola di seluruh file - kembalikan ke NEEDS_REVIEW supaya admin bisa
+    // coba retry lagi, jangan biarkan macet.
     console.error("retryOrderFulfillment: gagal tak terduga setelah klaim, mengembalikan ke NEEDS_REVIEW", { orderId, error: e });
     const message = e instanceof Error ? e.message : "Gagal melakukan retry.";
-    await db.order.update({ where: { id: orderId }, data: { status: "NEEDS_REVIEW" } });
+    const claimedBack = await db.order.updateMany({
+      where: { id: orderId, status: { notIn: [...ORDER_STATUSES_NOT_OVERWRITABLE_BY_AUTOMATION] } },
+      data: { status: "NEEDS_REVIEW" },
+    });
+    if (claimedBack.count === 0) {
+      console.error("retryOrderFulfillment: order sudah di status final lain saat pemulihan, skip histori", { orderId });
+      return { ok: false, error: message };
+    }
     await db.orderStatusHistory.create({
       data: { orderId, fromStatus: "PROCESSING", toStatus: "NEEDS_REVIEW", note: truncateNote(`Retry gagal: ${message}`) },
     });

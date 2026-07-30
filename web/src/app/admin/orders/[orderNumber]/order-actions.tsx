@@ -68,7 +68,7 @@ function MarkCompletedManualForm({
       <input type="hidden" name="orderId" value={orderId} />
       <input type="hidden" name="orderNumber" value={orderNumber} />
       <Label htmlFor="sn">SN / kode voucher</Label>
-      <Textarea id="sn" name="sn" rows={2} placeholder="Isi SN/kode voucher yang diberikan ke pembeli" required />
+      <Textarea id="sn" name="sn" rows={2} maxLength={191} placeholder="Isi SN/kode voucher yang diberikan ke pembeli" required />
       <Button type="submit" disabled={pending} variant="secondary">{pending ? "Memproses..." : "Tandai Selesai Manual"}</Button>
       <ActionMessage state={state} />
     </form>
@@ -92,7 +92,7 @@ function MarkRefundedForm({
       <input type="hidden" name="orderId" value={orderId} />
       <input type="hidden" name="orderNumber" value={orderNumber} />
       <Label htmlFor="note">Catatan (nomor referensi transfer)</Label>
-      <Textarea id="note" name="note" rows={2} placeholder="Mis. transfer BCA 29/07 12:34, ref 123456" required />
+      <Textarea id="note" name="note" rows={2} maxLength={191} placeholder="Mis. transfer BCA 29/07 12:34, ref 123456" required />
       <Button type="submit" disabled={pending} variant="secondary">{pending ? "Memproses..." : "Tandai Sudah Direfund"}</Button>
       <ActionMessage state={state} />
     </form>

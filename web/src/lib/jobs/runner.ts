@@ -1,10 +1,9 @@
 import { db } from "@/lib/db";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 import type { ProviderKey } from "@prisma/client";
-import { applyFulfillmentResult, dispatchFulfillment } from "@/lib/order/fulfillment";
+import { applyFulfillmentResult, dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
 import { getAdapter } from "@/lib/providers/registry";
 import { buildCustomerNo } from "@/lib/order/customer-no";
-import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
 
 export type JobHandler = (payload: unknown) => Promise<string | void>;
 
@@ -122,12 +121,13 @@ export const handlers: Record<string, JobHandler> = {
 
     if (shouldEscalateRecheck(attempt, result.status)) {
       const note = "Eskalasi: 30x recheck tanpa hasil final";
-      await db.order.update({ where: { id: order.id }, data: { status: "NEEDS_REVIEW" } });
-      await db.orderStatusHistory.create({
-        data: { orderId: order.id, toStatus: "NEEDS_REVIEW", note },
+      const escalated = await escalateOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        toStatus: "NEEDS_REVIEW",
+        note,
       });
-      await sendTelegramAlert(formatOrderAlertMessage({ orderNumber: order.orderNumber, status: "NEEDS_REVIEW", reason: note }));
-      return "escalated";
+      return escalated.claimed ? "escalated" : "no-op: order sudah final";
     }
     if (result.status === "pending") {
       await db.job.create({

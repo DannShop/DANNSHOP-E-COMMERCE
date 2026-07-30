@@ -33,7 +33,7 @@ export default async function InvoicePage({
           total: order.total.toString(),
           qrString: actions?.qrString ?? null,
           expiredAt: order.expiredAt?.toISOString() ?? null,
-          sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : null,
+          sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,
         }}
       />
     </div>

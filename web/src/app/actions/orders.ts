@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { retryOrderFulfillment, retryOrderRefund } from "@/lib/order/fulfillment";
+import { truncateNote } from "@/lib/order/status-note";
 
 export interface ActionResult {
   ok?: string;
@@ -79,15 +80,33 @@ export async function markCompletedManualAction(formData: FormData): Promise<Act
     return { error: "SN/kode voucher wajib diisi." };
   }
 
+  // Belt-and-suspenders (defense in depth bersama guard atomik db.order.updateMany di bawah,
+  // dan guard ORDER_STATUSES_NOT_OVERWRITABLE_BY_AUTOMATION di applyFulfillmentResult/runner.ts):
+  // tolak "Tandai Selesai Manual" kalau percobaan fulfillment TERAKHIR masih berjalan (SENT/
+  // PROCESSING) - barang masih mungkin menyusul terkirim dari provider, jangan biarkan admin
+  // menandai selesai dulu (berisiko double-payout kalau hasil provider datang belakangan).
+  const latestFulfillment = await db.orderFulfillment.findMany({
+    where: { orderId },
+    orderBy: { attemptNo: "desc" },
+    take: 1,
+    select: { status: true },
+  });
+  const lastAttemptStatus = latestFulfillment[0]?.status;
+  if (lastAttemptStatus === "SENT" || lastAttemptStatus === "PROCESSING") {
+    return {
+      error: "Masih ada percobaan fulfillment yang belum final ke provider — tunggu hasilnya atau gunakan tombol Coba Lagi, jangan tandai selesai manual dulu.",
+    };
+  }
+
   const claimed = await db.order.updateMany({
     where: { id: orderId, status: { in: ["NEEDS_REVIEW", "PROCESSING"] } },
-    data: { status: "COMPLETED", completedAt: new Date() },
+    data: { status: "COMPLETED", completedAt: new Date(), manualSn: sn.trim() },
   });
   if (claimed.count === 0) {
     return { error: "Order tidak dalam status yang bisa ditandai selesai manual." };
   }
   await db.orderStatusHistory.create({
-    data: { orderId, toStatus: "COMPLETED", note: `Ditandai selesai manual oleh admin. SN: ${sn.trim()}` },
+    data: { orderId, toStatus: "COMPLETED", note: truncateNote(`Ditandai selesai manual oleh admin. SN: ${sn.trim()}`) },
   });
   await logAdmin(admin.adminId, "order.mark_completed_manual", orderId, { sn: sn.trim() });
   revalidatePath("/admin/orders");
@@ -117,7 +136,7 @@ export async function markRefundedAction(formData: FormData): Promise<ActionResu
   if (claimed.count === 0) return { error: "Order tidak dalam status Refund Pending." };
 
   await db.orderStatusHistory.create({
-    data: { orderId, toStatus: "REFUNDED", note: `Direfund manual oleh admin: ${note.trim()}` },
+    data: { orderId, toStatus: "REFUNDED", note: truncateNote(`Direfund manual oleh admin: ${note.trim()}`) },
   });
   await logAdmin(admin.adminId, "order.mark_refunded", orderId, { note: note.trim() });
   revalidatePath("/admin/orders");

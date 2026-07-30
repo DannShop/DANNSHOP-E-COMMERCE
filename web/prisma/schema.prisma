@@ -213,6 +213,7 @@ model Order {
   total         BigInt
   expiredAt     DateTime?
   completedAt   DateTime?
+  manualSn      String?              @db.Text // SN/kode voucher diisi admin lewat "Tandai Selesai Manual" - dipakai invoice kalau tidak ada OrderFulfillment SUCCESS
   payment       OrderPayment?
   fulfillments  OrderFulfillment[]
   statusHistory OrderStatusHistory[]
