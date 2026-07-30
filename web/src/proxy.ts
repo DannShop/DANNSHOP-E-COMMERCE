@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
+import { db } from "@/lib/db";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 
 const { auth } = NextAuth(authConfig);
@@ -34,6 +35,10 @@ export default auth(async (req) => {
 
   if (nextUrl.pathname.startsWith("/admin")) {
     if (!user || user.role !== "ADMIN") {
+      return Response.redirect(new URL("/login", nextUrl));
+    }
+    const fresh = await db.user.findUnique({ where: { id: user.id }, select: { role: true, updatedAt: true } });
+    if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== user.updatedAt) {
       return Response.redirect(new URL("/login", nextUrl));
     }
   }

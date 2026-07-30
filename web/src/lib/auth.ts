@@ -22,7 +22,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const ok = await verifyPassword(parsed.data.password, user.passwordHash);
         if (!ok) return null;
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role };
+        return { id: user.id, email: user.email, name: user.name, role: user.role, updatedAt: user.updatedAt.getTime() };
       },
     }),
   ],

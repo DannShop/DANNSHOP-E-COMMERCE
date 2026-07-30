@@ -29,6 +29,10 @@ export type ActionResult = { ok?: string; error?: string };
 async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
   const session = await auth();
   if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
+  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
+  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
+    return { error: "Tidak diizinkan" };
+  }
   return { adminId: session.user.id };
 }
 
