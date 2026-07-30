@@ -40,6 +40,16 @@ const healthVariant: Record<string, "success" | "warning" | "destructive" | "mut
   UNKNOWN: "muted",
 };
 
+const balanceAlertLabel: Record<string, string> = {
+  OK: "Sehat",
+  LOW: "Menipis",
+};
+
+const balanceAlertVariant: Record<string, "success" | "warning"> = {
+  OK: "success",
+  LOW: "warning",
+};
+
 function ActionMessage({ state }: { state: ActionResult }) {
   if (!state.ok && !state.error) return null;
   return (
@@ -61,10 +71,13 @@ export interface ProviderCardProps {
   balanceDisplay: string;
   lastHealthCheckDisplay: string;
   lastSyncDisplay: string;
+  minBalanceAlert: string; // "" kalau alert nonaktif, string angka murni (tanpa "Rp"/titik) kalau aktif - untuk default value <input>
+  balanceAlertStatus: string; // "OK" | "LOW"
   toggleProviderActive: ServerAction;
   checkProviderBalance: ServerAction;
   syncProviderNow: ServerAction;
   saveDigiflazzCredentials: ServerAction;
+  saveBalanceThreshold: ServerAction;
 }
 
 export function ProviderCard({
@@ -76,10 +89,13 @@ export function ProviderCard({
   balanceDisplay,
   lastHealthCheckDisplay,
   lastSyncDisplay,
+  minBalanceAlert,
+  balanceAlertStatus,
   toggleProviderActive,
   checkProviderBalance,
   syncProviderNow,
   saveDigiflazzCredentials,
+  saveBalanceThreshold,
 }: ProviderCardProps) {
   const [toggleState, toggleAction, togglePending] = useActionState(
     withPrevState(toggleProviderActive),
@@ -95,6 +111,10 @@ export function ProviderCard({
   );
   const [credState, credAction, credPending] = useActionState(
     withPrevState(saveDigiflazzCredentials),
+    INITIAL_STATE,
+  );
+  const [thresholdState, thresholdAction, thresholdPending] = useActionState(
+    withPrevState(saveBalanceThreshold),
     INITIAL_STATE,
   );
 
@@ -128,6 +148,36 @@ export function ProviderCard({
           <dt className="text-muted-foreground">Sync harga terakhir</dt>
           <dd>{lastSyncDisplay}</dd>
         </dl>
+
+        <form action={thresholdAction} className="space-y-2 rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor={`${providerKey}-threshold`}>Ambang alert saldo</Label>
+            {minBalanceAlert !== "" && (
+              <Badge variant={balanceAlertVariant[balanceAlertStatus] ?? "muted"}>
+                {balanceAlertLabel[balanceAlertStatus] ?? balanceAlertStatus}
+              </Badge>
+            )}
+          </div>
+          <input type="hidden" name="key" value={providerKey} />
+          <Input
+            id={`${providerKey}-threshold`}
+            name="minBalanceAlert"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={1000}
+            defaultValue={minBalanceAlert}
+            placeholder="Kosongkan untuk nonaktifkan alert"
+            aria-describedby={`${providerKey}-threshold-help`}
+          />
+          <p id={`${providerKey}-threshold-help`} className="text-xs text-muted-foreground">
+            Kirim notifikasi Telegram otomatis kalau saldo turun di bawah angka ini.
+          </p>
+          <Button type="submit" size="sm" variant="outline" disabled={thresholdPending}>
+            {thresholdPending ? "Menyimpan..." : "Simpan Ambang Batas"}
+          </Button>
+          <ActionMessage state={thresholdState} />
+        </form>
 
         {!hasCredentials && (
           <p className="rounded-md bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">

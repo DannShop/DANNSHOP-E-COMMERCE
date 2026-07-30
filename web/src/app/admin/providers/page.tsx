@@ -4,6 +4,7 @@ import {
   toggleProviderActive,
   checkProviderBalance,
   syncProviderNow,
+  saveBalanceThreshold,
 } from "@/app/actions/providers";
 import { ProviderCard } from "./provider-card";
 
@@ -62,10 +63,13 @@ export default async function AdminProvidersPage() {
             balanceDisplay={formatRupiah(provider.balance)}
             lastHealthCheckDisplay={formatDateTime(provider.lastHealthCheckAt)}
             lastSyncDisplay={formatSync(lastSyncs[i])}
+            minBalanceAlert={provider.minBalanceAlert?.toString() ?? ""}
+            balanceAlertStatus={provider.balanceAlertStatus}
             toggleProviderActive={toggleProviderActive}
             checkProviderBalance={checkProviderBalance}
             syncProviderNow={syncProviderNow}
             saveDigiflazzCredentials={saveDigiflazzCredentials}
+            saveBalanceThreshold={saveBalanceThreshold}
           />
         ))}
       </div>
