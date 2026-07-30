@@ -3,7 +3,9 @@ import { runPriceSync } from "@/lib/catalog/price-sync";
 import type { ProviderKey } from "@prisma/client";
 import { applyFulfillmentResult, dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
 import { getAdapter } from "@/lib/providers/registry";
+import { decideBalanceAlertTransition } from "@/lib/providers/balance-alert";
 import { buildCustomerNo } from "@/lib/order/customer-no";
+import { formatBalanceAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
 
 export type JobHandler = (payload: unknown) => Promise<string | void>;
 
@@ -94,6 +96,60 @@ export const handlers: Record<string, JobHandler> = {
     return `reconciled=${staleOrders.length}`;
   },
 
+  "check-provider-balance": async () => {
+    const providers = await db.providerConfig.findMany({
+      where: { isActive: true, minBalanceAlert: { not: null } },
+    });
+
+    for (const provider of providers) {
+      let balance: bigint;
+      try {
+        const adapter = await getAdapter(provider.key);
+        balance = await adapter.fetchBalance();
+      } catch (e) {
+        // Sama persis dengan tombol "Cek Saldo" manual (actions/providers.ts) - gangguan
+        // API sesaat itu wajar, tidak boleh alert Telegram tiap kali jaringan blip.
+        console.error("check-provider-balance: fetchBalance gagal, dilewati", { provider: provider.key, error: e });
+        await db.providerConfig.update({
+          where: { key: provider.key },
+          data: { healthStatus: "DOWN", lastHealthCheckAt: new Date() },
+        });
+        continue;
+      }
+
+      await db.providerConfig.update({
+        where: { key: provider.key },
+        data: { balance, healthStatus: "HEALTHY", lastHealthCheckAt: new Date() },
+      });
+      await db.providerBalanceLog.create({ data: { providerId: provider.id, balance } });
+
+      const transition = decideBalanceAlertTransition(balance, provider.minBalanceAlert!, provider.balanceAlertStatus);
+      if (transition.alert !== "none") {
+        await db.providerConfig.update({
+          where: { key: provider.key },
+          data: { balanceAlertStatus: transition.newStatus },
+        });
+        await sendTelegramAlert(
+          formatBalanceAlertMessage({
+            displayName: provider.displayName,
+            balance,
+            threshold: provider.minBalanceAlert!,
+            recovered: transition.alert === "recovered",
+          }),
+        );
+      }
+    }
+
+    // Self-reschedule tiap 1 jam (pola sama seperti "sync-prices") - dijalankan
+    // TANPA syarat (bukan cuma kalau semua provider sukses) supaya gangguan jaringan
+    // di 1 provider tidak menghentikan cadence pengecekan provider lain seterusnya.
+    await db.job.create({
+      data: { type: "check-provider-balance", payload: {}, runAt: new Date(Date.now() + 60 * 60_000) },
+    });
+
+    return `checked=${providers.length}`;
+  },
+
   "recheck-fulfillment": async (payload) => {
     const { fulfillmentId, attempt } = payload as { fulfillmentId: string; attempt: number };
     const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: fulfillmentId } });
@@ -175,6 +231,23 @@ export async function ensureRecurringJobs(): Promise<void> {
   });
   if (!existingReconcile) {
     await db.job.create({ data: { type: "reconcile-paid-orders", payload: {}, runAt: new Date() } });
+  }
+
+  // Job RUNNING dianggap basi kalau sudah RUNNING lebih lama dari threshold ini -
+  // guard yang sama persis dengan reconcile-paid-orders di atas.
+  const BALANCE_CHECK_RUNNING_STALE_MINUTES = 10;
+  const balanceCheckRunningFreshAfter = new Date(Date.now() - BALANCE_CHECK_RUNNING_STALE_MINUTES * 60_000);
+  const existingBalanceCheck = await db.job.findFirst({
+    where: {
+      type: "check-provider-balance",
+      OR: [
+        { status: "PENDING" },
+        { status: "RUNNING", updatedAt: { gt: balanceCheckRunningFreshAfter } },
+      ],
+    },
+  });
+  if (!existingBalanceCheck) {
+    await db.job.create({ data: { type: "check-provider-balance", payload: {}, runAt: new Date() } });
   }
 }
 
