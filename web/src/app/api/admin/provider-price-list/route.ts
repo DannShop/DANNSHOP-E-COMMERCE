@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { ProviderKey } from "@prisma/client";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { getAdapter } from "@/lib/providers/registry";
 
 // Sumber data untuk sku-picker.tsx — admin-only, tidak pernah membocorkan
@@ -8,7 +9,11 @@ import { getAdapter } from "@/lib/providers/registry";
 // kredensial di server; hanya baris price list yang dikembalikan ke client).
 export async function GET(request: Request) {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") {
+  if (session?.user?.role !== "ADMIN" || !session.user.id) {
+    return NextResponse.json({ error: "Tidak diizinkan" }, { status: 403 });
+  }
+  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
+  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
     return NextResponse.json({ error: "Tidak diizinkan" }, { status: 403 });
   }
   const url = new URL(request.url);
