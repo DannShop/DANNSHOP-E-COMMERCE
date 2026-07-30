@@ -1,8 +1,22 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-30 (Fase 1-4, 7a & **7b SELESAI TOTAL** — Fase 7b belum di-merge ke `main`, masih di branch worktree, lihat "Status Fase 7b" di bawah untuk langkah integrasi berikutnya.)
+Terakhir update: 2026-07-30 (Fase 1-4, 7a & 7b **SELESAI TOTAL, SUDAH MERGE ke `main`** commit `65090a3`. **Fase 7c (hardening keamanan) SEDANG BRAINSTORMING, DIJEDA** — lihat "Status Fase 7c" di bawah, baca dulu sebelum lanjut apa pun.)
 
-## Status Fase 7b (2026-07-30) — 7 TASK + FINAL REVIEW (1 RONDE FIX) SELESAI, BELUM MERGE
+## ⚠️ Status Fase 7c (2026-07-30) — BRAINSTORMING DIJEDA, BELUM ADA SPEC FINAL/PLAN
+
+User minta lanjut ke sisa scope Fase 7 (§12 roadmap: laporan/hardening/deploy) setelah Fase 7b merge, dan memilih **hardening keamanan**. User minta audit menyeluruh dulu sebelum menentukan scope pasti (bukan cuma asumsi 2 backlog lama yang sudah diketahui).
+
+**Audit keamanan menyeluruh SUDAH SELESAI** atas seluruh `web/src` — hasil lengkap (2 Critical, 4 High, 9 Medium, 6 Low, semua file:line + skenario eksploitasi + fix disarankan) ada di `docs/superpowers/specs/2026-07-30-fase-7c-security-hardening-audit.md` (commit `f9620ef`). **Baca file itu dulu, JANGAN audit ulang dari nol.**
+
+**Keputusan user yang sudah final:** scope Fase 7c = SEMUA 2 Critical + 4 High (C-1 poisoning idempotency webhook Midtrans — BARU ditemukan, belum pernah ke-flag sebelumnya; C-2 IDOR invoice/orderNumber — backlog lama, terkonfirmasi masih ada; H-1 tidak ada rate limiting sama sekali; H-2 webhook storage exhaustion terkait C-1; H-3 kill-switch provider `isActive` tidak berfungsi; H-4 sesi JWT tanpa masa berlaku/revalidasi role). 9 Medium + 6 Low jadi backlog Fase 7d, TIDAK masuk scope ini.
+
+**2 pertanyaan pendekatan BELUM DIJAWAB user** (brainstorming dijeda tepat di titik ini, user harus keluar — bukan blocker teknis):
+1. C-2 fix: kolom `publicToken` terpisah (migrasi kecil, direkomendasikan) vs ganti `generateOrderNumber` jadi token panjang langsung.
+2. H-1 storage rate limit: in-memory per proses (direkomendasikan) vs tabel MySQL `RateLimit`.
+
+**Cara resume:** baca dokumen audit di atas, lalu tanyakan ULANG 2 pertanyaan di atas ke user (jangan asumsikan opsi "direkomendasikan" otomatis dipilih). Detail penuh + pointer ada di memory `project_fase7c_brainstorming_paused`. Setelah dijawab: lanjut `superpowers:brainstorming` normal (presentasikan desain per fix, tulis spec final `docs/superpowers/specs/2026-07-30-fase-7c-security-hardening-design.md`, self-review, minta user review) → `superpowers:writing-plans`.
+
+## Status Fase 7b (2026-07-30) — 7 TASK + FINAL REVIEW (1 RONDE FIX) SELESAI, SUDAH MERGE
 
 Plan: `docs/superpowers/plans/2026-07-30-fase-7b-alert-saldo-provider.md` (7 task). Spec: `docs/superpowers/specs/2026-07-30-fase-7b-alert-saldo-provider-design.md`. Dieksekusi via `superpowers:subagent-driven-development` di worktree `.claude/worktrees/fase-7b-alert-saldo-provider-sdd`, branch `worktree-fase-7b-alert-saldo-provider-sdd` (dari `main` commit `b4b04f6`). Sesi eksekusi terpecah 2: Task 1-5 selesai, dijeda mid-Task 6 (istirahat user); Task 6-7 + final review + fix wave selesai sesi berikutnya.
 
@@ -22,7 +36,7 @@ Fix wave (commit `90ed0b1`, base `a8ed474`): keempat temuan diperbaiki 1 commit,
 
 **7 Minor lain di-defer non-blocking** (dicatat ledger, sudah dihapus bareng workspace — ringkasan): duplikasi row job kalau `Job.update(DONE)` gagal setelah row jadwal berikutnya dibuat (pre-existing pola `sync-prices`, bukan regresi Fase 7b); `ProviderBalanceLog` write-only tanpa retensi (tidak pernah dibaca di manapun, kandidat backlog grafik tren saldo); form ambang tidak ikut `actionsDisabled` (aman fungsional, cuma sedikit tidak konsisten); hardening input `saveBalanceThreshold` (key invalid/nilai BigInt raksasa/hex literal — admin-only, dampak nihil); `providers.ts:50` cast `as string` redundan; warning dev-only Base UI uncontrolled→controlled field (non-fungsional, bukan unik Task 6).
 
-**Belum di-merge ke `main`** — langkah berikutnya: `superpowers:finishing-a-development-branch` untuk integrasi `worktree-fase-7b-alert-saldo-provider-sdd` → `main`.
+**Merge:** fast-forward `main` ← `worktree-fase-7b-alert-saldo-provider-sdd` (commit `65090a3`), 117/117 test tetap hijau post-merge, branch feature dihapus, worktree dihapus bersih (tidak ada sisa lock, beda dari Fase 7a).
 
 **Tindak lanjut non-blocking setelah merge:** sinkronkan `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`/`NEXT_PUBLIC_APP_URL` (bot baru sesi ini) ke `.env` checkout utama (`D:/Coding VSC/DannShop-PPOB/web/.env`) — saat ini hanya ada di `.env` worktree, dan tanpa `NEXT_PUBLIC_APP_URL` link di pesan alert Telegram jadi path relatif yang tidak bisa diklik.
 
