@@ -17,6 +17,18 @@ export function formatOrderAlertMessage(
   return `⚠️ Order ${params.orderNumber} → ${params.status}\n${params.reason}\n${baseUrl}/admin/orders/${params.orderNumber}`;
 }
 
+export function formatBalanceAlertMessage(
+  params: { displayName: string; balance: bigint; threshold: bigint; recovered: boolean },
+  baseUrl: string = process.env.NEXT_PUBLIC_APP_URL ?? "",
+): string {
+  const balanceStr = `Rp ${Number(params.balance).toLocaleString("id-ID")}`;
+  if (params.recovered) {
+    return `✅ Saldo ${params.displayName} pulih: ${balanceStr}\n${baseUrl}/admin/providers`;
+  }
+  const thresholdStr = `Rp ${Number(params.threshold).toLocaleString("id-ID")}`;
+  return `⚠️ Saldo ${params.displayName} menipis: ${balanceStr} (ambang ${thresholdStr})\n${baseUrl}/admin/providers`;
+}
+
 // Tidak pernah throw - kegagalan kirim notifikasi tidak boleh mengganggu
 // jalur uang di fulfillment.ts/runner.ts yang memanggil fungsi ini.
 // Guard clause di dalam try untuk melindungi dari TypeError synchronous jika config malformed.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
+import { formatBalanceAlertMessage, formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
 
 describe("formatOrderAlertMessage", () => {
   it("menyusun pesan dengan nomor order, status, alasan, dan link admin", () => {
@@ -11,6 +11,34 @@ describe("formatOrderAlertMessage", () => {
     expect(msg).toContain("NEEDS_REVIEW");
     expect(msg).toContain("Tidak ada provider SKU tersedia");
     expect(msg).toContain("https://dannshop.test/admin/orders/INV-20260729-0001");
+  });
+});
+
+describe("formatBalanceAlertMessage", () => {
+  it("saldo menipis: pesan warning berisi nama provider, saldo, dan ambang batas", () => {
+    const msg = formatBalanceAlertMessage(
+      { displayName: "Digiflazz", balance: 500_000n, threshold: 1_000_000n, recovered: false },
+      "https://dannshop.test",
+    );
+    expect(msg).toContain("⚠️");
+    expect(msg).toContain("Digiflazz");
+    expect(msg).toContain("menipis");
+    expect(msg).toContain("Rp 500.000");
+    expect(msg).toContain("Rp 1.000.000");
+    expect(msg).toContain("https://dannshop.test/admin/providers");
+  });
+
+  it("saldo pulih: pesan sukses berisi nama provider dan saldo, TANPA menyebut ambang batas", () => {
+    const msg = formatBalanceAlertMessage(
+      { displayName: "Digiflazz", balance: 1_500_000n, threshold: 1_000_000n, recovered: true },
+      "https://dannshop.test",
+    );
+    expect(msg).toContain("✅");
+    expect(msg).toContain("Digiflazz");
+    expect(msg).toContain("pulih");
+    expect(msg).toContain("Rp 1.500.000");
+    expect(msg).not.toContain("Rp 1.000.000");
+    expect(msg).toContain("https://dannshop.test/admin/providers");
   });
 });
 
