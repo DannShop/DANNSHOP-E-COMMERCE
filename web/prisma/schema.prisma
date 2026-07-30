@@ -204,6 +204,7 @@ model ProviderSku {
 model Order {
   id            String               @id @default(cuid())
   orderNumber   String               @unique // INV-YYYYMMDD-XXXX
+  publicToken   String               @unique @default(cuid()) // kunci akses invoice/status API - tidak tertebak (beda dari orderNumber yang cuma 4 digit/hari)
   status        OrderStatus          @default(PENDING_PAYMENT)
   userId        String?
   user          User?                @relation(fields: [userId], references: [id])
@@ -226,6 +227,7 @@ model Order {
   updatedAt     DateTime             @updatedAt
 
   @@index([status, createdAt])
+  @@index([publicToken])
 }
 
 model OrderPayment {
@@ -324,6 +326,15 @@ model Job {
   updatedAt   DateTime  @updatedAt
 
   @@index([status, runAt])
+}
+
+model RateLimit {
+  id          String   @id @default(cuid())
+  key         String   @unique // contoh: "login:ip:1.2.3.4:1753862400000" (endpoint:tipe:nilai:windowStartMs)
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@index([windowStart])
 }
 
 model AdminActionLog {
