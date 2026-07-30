@@ -78,6 +78,11 @@ enum HealthStatus {
   DOWN
 }
 
+enum BalanceAlertStatus {
+  OK
+  LOW
+}
+
 enum JobStatus {
   PENDING
   RUNNING
@@ -272,17 +277,19 @@ model OrderStatusHistory {
 // ===== Blok 4: Operasional =====
 
 model ProviderConfig {
-  id                String               @id @default(cuid())
-  key               ProviderKey          @unique
-  displayName       String
-  credentials       Json? // terenkripsi di layer aplikasi sebelum simpan
-  isActive          Boolean              @default(false)
-  priority          Int                  @default(100) // kecil = diprioritaskan saat harga seri
-  balance           BigInt               @default(0)
-  healthStatus      HealthStatus         @default(UNKNOWN)
-  lastHealthCheckAt DateTime?
-  balanceLogs       ProviderBalanceLog[]
-  updatedAt         DateTime             @updatedAt
+  id                 String               @id @default(cuid())
+  key                ProviderKey          @unique
+  displayName        String
+  credentials        Json? // terenkripsi di layer aplikasi sebelum simpan
+  isActive           Boolean              @default(false)
+  priority           Int                  @default(100) // kecil = diprioritaskan saat harga seri
+  balance            BigInt               @default(0)
+  healthStatus       HealthStatus         @default(UNKNOWN)
+  lastHealthCheckAt  DateTime?
+  minBalanceAlert    BigInt? // ambang batas alert Telegram - null = alert nonaktif utk provider ini
+  balanceAlertStatus BalanceAlertStatus   @default(OK) // state machine edge-triggered, lihat decideBalanceAlertTransition
+  balanceLogs        ProviderBalanceLog[]
+  updatedAt          DateTime             @updatedAt
 }
 
 model ProviderBalanceLog {
