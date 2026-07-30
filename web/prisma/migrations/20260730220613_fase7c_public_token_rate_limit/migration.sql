@@ -1,5 +1,14 @@
 -- AlterTable
-ALTER TABLE `Order` ADD COLUMN `publicToken` VARCHAR(191) NOT NULL;
+-- publicToken punya @default(cuid()) di level Prisma Client saja (bukan
+-- default MySQL asli - MySQL tidak punya fungsi cuid()), jadi kolom ini
+-- ditambah nullable dulu, di-backfill per-baris dengan UUID() (unik per
+-- baris, cukup utk baris lama yang tidak akan pernah lagi diakses lewat
+-- publicToken generate-an lama), baru diketatkan jadi NOT NULL - supaya
+-- migrasi ini aman dijalankan di database manapun yang sudah punya baris
+-- Order, bukan cuma di dev DB yang kebetulan masih kosong.
+ALTER TABLE `Order` ADD COLUMN `publicToken` VARCHAR(191) NULL;
+UPDATE `Order` SET `publicToken` = UUID() WHERE `publicToken` IS NULL;
+ALTER TABLE `Order` MODIFY COLUMN `publicToken` VARCHAR(191) NOT NULL;
 
 -- CreateTable
 CREATE TABLE `RateLimit` (
