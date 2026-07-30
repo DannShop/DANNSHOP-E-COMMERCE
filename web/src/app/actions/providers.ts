@@ -24,6 +24,32 @@ export const testTransactionSchema = z.object({
   testing: z.coerce.boolean().default(true),
 });
 
+export const balanceThresholdSchema = z.object({
+  minBalanceAlert: z
+    .string()
+    .nullable()
+    .transform((v) => (v === null || v.trim() === "" ? null : v))
+    .superRefine((v, ctx) => {
+      if (v === null) return;
+
+      try {
+        const bn = BigInt(v);
+        if (bn < 0n) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Ambang batas tidak boleh negatif",
+          });
+        }
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Ambang batas harus berupa angka",
+        });
+      }
+    })
+    .transform((v) => (v === null ? null : BigInt(v as string))),
+});
+
 // Catatan: "use server" sengaja dipasang inline per-fungsi (bukan di baris pertama
 // file) karena Next.js 16 melarang file ber-directive "use server" di level file
 // meng-export apa pun selain async function ("A 'use server' file can only export
@@ -148,4 +174,28 @@ export async function syncProviderNow(formData: FormData): Promise<ActionResult>
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Sync gagal." };
   }
+}
+
+export async function saveBalanceThreshold(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const key = formData.get("key") as ProviderKey;
+  const parsed = balanceThresholdSchema.safeParse({
+    minBalanceAlert: formData.get("minBalanceAlert"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  await db.providerConfig.update({ where: { key }, data: { minBalanceAlert: parsed.data.minBalanceAlert } });
+  await logAdmin(admin.adminId, "provider.save_balance_threshold", key, {
+    minBalanceAlert: parsed.data.minBalanceAlert?.toString() ?? null,
+  });
+  revalidatePath("/admin/providers");
+  return {
+    ok:
+      parsed.data.minBalanceAlert === null
+        ? "Alert saldo dinonaktifkan."
+        : `Ambang alert saldo disetel Rp ${Number(parsed.data.minBalanceAlert).toLocaleString("id-ID")}.`,
+  };
 }
