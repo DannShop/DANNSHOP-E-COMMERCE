@@ -8,6 +8,8 @@ import { generateOrderNumber } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { chargeQris } from "@/lib/midtrans/client";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
+import { headers } from "next/headers";
+import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 
 const EXPIRY_MINUTES = 15;
 
@@ -45,6 +47,12 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
 
   const session = await auth();
   const userId = session?.user?.id ?? null;
+
+  if (!userId) {
+    const ip = extractIp(await headers());
+    const guestLimit = await checkRateLimit(`checkout:ip:${ip}`, 3, 60_000);
+    if (!guestLimit.allowed) return { error: "Terlalu banyak percobaan checkout, coba lagi sebentar lagi." };
+  }
 
   if (parsed.data.paymentMethod === "balance" && !userId) {
     return { error: "Harus login untuk bayar pakai saldo." };

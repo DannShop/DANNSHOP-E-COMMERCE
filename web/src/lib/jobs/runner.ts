@@ -158,6 +158,17 @@ export const handlers: Record<string, JobHandler> = {
     return `checked=${providers.length}`;
   },
 
+  "cleanup-rate-limits": async () => {
+    const STALE_HOURS = 2;
+    const staleThreshold = new Date(Date.now() - STALE_HOURS * 60 * 60_000);
+    const deleted = await db.rateLimit.deleteMany({ where: { windowStart: { lt: staleThreshold } } });
+    // Self-reschedule tiap 1 jam, pola sama seperti check-provider-balance.
+    await db.job.create({
+      data: { type: "cleanup-rate-limits", payload: {}, runAt: new Date(Date.now() + 60 * 60_000) },
+    });
+    return `deleted=${deleted.count}`;
+  },
+
   "recheck-fulfillment": async (payload) => {
     const { fulfillmentId, attempt } = payload as { fulfillmentId: string; attempt: number };
     const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: fulfillmentId } });
@@ -256,6 +267,23 @@ export async function ensureRecurringJobs(): Promise<void> {
   });
   if (!existingBalanceCheck) {
     await db.job.create({ data: { type: "check-provider-balance", payload: {}, runAt: new Date() } });
+  }
+
+  // Job RUNNING dianggap basi kalau sudah RUNNING lebih lama dari threshold ini -
+  // guard yang sama persis dengan reconcile-paid-orders/check-provider-balance di atas.
+  const CLEANUP_RATE_LIMITS_RUNNING_STALE_MINUTES = 10;
+  const cleanupRateLimitsRunningFreshAfter = new Date(Date.now() - CLEANUP_RATE_LIMITS_RUNNING_STALE_MINUTES * 60_000);
+  const existingCleanupRateLimits = await db.job.findFirst({
+    where: {
+      type: "cleanup-rate-limits",
+      OR: [
+        { status: "PENDING" },
+        { status: "RUNNING", updatedAt: { gt: cleanupRateLimitsRunningFreshAfter } },
+      ],
+    },
+  });
+  if (!existingCleanupRateLimits) {
+    await db.job.create({ data: { type: "cleanup-rate-limits", payload: {}, runAt: new Date() } });
   }
 }
 

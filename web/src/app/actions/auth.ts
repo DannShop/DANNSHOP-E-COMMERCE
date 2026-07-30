@@ -6,11 +6,18 @@ import { signIn } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { registerSchema } from "@/lib/validation/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function loginAction(
   _prev: { error?: string } | undefined,
   formData: FormData
 ): Promise<{ error?: string }> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (email) {
+    const emailLimit = await checkRateLimit(`login:email:${email}`, 20, 60 * 60_000);
+    if (!emailLimit.allowed) return { error: "Terlalu banyak percobaan login untuk akun ini, coba lagi nanti." };
+  }
+
   try {
     await signIn("credentials", {
       email: formData.get("email"),
