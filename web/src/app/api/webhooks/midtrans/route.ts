@@ -7,6 +7,18 @@ import { getTransactionStatus } from "@/lib/midtrans/client";
 import { mapMidtransStatus } from "@/lib/midtrans/status-mapping";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
 
+const MAX_BODY_BYTES = 16_000;
+const ALLOWED_HEADER_KEYS = ["content-type", "x-forwarded-for", "user-agent"];
+
+function pickAllowedHeaders(headers: Headers): Record<string, string> {
+  const picked: Record<string, string> = {};
+  for (const key of ALLOWED_HEADER_KEYS) {
+    const value = headers.get(key);
+    if (value !== null) picked[key] = value;
+  }
+  return picked;
+}
+
 const notifSchema = z.object({
   order_id: z.string(),
   status_code: z.string(),
@@ -134,6 +146,9 @@ export async function POST(request: Request) {
   }
 
   const rawBody = await request.text();
+  if (rawBody.length > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Body request terlalu besar" }, { status: 413 });
+  }
 
   let notif: z.infer<typeof notifSchema>;
   try {
@@ -143,6 +158,14 @@ export async function POST(request: Request) {
     notif = parsed.data;
   } catch {
     return NextResponse.json({ error: "Bukan JSON valid" }, { status: 400 });
+  }
+
+  // Signature diverifikasi PALING AWAL, sebelum WebhookEvent disentuh sama
+  // sekali - request dengan signature salah tidak boleh bisa "mengunci"
+  // eventKey (mencegah settlement asli terblokir dedup palsu) atau menulis
+  // row apa pun (mencegah storage exhaustion oleh request tak terautentikasi).
+  if (!verifyMidtransSignature(notif, process.env.MIDTRANS_SERVER_KEY!)) {
+    return NextResponse.json({ error: "Signature tidak valid" }, { status: 403 });
   }
 
   const eventKey = `midtrans:${notif.order_id}:${notif.transaction_status}`;
@@ -159,7 +182,7 @@ export async function POST(request: Request) {
           externalRef: notif.order_id,
           eventKey,
           rawBody,
-          headers: Object.fromEntries(request.headers),
+          headers: pickAllowedHeaders(request.headers),
         },
       });
     } catch (e) {
@@ -175,11 +198,6 @@ export async function POST(request: Request) {
 
   const markProcessed = (result: string) =>
     db.webhookEvent.update({ where: { eventKey }, data: { processedAt: new Date(), processResult: result } });
-
-  if (!verifyMidtransSignature(notif, process.env.MIDTRANS_SERVER_KEY!)) {
-    await markProcessed("signature_invalid");
-    return NextResponse.json({ error: "Signature tidak valid" }, { status: 403 });
-  }
 
   try {
     const order = await db.order.findUnique({ where: { orderNumber: notif.order_id } });
