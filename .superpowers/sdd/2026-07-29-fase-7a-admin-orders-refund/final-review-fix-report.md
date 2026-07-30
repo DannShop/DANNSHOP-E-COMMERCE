@@ -110,3 +110,53 @@ Tidak ada test otomatis baru ditambahkan untuk Fix 1/Fix 4 (sesuai konvensi repo
 - MySQL lokal (Laragon) tidak otomatis berjalan di environment ini — sempat perlu di-start manual (`mysqld.exe --defaults-file=...`) sebelum migrasi Fix 5 bisa dijalankan. Kalau environment CI/merge lain tidak punya MySQL running, `prisma migrate deploy`/`migrate dev` akan gagal connect sampai service dinyalakan — bukan bug dari fix ini, tapi perlu diingat saat merge/deploy.
 - Cabang `not_eligible` di `retryOrderFulfillment` (baris ~298) masih pakai `db.order.update` tanpa guard `notIn` — di luar lingkup 5 titik yang diminta brief, risiko rendah (order sudah diklaim function ini sendiri via status PROCESSING sebelum sampai ke situ), tapi dicatat di sini kalau reviewer ingin konsistensi penuh di masa depan.
 - `maxLength={191}` di `<Textarea>` SN/catatan admin hanya hint sisi klien murni (bukan jaminan) — jaminan sebenarnya tetap `truncateNote()` sisi server, sesuai instruksi brief. Untuk `markCompletedManualAction`, note final ("Ditandai selesai manual oleh admin. SN: " + sn) bisa tetap >191 karakter walau SN-nya persis 191 karakter (karena ada prefix) — `truncateNote()` server-side tetap menangani ini dengan benar (potong+"..."), jadi tidak ada bug, hanya batas hint klien yang tidak 100% presisi terhadap batas kolom gabungan.
+
+## Fix 6 & 7 — Perbaikan re-review (2026-07-30)
+
+Dua issue minor terdeteksi di re-review scoped final sebelum main merge:
+
+**Fix 6 — Table name case-sensitivity dalam migrasi (Critical for Linux production)**
+
+- File: `web/prisma/migrations/20260730042850_add_order_manual_sn/migration.sql`
+- Perubahan: Ubah `ALTER TABLE \`order\`` menjadi `ALTER TABLE \`Order\`` (capital O)
+- Alasan: Tabel Order dibuat dengan nama capital-O (`model Order`, tidak ada `@@map`). Di Laragon Windows (MySQL default `lower_case_table_names=1`), tabel nama case-insensitive, jadi migration lama berjalan tanpa error. Tapi di Linux production dengan `lower_case_table_names=0` (case-sensitive), `prisma migrate deploy` akan gagal dengan error "Table '<db>.order' doesn't exist" karena nama tabel yang diciptakan adalah `Order`, bukan `order`. Migrasi sudah tercatat applied di `_prisma_migrations` lokal, jadi hanya mengedit file SQL sudah cukup (tidak perlu regenerasi atau re-run).
+
+**Fix 7 — SN manual tidak ditampilkan di polling endpoint status invoice**
+
+- File: `web/src/app/api/orders/[orderNumber]/status/route.ts` (line 26)
+- Perubahan: Ubah response `sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : null,` menjadi `sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,`
+- Alasan: Fix 5 menambahkan `order.manualSn` dan mengubah SSR invoice page (line 36) untuk menampilkannya sebagai fallback. Tapi endpoint polling status (`/api/orders/[orderNumber]/status`) yang dipanggil setiap 3 detik saat order belum final, masih mengembalikan `sn: null` untuk order manual. Ketika customer membuka invoice saat admin meng-mark order complete manual, halaman akan refresh dengan data polling, dan SN menjadi null lagi karena polling tidak mengembalikan `manualSn`. Dengan fix ini, polling mengembalikan `manualSn` seperti SSR page, sehingga SN manual tetap tampil tanpa perlu reload halaman manual.
+
+### Verifikasi
+
+Dijalankan dari `web/` setelah kedua fix:
+
+```
+$ npx tsc --noEmit
+(tidak ada output — bersih)
+
+$ npm run lint
+> web@0.1.0 lint
+> eslint
+
+D:\Coding VSC\DannShop-PPOB\.claude\worktrees\fase-7a-admin-orders-refund-sdd\web\src\app\account\deposit\[depositId]\deposit-status.tsx
+  83:11  warning  Using `<img>` could result in slower LCP...
+
+D:\Coding VSC\DannShop-PPOB\.claude\worktrees\fase-7a-admin-orders-refund-sdd\web\src\app\invoice\[orderNumber]\invoice-status.tsx
+  140:11  warning  Using `<img>` could result in slower LCP...
+
+✖ 2 problems (0 errors, 2 warnings)
+# 2 warning pre-existing (sama seperti sebelumnya), tidak terkait Fix 6/7
+```
+
+### File yang diubah
+
+- `web/prisma/migrations/20260730042850_add_order_manual_sn/migration.sql`
+- `web/src/app/api/orders/[orderNumber]/status/route.ts`
+
+### Commit
+
+```
+Commit: ff82a7f
+Message: fix(fase7a): perbaiki nama tabel migrasi + endpoint status polling untuk SN manual
+```
