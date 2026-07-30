@@ -125,11 +125,11 @@ export const handlers: Record<string, JobHandler> = {
 
       const transition = decideBalanceAlertTransition(balance, provider.minBalanceAlert!, provider.balanceAlertStatus);
       if (transition.alert !== "none") {
-        await db.providerConfig.update({
-          where: { key: provider.key },
-          data: { balanceAlertStatus: transition.newStatus },
-        });
-        await sendTelegramAlert(
+        // Kirim dulu, baru persist transisi status - KALAU sukses terkirim.
+        // Kalau kirim gagal (jaringan/token salah), status DB TIDAK diubah supaya
+        // siklus job berikutnya (1 jam lagi) otomatis mencoba ulang alert yang sama
+        // (state machine mengevaluasi ulang dari status lama, konsisten).
+        const sent = await sendTelegramAlert(
           formatBalanceAlertMessage({
             displayName: provider.displayName,
             balance,
@@ -137,6 +137,14 @@ export const handlers: Record<string, JobHandler> = {
             recovered: transition.alert === "recovered",
           }),
         );
+        if (sent) {
+          // CAS: cuma tulis kalau status belum diubah proses lain sejak dibaca -
+          // menutup race yang sangat jarang antar-invocation job yang tumpang tindih.
+          await db.providerConfig.updateMany({
+            where: { key: provider.key, balanceAlertStatus: provider.balanceAlertStatus },
+            data: { balanceAlertStatus: transition.newStatus },
+          });
+        }
       }
     }
 

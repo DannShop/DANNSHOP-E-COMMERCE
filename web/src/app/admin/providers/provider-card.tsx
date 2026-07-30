@@ -152,11 +152,17 @@ export function ProviderCard({
         <form action={thresholdAction} className="space-y-2 rounded-lg border bg-muted/30 p-3">
           <div className="flex items-center justify-between gap-2">
             <Label htmlFor={`${providerKey}-threshold`}>Ambang alert saldo</Label>
-            {minBalanceAlert !== "" && (
-              <Badge variant={balanceAlertVariant[balanceAlertStatus] ?? "muted"}>
-                {balanceAlertLabel[balanceAlertStatus] ?? balanceAlertStatus}
-              </Badge>
-            )}
+            {minBalanceAlert !== "" &&
+              (isActive ? (
+                <Badge variant={balanceAlertVariant[balanceAlertStatus] ?? "muted"}>
+                  {balanceAlertLabel[balanceAlertStatus] ?? balanceAlertStatus}
+                </Badge>
+              ) : (
+                // Provider nonaktif tidak pernah diproses oleh job check-provider-balance
+                // (job memfilter isActive: true) - jangan klaim "Sehat"/"Menipis" yang
+                // sebenarnya basi/tidak pernah dievaluasi. Tampilkan indikator netral saja.
+                <Badge variant="muted">Tidak dipantau</Badge>
+              ))}
           </div>
           <input type="hidden" name="key" value={providerKey} />
           <Input

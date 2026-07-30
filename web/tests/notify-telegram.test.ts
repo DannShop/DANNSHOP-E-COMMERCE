@@ -53,9 +53,9 @@ afterEach(() => vi.unstubAllGlobals());
 describe("sendTelegramAlert", () => {
   const config = { botToken: "test-token", chatId: "12345" };
 
-  it("POST ke Telegram Bot API dengan chat_id dan text", async () => {
+  it("POST ke Telegram Bot API dengan chat_id dan text, resolve true kalau sukses", async () => {
     const fn = mockFetchOnce(true);
-    await sendTelegramAlert("Halo admin", config);
+    await expect(sendTelegramAlert("Halo admin", config)).resolves.toBe(true);
 
     const [url, init] = fn.mock.calls[0];
     expect(url).toBe("https://api.telegram.org/bottest-token/sendMessage");
@@ -63,19 +63,19 @@ describe("sendTelegramAlert", () => {
     expect(body).toEqual({ chat_id: "12345", text: "Halo admin" });
   });
 
-  it("tidak throw kalau Telegram balas non-200", async () => {
+  it("tidak throw dan resolve false kalau Telegram balas non-200", async () => {
     mockFetchOnce(false, 401);
-    await expect(sendTelegramAlert("Halo admin", config)).resolves.toBeUndefined();
+    await expect(sendTelegramAlert("Halo admin", config)).resolves.toBe(false);
   });
 
-  it("tidak throw kalau fetch gagal total (network error)", async () => {
+  it("tidak throw dan resolve false kalau fetch gagal total (network error)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
-    await expect(sendTelegramAlert("Halo admin", config)).resolves.toBeUndefined();
+    await expect(sendTelegramAlert("Halo admin", config)).resolves.toBe(false);
   });
 
-  it("tidak memanggil fetch sama sekali kalau botToken/chatId kosong", async () => {
+  it("tidak memanggil fetch sama sekali dan resolve false kalau botToken/chatId kosong", async () => {
     const fn = mockFetchOnce(true);
-    await sendTelegramAlert("Halo admin", { botToken: "", chatId: "" });
+    await expect(sendTelegramAlert("Halo admin", { botToken: "", chatId: "" })).resolves.toBe(false);
     expect(fn).not.toHaveBeenCalled();
   });
 });

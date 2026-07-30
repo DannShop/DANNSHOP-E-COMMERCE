@@ -32,11 +32,15 @@ export function formatBalanceAlertMessage(
 // Tidak pernah throw - kegagalan kirim notifikasi tidak boleh mengganggu
 // jalur uang di fulfillment.ts/runner.ts yang memanggil fungsi ini.
 // Guard clause di dalam try untuk melindungi dari TypeError synchronous jika config malformed.
-export async function sendTelegramAlert(message: string, config: TelegramConfig = configFromEnv()): Promise<void> {
+// Return boolean (bukan void) supaya caller yang butuh tahu status pengiriman
+// benar-benar sukses (misal runner.ts check-provider-balance, untuk memutuskan
+// apakah aman men-persist transisi status alert) bisa melakukannya - caller lain
+// yang tidak peduli (escalateOrder di fulfillment.ts) bebas mengabaikan return value.
+export async function sendTelegramAlert(message: string, config: TelegramConfig = configFromEnv()): Promise<boolean> {
   try {
     if (!config?.botToken || !config?.chatId) {
       console.error("Telegram: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID belum di-set, notifikasi dilewati", { message });
-      return;
+      return false;
     }
 
     const res = await fetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
@@ -48,8 +52,11 @@ export async function sendTelegramAlert(message: string, config: TelegramConfig 
     if (!res.ok) {
       const text = await res.text();
       console.error(`Telegram: gagal kirim notifikasi (status ${res.status}): ${text.slice(0, 200)}`);
+      return false;
     }
+    return true;
   } catch (e) {
     console.error("Telegram: gagal kirim notifikasi", { error: e instanceof Error ? e.message : String(e) });
+    return false;
   }
 }

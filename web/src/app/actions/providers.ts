@@ -187,7 +187,15 @@ export async function saveBalanceThreshold(formData: FormData): Promise<ActionRe
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  await db.providerConfig.update({ where: { key }, data: { minBalanceAlert: parsed.data.minBalanceAlert } });
+  // Reset balanceAlertStatus ke "OK" tiap kali ambang diubah - status LOW lama
+  // bikin state machine decideBalanceAlertTransition mengira tidak ada transisi
+  // (alert "menipis" berikutnya senyap), dan menurunkan ambang saat status LOW
+  // bisa memicu alert "pulih" palsu. Reset memastikan evaluasi job berikutnya
+  // selalu mulai dari kondisi bersih.
+  await db.providerConfig.update({
+    where: { key },
+    data: { minBalanceAlert: parsed.data.minBalanceAlert, balanceAlertStatus: "OK" },
+  });
   await logAdmin(admin.adminId, "provider.save_balance_threshold", key, {
     minBalanceAlert: parsed.data.minBalanceAlert?.toString() ?? null,
   });
