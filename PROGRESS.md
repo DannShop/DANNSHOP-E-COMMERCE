@@ -1,6 +1,22 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-07-30 (Fase 1-4 SELESAI TOTAL, **Fase 7a SELESAI TOTAL DAN SUDAH MERGE ke `main`** — admin orders + refund queue + notifikasi Telegram. Belum ada spec untuk Fase 7b/7c/7d.)
+Terakhir update: 2026-07-30 (Fase 1-4 & Fase 7a SELESAI TOTAL di `main`. **Fase 7b (alert saldo provider) SEDANG DIEKSEKUSI, DIJEDA di tengah Task 6/7 atas permintaan user istirahat — lihat kotak "⚠️ LANGKAH PERTAMA SESI BERIKUTNYA" di bawah.**)
+
+## ⚠️ LANGKAH PERTAMA SESI BERIKUTNYA (jangan lewati/lupa)
+
+**Fase 7b sedang dieksekusi, JANGAN mulai dari awal / JANGAN tanya mode eksekusi lagi** — sudah jalan Subagent-Driven di worktree `.claude/worktrees/fase-7b-alert-saldo-provider-sdd` (branch `worktree-fase-7b-alert-saldo-provider-sdd`, dibuat dari `main` commit `b4b04f6`). Plan: `docs/superpowers/plans/2026-07-30-fase-7b-alert-saldo-provider.md` (7 task + final review). Ledger lengkap: `.superpowers/sdd/2026-07-30-fase-7b-alert-saldo-provider/progress.md` di dalam worktree itu (**baca ledger ini dulu**).
+
+**Task 1-5: SELESAI, semua review clean** (Task 1 skema, Task 2 `decideBalanceAlertTransition` TDD, Task 3 `formatBalanceAlertMessage` TDD, Task 4 `balanceThresholdSchema`+`saveBalanceThreshold` TDD — implementer sengaja menyimpang dari kode literal brief pakai `superRefine` bukan `union-in-pipe`, reviewer verifikasi independen kode literal brief justru melanggar spec-nya sendiri di Zod v4, disetujui — Task 5 job `check-provider-balance` + wiring `ensureRecurringJobs`).
+
+**PENTING — insiden proses di Task 1 (sudah diperbaiki, jangan terulang):** implementer Task 1 sempat commit ke `main` di checkout utama (`D:/Coding VSC/DannShop-PPOB`) alih-alih ke branch worktree ini, karena worktree waktu itu BELUM ada `node_modules` sendiri. Sudah diperbaiki (commit di-fast-forward ke branch worktree, `main` di-reset balik ke `b4b04f6`) dan worktree ini SEKARANG SUDAH `npm install` (punya `web/node_modules` sendiri) — cek dulu `git -C "D:/Coding VSC/DannShop-PPOB" log --oneline -1` benar-benar masih di `b4b04f6` sebelum lanjut, kalau ada implementer baru pastikan dispatch prompt eksplisit larang kerja di path checkout utama.
+
+**Task 6 (UI ambang batas alert saldo di `/admin/providers`) — SEDANG DIKERJAKAN, DIJEDA MID-TASK:** implementer subagent sudah dispatch dan sedang menulis kode (wajib konsultasi skill `ui-ux-pro-max`+`frontend-design` dulu sebelum finalisasi markup, sesuai permintaan eksplisit user). Saat dijeda, `web/src/app/admin/providers/page.tsx` dan `provider-card.tsx` di worktree sudah ada perubahan **BELUM DI-COMMIT** (working tree kotor). **Cek dulu status agent ini** — agent berjalan async di background dan mungkin sudah selesai/commit sendiri sebelum sesi berikutnya dimulai (background agent tidak berhenti walau sesi UI di-pause). Langkah pertama sesi berikutnya:
+1. `git -C ".claude/worktrees/fase-7b-alert-saldo-provider-sdd" status --short` dan `git -C ".claude/worktrees/fase-7b-alert-saldo-provider-sdd" log --oneline -3` — kalau sudah ada commit baru utk Task 6, agent sudah selesai duluan, lanjut ke generate review package + dispatch task-reviewer (baca `task-6-brief.md`/`task-6-report.md` di ledger workspace utk detail).
+2. Kalau working tree MASIH kotor tanpa commit baru — agent kemungkinan terhenti di tengah jalan (proses subagent tidak selamat lintas sesi kalau benar-benar mati). Cek `git diff` untuk lihat progress yang ada, putuskan lanjutkan manual atau re-dispatch implementer baru dari titik ini.
+3. Setelah Task 6 clean: Task 7 (verifikasi E2E manual — build, full suite, verifikasi jalur menipis/pulih/gagal-cek via Telegram bot asli `t.me/dannshop_bot`), lalu **Final Review** whole-branch (model paling capable, `scripts/review-package PLAN_FILE MERGE_BASE HEAD` dengan `MERGE_BASE=b4b04f6`).
+4. `web/.env` di worktree ini SUDAH ADA (di-copy manual dari checkout utama, termasuk kredensial Digiflazz+Telegram asli) — kalau worktree ini dihapus & dibuat ulang, copy lagi.
+
+**Cara resume:** `EnterWorktree` dengan `path: .claude/worktrees/fase-7b-alert-saldo-provider-sdd` (worktree sudah ada, jangan buat baru), baca `PROGRESS.md` ini + ledger SDD, lanjut `superpowers:subagent-driven-development` persis dari titik jeda di atas.
 
 ## Status Fase 7a (mulai 2026-07-29, selesai & merge 2026-07-30) — 8 TASK + FINAL REVIEW (2 RONDE) SELESAI
 
