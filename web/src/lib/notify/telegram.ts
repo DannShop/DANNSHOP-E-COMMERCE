@@ -39,7 +39,7 @@ export function formatBalanceAlertMessage(
 export async function sendTelegramAlert(message: string, config: TelegramConfig = configFromEnv()): Promise<boolean> {
   try {
     if (!config?.botToken || !config?.chatId) {
-      console.error("Telegram: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID belum di-set, notifikasi dilewati", { message });
+      console.error("Telegram: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID belum di-set, notifikasi dilewati");
       return false;
     }
 

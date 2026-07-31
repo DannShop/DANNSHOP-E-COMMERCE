@@ -12,11 +12,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dep
 
   const rawResponse = deposit.rawResponse as { qrString?: string } | null;
 
-  return NextResponse.json({
-    depositId: deposit.id,
-    status: deposit.status,
-    amount: deposit.amount.toString(),
-    qrString: rawResponse?.qrString ?? null,
-    expiredAt: deposit.expiredAt,
-  });
+  return NextResponse.json(
+    {
+      depositId: deposit.id,
+      status: deposit.status,
+      amount: deposit.amount.toString(),
+      qrString: rawResponse?.qrString ?? null,
+      expiredAt: deposit.expiredAt,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

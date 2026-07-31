@@ -27,8 +27,9 @@ export async function GET(request: Request) {
       .filter((r) => !q || r.productName.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || r.skuCode.toLowerCase().includes(q))
       .slice(0, 50)
       .map((r) => ({ ...r, costPrice: r.costPrice.toString() }));
-    return NextResponse.json({ rows });
+    return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal ambil price list" }, { status: 502 });
+    console.error("GET provider-price-list: gagal ambil price list", { provider, error: e });
+    return NextResponse.json({ error: "Gagal ambil price list, coba lagi." }, { status: 502 });
   }
 }

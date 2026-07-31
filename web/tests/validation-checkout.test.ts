@@ -49,6 +49,37 @@ describe("checkoutSchema", () => {
     });
     expect(result.success).toBe(true); // schema sendiri memang tidak tahu inputFields produk - itu tugas createCheckoutOrder
   });
+
+  it("gagal kalau value field lebih dari 255 karakter", () => {
+    const result = checkoutSchema.safeParse({
+      productItemId: "item-1",
+      buyerEmail: "a@b.com",
+      target: { user_id: "x".repeat(256) },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("gagal kalau field lebih dari 10", () => {
+    const target: Record<string, string> = {};
+    for (let i = 0; i < 11; i++) target[`field${i}`] = "v";
+    const result = checkoutSchema.safeParse({
+      productItemId: "item-1",
+      buyerEmail: "a@b.com",
+      target,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("lolos kalau tepat 10 field, masing-masing 255 karakter", () => {
+    const target: Record<string, string> = {};
+    for (let i = 0; i < 10; i++) target[`field${i}`] = "x".repeat(255);
+    const result = checkoutSchema.safeParse({
+      productItemId: "item-1",
+      buyerEmail: "a@b.com",
+      target,
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("checkoutSchema paymentMethod", () => {

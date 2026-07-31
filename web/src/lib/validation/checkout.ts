@@ -3,7 +3,8 @@ import { z } from "zod";
 export const checkoutSchema = z.object({
   productItemId: z.string().min(1, "Item wajib dipilih"),
   buyerEmail: z.string().email("Email tidak valid"),
-  target: z.record(z.string(), z.string().min(1, "Wajib diisi")),
+  target: z.record(z.string(), z.string().min(1, "Wajib diisi").max(255, "Terlalu panjang"))
+    .refine((t) => Object.keys(t).length <= 10, "Terlalu banyak field"),
   paymentMethod: z.enum(["qris", "balance"]).default("qris"),
 });
 

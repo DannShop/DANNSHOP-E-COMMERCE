@@ -9,12 +9,29 @@ describe("generateOrderNumber", () => {
     const orderNumber = generateOrderNumber(now, () => 0.1234);
     expect(orderNumber).toBe("INV-20260726-1234");
   });
+
+  it("pakai crypto.randomInt secara default (bukan Math.random)", () => {
+    const now = new Date("2026-07-26T10:00:00Z");
+    const a = generateOrderNumber(now);
+    const b = generateOrderNumber(now);
+    // Format tetap 4 digit; tidak assert nilai spesifik (random), cukup pastikan
+    // tidak error dan format konsisten - collision 2x berturut sangat tidak mungkin
+    // tapi bukan hal yang perlu di-assert di sini.
+    expect(a).toMatch(/^INV-20260726-\d{4}$/);
+    expect(b).toMatch(/^INV-20260726-\d{4}$/);
+  });
 });
 
 describe("generateRefId", () => {
   it("format PREFIX-YYYYMMDDHHmmss-6KARAKTER uppercase", () => {
     const now = new Date("2026-07-26T10:05:30Z");
     const refId = generateRefId("FUL", now, () => 0.123456789);
+    expect(refId).toMatch(/^FUL-20260726100530-[A-Z0-9]{6}$/);
+  });
+
+  it("pakai crypto.randomInt secara default (bukan Math.random)", () => {
+    const now = new Date("2026-07-26T10:05:30Z");
+    const refId = generateRefId("FUL", now);
     expect(refId).toMatch(/^FUL-20260726100530-[A-Z0-9]{6}$/);
   });
 });

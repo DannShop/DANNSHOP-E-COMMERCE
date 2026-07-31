@@ -133,7 +133,8 @@ export async function checkProviderBalance(formData: FormData): Promise<ActionRe
       where: { key },
       data: { healthStatus: "DOWN", lastHealthCheckAt: new Date() },
     });
-    return { error: e instanceof Error ? e.message : "Gagal cek saldo." };
+    console.error("checkProviderBalance: gagal cek saldo", { provider: key, error: e });
+    return { error: "Gagal cek saldo provider, coba lagi." };
   }
 }
 
@@ -160,7 +161,8 @@ export async function sendTestTransaction(formData: FormData): Promise<
     });
     return { ok: `Transaksi tes terkirim (${result.status}).`, result: { refId, status: result.status, sn: result.sn, message: result.message } };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Transaksi tes gagal." };
+    console.error("testProviderTransaction: transaksi tes gagal", { error: e });
+    return { error: "Transaksi tes gagal, coba lagi." };
   }
 }
 
@@ -176,7 +178,8 @@ export async function syncProviderNow(formData: FormData): Promise<ActionResult>
     revalidatePath("/admin/providers");
     return { ok: `Sync ${key}: ${result.updated} SKU diupdate, ${result.missing} hilang.` };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Sync gagal." };
+    console.error("syncProviderNow: sync gagal", { provider: key, error: e });
+    return { error: "Sync harga gagal, coba lagi." };
   }
 }
 
