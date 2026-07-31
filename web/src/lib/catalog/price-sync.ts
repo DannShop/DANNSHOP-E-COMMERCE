@@ -57,14 +57,26 @@ export async function runPriceSync(providerKey: ProviderKey): Promise<{ updated:
 
     const { updates, missingCount } = diffPriceList(current, fetched);
     const now = new Date();
-    await db.$transaction(
-      updates.map((u) =>
+    await db.$transaction([
+      ...updates.map((u) =>
         db.providerSku.update({
           where: { id: u.id },
           data: { costPrice: u.costPrice, status: u.status, lastSyncedAt: now },
         })
-      )
-    );
+      ),
+      db.providerPriceListCache.deleteMany({ where: { provider: providerKey } }),
+      db.providerPriceListCache.createMany({
+        data: fetched.map((f) => ({
+          provider: providerKey,
+          skuCode: f.skuCode,
+          productName: f.productName,
+          brand: f.brand,
+          costPrice: f.costPrice,
+          available: f.available,
+          syncedAt: now,
+        })),
+      }),
+    ]);
 
     await db.priceSyncLog.update({
       where: { id: log.id },

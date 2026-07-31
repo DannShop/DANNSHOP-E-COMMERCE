@@ -199,6 +199,24 @@ model ProviderSku {
   @@index([provider, providerSkuCode])
 }
 
+// Cache lokal seluruh price list provider (bukan cuma SKU yang sudah di-mapping
+// admin, beda dari ProviderSku) - diisi ulang penuh tiap "Sync Harga"/job cron,
+// dipakai sku-picker.tsx buat cari tanpa hit API provider tiap ketikan (rate
+// limit provider, mis. Digiflazz rc 83, kena kalau cari SKU langsung ke API live).
+model ProviderPriceListCache {
+  id          String      @id @default(cuid())
+  provider    ProviderKey
+  skuCode     String
+  productName String
+  brand       String
+  costPrice   BigInt
+  available   Boolean
+  syncedAt    DateTime    @default(now())
+
+  @@unique([provider, skuCode])
+  @@index([provider, productName])
+}
+
 // ===== Blok 2: Order & Fulfillment =====
 
 model Order {

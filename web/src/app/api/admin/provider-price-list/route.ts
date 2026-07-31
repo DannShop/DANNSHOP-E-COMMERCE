@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import type { ProviderKey } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getAdapter } from "@/lib/providers/registry";
 
-// Sumber data untuk sku-picker.tsx — admin-only, tidak pernah membocorkan
-// kredensial provider (adapter dibuat lewat getAdapter yang men-decrypt
-// kredensial di server; hanya baris price list yang dikembalikan ke client).
+// Sumber data untuk sku-picker.tsx — admin-only. Baca dari ProviderPriceListCache
+// (diisi tombol "Sync Harga"/job cron lewat runPriceSync), BUKAN live ke API
+// provider tiap ketikan — price list Digiflazz punya rate limit ketat (rc 83)
+// yang langsung kena kalau di-hit per keystroke pencarian.
 export async function GET(request: Request) {
   const session = await auth();
   if (session?.user?.role !== "ADMIN" || !session.user.id) {
@@ -18,18 +18,39 @@ export async function GET(request: Request) {
   }
   const url = new URL(request.url);
   const provider = url.searchParams.get("provider") as ProviderKey | null;
-  const q = (url.searchParams.get("q") ?? "").toLowerCase();
+  const q = url.searchParams.get("q") ?? "";
   if (!provider) return NextResponse.json({ error: "provider wajib" }, { status: 400 });
 
   try {
-    const adapter = await getAdapter(provider);
-    const rows = (await adapter.fetchPriceList())
-      .filter((r) => !q || r.productName.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || r.skuCode.toLowerCase().includes(q))
-      .slice(0, 50)
-      .map((r) => ({ ...r, costPrice: r.costPrice.toString() }));
-    return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } });
+    const cached = await db.providerPriceListCache.findMany({
+      where: {
+        provider,
+        ...(q
+          ? {
+              OR: [
+                { productName: { contains: q } },
+                { brand: { contains: q } },
+                { skuCode: { contains: q } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { productName: "asc" },
+      take: 50,
+    });
+    const rows = cached.map((r) => ({
+      skuCode: r.skuCode,
+      productName: r.productName,
+      brand: r.brand,
+      costPrice: r.costPrice.toString(),
+      available: r.available,
+    }));
+    return NextResponse.json(
+      { rows, syncedAt: cached[0]?.syncedAt ?? null },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (e) {
-    console.error("GET provider-price-list: gagal ambil price list", { provider, error: e });
+    console.error("GET provider-price-list: gagal ambil price list dari cache", { provider, error: e });
     return NextResponse.json({ error: "Gagal ambil price list, coba lagi." }, { status: 502 });
   }
 }

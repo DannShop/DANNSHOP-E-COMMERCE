@@ -51,6 +51,7 @@ export function SkuPicker({
   const [provider, setProvider] = useState(PROVIDER_OPTIONS[0].key);
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<PriceListRow[]>([]);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [mapState, mapAction, mapPending] = useActionState(withPrevState(mapProviderSku), INITIAL_STATE);
@@ -69,6 +70,7 @@ export function SkuPicker({
           const data = await res.json();
           if (!res.ok) throw new Error(data.error ?? "Gagal mengambil price list.");
           setRows(Array.isArray(data.rows) ? data.rows : []);
+          setSyncedAt(data.syncedAt ?? null);
         })
         .catch((e: unknown) => {
           if (e instanceof DOMException && e.name === "AbortError") return;
@@ -113,9 +115,11 @@ export function SkuPicker({
       {fetchError && <p className="text-xs text-destructive">{fetchError}</p>}
       {!loading && !fetchError && rows.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          {query.trim()
-            ? `Tidak ada hasil untuk "${query}". Coba kata kunci lain.`
-            : "Ketik nama produk, brand, atau kode SKU untuk mencari."}
+          {syncedAt === null
+            ? "Belum pernah sync harga untuk provider ini — klik \"Sync Harga\" di halaman Providers dulu."
+            : query.trim()
+              ? `Tidak ada hasil untuk "${query}". Coba kata kunci lain.`
+              : "Ketik nama produk, brand, atau kode SKU untuk mencari."}
         </p>
       )}
 
