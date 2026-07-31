@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import QRCode from "qrcode";
 import { db } from "@/lib/db";
 import { InvoiceStatus } from "./invoice-status";
 
@@ -19,6 +20,7 @@ export default async function InvoicePage({
 
   const actions = order.payment?.actions as { qrString?: string } | null;
   const latestFulfillment = order.fulfillments[0];
+  const qrDataUri = actions?.qrString ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 }) : null;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-10">
@@ -27,6 +29,7 @@ export default async function InvoicePage({
       </Link>
       <InvoiceStatus
         token={order.publicToken}
+        qrDataUri={qrDataUri}
         initial={{
           orderNumber: order.orderNumber,
           status: order.status,

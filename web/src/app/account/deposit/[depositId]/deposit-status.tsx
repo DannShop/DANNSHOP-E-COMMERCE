@@ -36,7 +36,15 @@ const STATUS_ICON: Record<string, typeof Clock> = {
   FAILED: XCircle,
 };
 
-export function DepositStatus({ depositId, initial }: { depositId: string; initial: DepositStatusResponse }) {
+export function DepositStatus({
+  depositId,
+  qrDataUri,
+  initial,
+}: {
+  depositId: string;
+  qrDataUri: string | null;
+  initial: DepositStatusResponse;
+}) {
   const { data, isFetching } = useQuery<DepositStatusResponse>({
     queryKey: ["deposit-status", depositId],
     queryFn: async () => {
@@ -77,15 +85,10 @@ export function DepositStatus({ depositId, initial }: { depositId: string; initi
         </div>
       )}
 
-      {deposit.status === "PENDING" && deposit.qrString && (
+      {deposit.status === "PENDING" && deposit.qrString && qrDataUri && (
         <div className="flex flex-col items-center gap-2">
           <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
-          <img
-            alt="QRIS pembayaran"
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(deposit.qrString)}`}
-            width={240}
-            height={240}
-          />
+          <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
         </div>
       )}
 

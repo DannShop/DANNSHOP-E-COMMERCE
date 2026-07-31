@@ -70,9 +70,11 @@ const SPINNING_STATUSES = new Set(["PAID", "PROCESSING"]);
 
 export function InvoiceStatus({
   token,
+  qrDataUri,
   initial,
 }: {
   token: string;
+  qrDataUri: string | null;
   initial: OrderStatusResponse;
 }) {
   const [copied, setCopied] = useState(false);
@@ -134,15 +136,10 @@ export function InvoiceStatus({
         </div>
       )}
 
-      {order.status === "PENDING_PAYMENT" && order.qrString && (
+      {order.status === "PENDING_PAYMENT" && order.qrString && qrDataUri && (
         <div className="flex flex-col items-center gap-2">
           <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
-          <img
-            alt="QRIS pembayaran"
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(order.qrString)}`}
-            width={240}
-            height={240}
-          />
+          <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
         </div>
       )}
 
