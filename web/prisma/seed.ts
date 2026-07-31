@@ -46,17 +46,22 @@ async function main() {
     throw new Error("ADMIN_EMAIL dan ADMIN_PASSWORD wajib di-set di web/.env");
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
-  const admin = await db.user.upsert({
-    where: { email },
-    update: { role: "ADMIN" },
-    create: { email, passwordHash, name: "Admin DannShop", role: "ADMIN" },
-  });
+  const existingAdmin = await db.user.findUnique({ where: { email } });
+  let admin = existingAdmin;
+  if (!existingAdmin) {
+    const passwordHash = await bcrypt.hash(password, 12);
+    admin = await db.user.create({ data: { email, passwordHash, name: "Admin DannShop", role: "ADMIN" } });
+  }
+  // Kalau user dengan email ini SUDAH ADA (siapa pun pembuatnya) - JANGAN sentuh
+  // role/passwordHash sama sekali. Mencegah race: attacker daftar pakai email =
+  // ADMIN_EMAIL duluan sebelum seed pertama kali jalan, lalu re-run seed (mis.
+  // saat deploy) tidak lagi bisa "mempromosikan" akun attacker itu jadi ADMIN.
+  // Promosi admin sekarang murni aksi manual DB, bukan efek samping seed.
 
   await db.wallet.upsert({
-    where: { userId: admin.id },
+    where: { userId: admin!.id },
     update: {},
-    create: { userId: admin.id },
+    create: { userId: admin!.id },
   });
 
   for (const p of PROVIDERS) {

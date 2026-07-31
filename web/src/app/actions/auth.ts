@@ -46,22 +46,27 @@ export async function registerAction(
     return { error: parsed.error.issues[0]?.message ?? "Input tidak valid." };
   }
 
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  if (parsed.data.email === adminEmail) {
+    redirect("/login?registered=1");
+  }
+
   const existing = await db.user.findUnique({
     where: { email: parsed.data.email },
   });
-  if (existing) return { error: "Email sudah terdaftar." };
-
-  const passwordHash = await hashPassword(parsed.data.password);
-  await db.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        name: parsed.data.name,
-        email: parsed.data.email,
-        passwordHash,
-      },
+  if (!existing) {
+    const passwordHash = await hashPassword(parsed.data.password);
+    await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: parsed.data.name,
+          email: parsed.data.email,
+          passwordHash,
+        },
+      });
+      await tx.wallet.create({ data: { userId: user.id } });
     });
-    await tx.wallet.create({ data: { userId: user.id } });
-  });
+  }
 
   redirect("/login?registered=1");
 }

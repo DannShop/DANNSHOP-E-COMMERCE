@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,8 @@ function formatRupiah(amount: bigint): string {
 
 export default async function AccountPage() {
   const session = await auth();
-  const userId = session!.user.id; // middleware proxy.ts sudah menjamin ada sesi di /account/*
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
 
   const [wallet, recentOrders, recentDeposits] = await Promise.all([
     db.wallet.findUnique({ where: { userId } }),
@@ -27,7 +29,7 @@ export default async function AccountPage() {
       <div>
         <h1 className="font-heading text-2xl font-bold">Akun Saya</h1>
         <p className="text-sm text-muted-foreground">
-          Halo, {session!.user.name} ({session!.user.email})
+          Halo, {session.user.name} ({session.user.email})
         </p>
       </div>
 

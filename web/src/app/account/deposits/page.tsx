@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +13,9 @@ function formatRupiah(amount: bigint): string {
 
 export default async function AccountDepositsPage() {
   const session = await auth();
+  if (!session?.user?.id) redirect("/login");
   const deposits = await db.deposit.findMany({
-    where: { userId: session!.user.id },
+    where: { userId: session.user.id },
     orderBy: { createdAt: "desc" },
   });
 
