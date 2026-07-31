@@ -8,6 +8,11 @@ import { hashPassword } from "@/lib/password";
 import { registerSchema } from "@/lib/validation/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 
+// Password dummy dipakai HANYA untuk membuang waktu (samakan cost bcrypt),
+// tidak pernah dibandingkan/disimpan - mencegah timing side-channel di registerAction
+// (cabang admin-email/email-sudah-ada vs cabang create-baru harus impas waktunya).
+const TIMING_DUMMY_PASSWORD = "dummy-timing-normalization-only";
+
 export async function loginAction(
   _prev: { error?: string } | undefined,
   formData: FormData
@@ -48,6 +53,7 @@ export async function registerAction(
 
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   if (parsed.data.email === adminEmail) {
+    await hashPassword(TIMING_DUMMY_PASSWORD);
     redirect("/login?registered=1");
   }
 
@@ -66,6 +72,8 @@ export async function registerAction(
       });
       await tx.wallet.create({ data: { userId: user.id } });
     });
+  } else {
+    await hashPassword(TIMING_DUMMY_PASSWORD);
   }
 
   redirect("/login?registered=1");
