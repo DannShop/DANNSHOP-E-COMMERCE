@@ -11,12 +11,53 @@ export function isItemPurchasable(
   );
 }
 
-export async function getActiveCategories(): Promise<{ id: string; slug: string; name: string }[]> {
-  return db.category.findMany({
-    where: { products: { some: { isActive: true } } },
+export interface CatalogProduct {
+  id: string;
+  slug: string;
+  name: string;
+  publisher: string | null;
+  startingPrice: bigint;
+}
+
+export interface CatalogCategory {
+  id: string;
+  slug: string;
+  name: string;
+  products: CatalogProduct[];
+}
+
+export async function getCatalogHomeData(): Promise<CatalogCategory[]> {
+  const categories = await db.category.findMany({
     orderBy: { sortOrder: "asc" },
-    select: { id: true, slug: true, name: true },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      products: {
+        where: { isActive: true, items: { some: { isActive: true } } },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          publisher: true,
+          items: { where: { isActive: true }, select: { sellingPrice: true } },
+        },
+      },
+    },
   });
+
+  return categories.map((c) => ({
+    id: c.id,
+    slug: c.slug,
+    name: c.name,
+    products: c.products.map((p) => ({
+      id: p.id,
+      slug: p.slug,
+      name: p.name,
+      publisher: p.publisher,
+      startingPrice: p.items.reduce((min, i) => (i.sellingPrice < min ? i.sellingPrice : min), p.items[0].sellingPrice),
+    })),
+  }));
 }
 
 export interface ProductForCheckout {
