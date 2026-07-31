@@ -6,6 +6,7 @@ import { verifyMidtransSignature } from "@/lib/midtrans/signature";
 import { getTransactionStatus } from "@/lib/midtrans/client";
 import { mapMidtransStatus } from "@/lib/midtrans/status-mapping";
 import { dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
+import { sendTelegramAlert } from "@/lib/notify/telegram";
 
 const MAX_BODY_BYTES = 16_000;
 const ALLOWED_HEADER_KEYS = ["content-type", "x-forwarded-for", "user-agent"];
@@ -106,6 +107,9 @@ async function handleDepositWebhook(
     console.error("handleDepositWebhook: nominal settlement tidak cocok, saldo TIDAK dikredit", {
       depositId: deposit.id, expected: deposit.amount.toString(), received: confirmed.grossAmount,
     });
+    await sendTelegramAlert(
+      `⚠️ Deposit ${deposit.id} nominal settlement TIDAK COCOK (expected Rp ${deposit.amount.toString()}, diterima ${confirmed.grossAmount}) - saldo TIDAK dikredit, perlu investigasi manual.`,
+    );
     return "amount_mismatch";
   }
 

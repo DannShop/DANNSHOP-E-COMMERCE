@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
+import { safeCompare } from "@/lib/crypto";
 
 const { auth } = NextAuth(authConfig);
 
@@ -30,10 +31,12 @@ export default auth(async (req) => {
     // sendiri) tidak butuh limit berbasis IP tambahan - IP dari X-Forwarded-For bisa dispoof
     // caller, jadi limit IP di sini sebenarnya cuma lubang DoS (starve bucket IP bersama) untuk
     // endpoint yang sudah punya autentikasi sendiri via secret.
+    const cronSecretHeader = req.headers.get("x-cron-secret");
     const isTrustedCron =
       rule.key === "cron-tick" &&
       !!process.env.CRON_SECRET &&
-      req.headers.get("x-cron-secret") === process.env.CRON_SECRET;
+      !!cronSecretHeader &&
+      safeCompare(cronSecretHeader, process.env.CRON_SECRET);
     if (!isTrustedCron) {
       const result = await checkRateLimit(`${rule.key}:ip:${ip}`, rule.limit, rule.windowMs);
       if (!result.allowed) {
