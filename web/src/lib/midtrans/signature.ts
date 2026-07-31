@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { safeCompare } from "@/lib/crypto";
 
 export function computeMidtransSignature(
   orderId: string,
@@ -14,5 +15,5 @@ export function verifyMidtransSignature(
   serverKey: string,
 ): boolean {
   const expected = computeMidtransSignature(notif.order_id, notif.status_code, notif.gross_amount, serverKey);
-  return expected === notif.signature_key;
+  return safeCompare(expected, notif.signature_key);
 }

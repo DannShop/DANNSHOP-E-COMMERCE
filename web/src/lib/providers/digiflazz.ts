@@ -98,7 +98,7 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
     });
     const parsed = balanceSchema.safeParse(raw);
     if (!parsed.success) {
-      throw new Error(`Digiflazz cek-saldo: response tidak sesuai (${JSON.stringify(raw).slice(0, 200)})`);
+      throw new Error("Digiflazz cek-saldo: response tidak sesuai skema yang diharapkan");
     }
     return BigInt(Math.round(parsed.data.data.deposit));
   }
@@ -116,7 +116,7 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
     const raw = await this.post("/transaction", body);
     const parsed = trxSchema.safeParse(raw);
     if (!parsed.success) {
-      throw new Error(`Digiflazz transaction: response tidak sesuai (${JSON.stringify(raw).slice(0, 200)})`);
+      throw new Error("Digiflazz transaction: response tidak sesuai skema yang diharapkan");
     }
     const d = parsed.data.data;
     return {

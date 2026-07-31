@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { verifyMidtransSignature } from "@/lib/midtrans/signature";
 import { getTransactionStatus } from "@/lib/midtrans/client";
 import { mapMidtransStatus } from "@/lib/midtrans/status-mapping";
-import { dispatchFulfillment } from "@/lib/order/fulfillment";
+import { dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
 
 const MAX_BODY_BYTES = 16_000;
 const ALLOWED_HEADER_KEYS = ["content-type", "x-forwarded-for", "user-agent"];
@@ -28,11 +28,22 @@ const notifSchema = z.object({
 });
 
 async function handleOrderWebhook(
-  order: { id: string },
+  order: { id: string; orderNumber: string; total: bigint },
   notif: z.infer<typeof notifSchema>,
 ): Promise<string> {
   const confirmed = await getTransactionStatus(notif.order_id);
   const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
+
+  if (mapped === "paid" && BigInt(Math.round(Number(confirmed.grossAmount))) !== order.total) {
+    console.error("handleOrderWebhook: nominal settlement tidak cocok, escalate", {
+      orderId: order.id, expected: order.total.toString(), received: confirmed.grossAmount,
+    });
+    await escalateOrder({
+      orderId: order.id, orderNumber: order.orderNumber, toStatus: "NEEDS_REVIEW",
+      note: "Nominal settlement tidak cocok dengan total order",
+    });
+    return "amount_mismatch";
+  }
 
   if (mapped === "paid") {
     const claimed = await db.order.updateMany({
@@ -85,11 +96,18 @@ async function handleOrderWebhook(
 }
 
 async function handleDepositWebhook(
-  deposit: { id: string },
+  deposit: { id: string; amount: bigint },
   notif: z.infer<typeof notifSchema>,
 ): Promise<string> {
   const confirmed = await getTransactionStatus(notif.order_id);
   const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
+
+  if (mapped === "paid" && BigInt(Math.round(Number(confirmed.grossAmount))) !== deposit.amount) {
+    console.error("handleDepositWebhook: nominal settlement tidak cocok, saldo TIDAK dikredit", {
+      depositId: deposit.id, expected: deposit.amount.toString(), received: confirmed.grossAmount,
+    });
+    return "amount_mismatch";
+  }
 
   if (mapped === "paid") {
     let claimedCount = 0;

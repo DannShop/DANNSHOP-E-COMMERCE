@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { encryptJson, decryptJson } from "@/lib/crypto";
+import { encryptJson, decryptJson, safeCompare } from "@/lib/crypto";
 
 beforeAll(() => {
   // key 32 byte (64 hex char) khusus test
@@ -33,5 +33,23 @@ describe("crypto kredensial", () => {
     delete process.env.CREDENTIALS_ENCRYPTION_KEY;
     expect(() => encryptJson({ x: 1 })).toThrow(/CREDENTIALS_ENCRYPTION_KEY/);
     process.env.CREDENTIALS_ENCRYPTION_KEY = saved;
+  });
+});
+
+describe("safeCompare", () => {
+  it("dua string sama persis → true", () => {
+    expect(safeCompare("rahasia123", "rahasia123")).toBe(true);
+  });
+
+  it("string beda isi tapi panjang sama → false", () => {
+    expect(safeCompare("rahasia123", "rahasiaXXX")).toBe(false);
+  });
+
+  it("string beda panjang → false (tidak throw)", () => {
+    expect(safeCompare("pendek", "jauh-lebih-panjang-dari-ini")).toBe(false);
+  });
+
+  it("dua string kosong → true", () => {
+    expect(safeCompare("", "")).toBe(true);
   });
 });

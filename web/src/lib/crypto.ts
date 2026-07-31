@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Enkripsi kredensial provider sebelum disimpan ke DB (spec §11).
 // Format payload: v1:<iv b64>:<authTag b64>:<ciphertext b64>
@@ -34,4 +34,14 @@ export function decryptJson<T = unknown>(payload: string): T {
     decipher.final(),
   ]);
   return JSON.parse(dec.toString("utf8")) as T;
+}
+
+// Compare timing-safe untuk secret/signature (CRON_SECRET, signature webhook) -
+// mencegah timing attack yang bisa menebak isi string byte-per-byte lewat
+// selisih waktu respons `===` biasa.
+export function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
