@@ -6,12 +6,17 @@ import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 
 const { auth } = NextAuth(authConfig);
 
-const RATE_LIMITS: { match: (pathname: string) => boolean; key: string; limit: number; windowMs: number }[] = [
-  { match: (p) => p === "/login", key: "login", limit: 5, windowMs: 60_000 },
-  { match: (p) => p === "/register", key: "register", limit: 3, windowMs: 60_000 },
+const RATE_LIMITS: { match: (pathname: string) => boolean; method?: string; key: string; limit: number; windowMs: number }[] = [
+  // method: "POST" - Next.js prefetch dari <Link href="/login">/<Link href="/register"> di header
+  // global mengirim GET diam-diam di production; tanpa filter method itu makan budget rate-limit
+  // yang seharusnya untuk submit form asli (paling parah /register yang cuma 3/menit).
+  { match: (p) => p === "/login", method: "POST", key: "login", limit: 5, windowMs: 60_000 },
+  { match: (p) => p === "/register", method: "POST", key: "register", limit: 3, windowMs: 60_000 },
   { match: (p) => p === "/api/webhooks/midtrans", key: "webhook", limit: 60, windowMs: 60_000 },
   { match: (p) => p === "/api/cron/tick", key: "cron-tick", limit: 10, windowMs: 60_000 },
-  { match: (p) => /^\/api\/orders\/[^/]+\/status$/.test(p), key: "order-status", limit: 30, windowMs: 60_000 },
+  // limit 120 (bukan 30) - halaman invoice polling tiap 3000ms (~20 req/menit per tab), dua tab/dua
+  // customer di NAT yang sama sebelumnya cukup untuk trip limit 30/menit dan merusak layar tunggu bayar.
+  { match: (p) => /^\/api\/orders\/[^/]+\/status$/.test(p), key: "order-status", limit: 120, windowMs: 60_000 },
 ];
 
 export default auth(async (req) => {
@@ -19,17 +24,27 @@ export default auth(async (req) => {
   const user = req.auth?.user;
   const ip = extractIp(req.headers);
 
-  const rule = RATE_LIMITS.find((r) => r.match(nextUrl.pathname));
+  const rule = RATE_LIMITS.find((r) => r.match(nextUrl.pathname) && (!r.method || r.method === req.method));
   if (rule) {
-    const result = await checkRateLimit(`${rule.key}:ip:${ip}`, rule.limit, rule.windowMs);
-    if (!result.allowed) {
-      return NextResponse.json(
-        { error: "Terlalu banyak percobaan, coba lagi sebentar lagi." },
-        {
-          status: 429,
-          headers: result.retryAfterMs ? { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) } : undefined,
-        },
-      );
+    // Caller cron-tick yang sudah membawa x-cron-secret valid (divalidasi lagi oleh route itu
+    // sendiri) tidak butuh limit berbasis IP tambahan - IP dari X-Forwarded-For bisa dispoof
+    // caller, jadi limit IP di sini sebenarnya cuma lubang DoS (starve bucket IP bersama) untuk
+    // endpoint yang sudah punya autentikasi sendiri via secret.
+    const isTrustedCron =
+      rule.key === "cron-tick" &&
+      !!process.env.CRON_SECRET &&
+      req.headers.get("x-cron-secret") === process.env.CRON_SECRET;
+    if (!isTrustedCron) {
+      const result = await checkRateLimit(`${rule.key}:ip:${ip}`, rule.limit, rule.windowMs);
+      if (!result.allowed) {
+        return NextResponse.json(
+          { error: "Terlalu banyak percobaan, coba lagi sebentar lagi." },
+          {
+            status: 429,
+            headers: result.retryAfterMs ? { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) } : undefined,
+          },
+        );
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 import { Prisma, type OrderStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { getAdapter } from "@/lib/providers/registry";
+import { getActiveProviders, getAdapter } from "@/lib/providers/registry";
 import type { ProviderTrxResult } from "@/lib/providers/types";
 import { buildCustomerNo } from "@/lib/order/customer-no";
 import { generateRefId } from "@/lib/order/order-number";
@@ -113,8 +113,7 @@ async function selectAndSend(
   attemptNo: number,
   alertOnFailure: boolean = true,
 ): Promise<void> {
-  const activeProviderConfigs = await db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } });
-  const activeProviders = new Set(activeProviderConfigs.map((p) => p.key));
+  const activeProviders = await getActiveProviders();
   const decision = selectFulfillmentSku({ sellingPrice: order.sellingPrice }, item.providerSkus, activeProviders);
   if (!decision.ok) {
     const note =
@@ -319,7 +318,9 @@ export async function retryOrderFulfillment(orderId: string): Promise<{ ok: true
       const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: decision.fulfillmentId } });
       const target = buildCustomerNo(item.product.inputFields as { name: string }[], order.target as Record<string, string>);
       try {
-        const adapter = await getAdapter(fulfillment.provider);
+        // allowInactive: true - retry manual admin untuk cek ulang status attempt yang sudah
+        // terlanjur dikirim ke provider tidak boleh terhalang kill-switch (bukan transaksi baru).
+        const adapter = await getAdapter(fulfillment.provider, db, { allowInactive: true });
         const result = await adapter.checkStatus({ skuCode: fulfillment.providerSkuCode, target, refId: fulfillment.ourRefId });
         await applyFulfillmentResult(fulfillment.id, result);
         if (result.status === "pending") {

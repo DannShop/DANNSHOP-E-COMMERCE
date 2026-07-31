@@ -20,9 +20,19 @@ export function computeWindowStart(now: Date, windowMs: number): Date {
   return new Date(Math.floor(now.getTime() / windowMs) * windowMs);
 }
 
+// Ambil entry TERAKHIR dari X-Forwarded-For (hop paling dekat ke server kita), bukan yang
+// pertama - di belakang reverse proxy (target deploy Hostinger, satu hop), header datang sebagai
+// "<klaim-caller>, <ip-klien-asli>". Entry pertama bisa diisi bebas oleh caller (header apa pun
+// bisa dikirim client), jadi mengandalkannya bikin SEMUA rate limit berbasis IP (login, register,
+// checkout-guest, order-status, webhook, cron-tick) trivial dilewati dengan memutar-mutar header
+// itu, plus bisa dipakai memaksa key IP tertentu (mis. "unknown") supaya bucket-nya habis untuk
+// pemanggil asli lain.
 export function extractIp(headers: Headers): string {
   const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
+  if (forwarded) {
+    const parts = forwarded.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
   return "unknown";
 }
 

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { ProviderKey, ProviderSkuStatus } from "@prisma/client";
+import { getActiveProviders } from "@/lib/providers/registry";
 
 export function isItemPurchasable(
   providerSkus: { provider: ProviderKey; status: ProviderSkuStatus }[],
@@ -32,7 +33,7 @@ export async function getProductForCheckout(
   categorySlug: string,
   productSlug: string,
 ): Promise<ProductForCheckout | null> {
-  const [product, activeProviderConfigs] = await Promise.all([
+  const [product, activeProviders] = await Promise.all([
     db.product.findFirst({
       where: { slug: productSlug, isActive: true, category: { slug: categorySlug } },
       include: {
@@ -43,11 +44,9 @@ export async function getProductForCheckout(
         },
       },
     }),
-    db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } }),
+    getActiveProviders(),
   ]);
   if (!product) return null;
-
-  const activeProviders = new Set(activeProviderConfigs.map((p) => p.key));
 
   return {
     id: product.id,

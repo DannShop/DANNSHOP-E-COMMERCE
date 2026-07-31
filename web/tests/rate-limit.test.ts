@@ -40,9 +40,9 @@ describe("computeWindowStart", () => {
 });
 
 describe("extractIp", () => {
-  it("ambil IP pertama dari x-forwarded-for", () => {
+  it("ambil IP TERAKHIR dari x-forwarded-for (hop reverse proxy terdekat, bukan klaim caller)", () => {
     const headers = new Headers({ "x-forwarded-for": "1.2.3.4, 5.6.7.8" });
-    expect(extractIp(headers)).toBe("1.2.3.4");
+    expect(extractIp(headers)).toBe("5.6.7.8");
   });
 
   it("header kosong → \"unknown\"", () => {

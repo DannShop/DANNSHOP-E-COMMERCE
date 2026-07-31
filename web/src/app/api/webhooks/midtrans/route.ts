@@ -56,6 +56,15 @@ async function handleOrderWebhook(
       const current = await db.order.findUnique({ where: { id: order.id }, select: { status: true } });
       if (current?.status === "PAID") {
         await dispatchFulfillment(order.id);
+      } else {
+        // Settlement "paid" asli datang tapi order sudah di status lain yang tidak PAID/PENDING_PAYMENT
+        // (mis. EXPIRED karena delivery webhook sebelumnya sempat starved) - order ini TIDAK
+        // otomatis diproses dari sini. Log supaya kejadian ini terlihat di production, bukan
+        // hilang diam-diam (mirror pola log di handleDepositWebhook untuk kasus setara).
+        console.error(
+          "Webhook Midtrans order: settlement 'paid' datang setelah order tidak lagi PENDING_PAYMENT/PAID - perlu investigasi manual",
+          { orderId: order.id, statusSaatIni: current?.status, eventKey: `midtrans:${notif.order_id}:${notif.transaction_status}`, order_id: notif.order_id },
+        );
       }
     }
   } else if (mapped === "failed" || mapped === "expired") {

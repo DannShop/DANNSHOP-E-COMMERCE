@@ -10,6 +10,7 @@ import { chargeQris } from "@/lib/midtrans/client";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
+import { getActiveProviders } from "@/lib/providers/registry";
 
 const EXPIRY_MINUTES = 15;
 
@@ -71,8 +72,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     return { error: `${missingField.label} wajib diisi.` };
   }
 
-  const activeProviderConfigs = await db.providerConfig.findMany({ where: { isActive: true }, select: { key: true } });
-  const activeProviders = new Set(activeProviderConfigs.map((p) => p.key));
+  const activeProviders = await getActiveProviders();
   const decision = selectFulfillmentSku({ sellingPrice: item.sellingPrice }, item.providerSkus, activeProviders);
   if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
 

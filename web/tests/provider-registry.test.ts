@@ -42,4 +42,14 @@ describe("getAdapter", () => {
     };
     await expect(getAdapter("DIGIFLAZZ", fakeDb(row))).rejects.toThrow(/dinonaktifkan/);
   });
+
+  it("isActive false + allowInactive: true → tetap berhasil (checkStatus in-flight order)", async () => {
+    const row = {
+      key: "DIGIFLAZZ",
+      isActive: false,
+      credentials: encryptJson({ username: "userX", apiKey: "keyY" }),
+    };
+    const adapter = await getAdapter("DIGIFLAZZ", fakeDb(row), { allowInactive: true });
+    expect(adapter.key).toBe("digiflazz");
+  });
 });

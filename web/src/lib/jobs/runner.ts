@@ -3,6 +3,7 @@ import { runPriceSync } from "@/lib/catalog/price-sync";
 import type { ProviderKey } from "@prisma/client";
 import { applyFulfillmentResult, dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
 import { getAdapter } from "@/lib/providers/registry";
+import type { TopupProviderAdapter } from "@/lib/providers/types";
 import { decideBalanceAlertTransition } from "@/lib/providers/balance-alert";
 import { buildCustomerNo } from "@/lib/order/customer-no";
 import { formatBalanceAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
@@ -186,13 +187,37 @@ export const handlers: Record<string, JobHandler> = {
       order.target as Record<string, string>,
     );
 
-    const adapter = await getAdapter(fulfillment.provider);
-    const result = await adapter.checkStatus({
-      skuCode: fulfillment.providerSkuCode,
-      target,
-      refId: fulfillment.ourRefId,
-    });
-    await applyFulfillmentResult(fulfillment.id, result);
+    let result: Awaited<ReturnType<TopupProviderAdapter["checkStatus"]>>;
+    try {
+      // allowInactive: true - ini mengecek status transaksi yang SUDAH dikirim ke provider,
+      // bukan mengirim transaksi baru. Kill-switch (isActive=false) tidak boleh memblokir
+      // operasi read-only ini, kalau tidak order yang customer sudah bayar macet permanen
+      // di PROCESSING karena job recheck ini gagal terus tiap kali dicoba.
+      const adapter = await getAdapter(fulfillment.provider, db, { allowInactive: true });
+      result = await adapter.checkStatus({
+        skuCode: fulfillment.providerSkuCode,
+        target,
+        refId: fulfillment.ourRefId,
+      });
+      await applyFulfillmentResult(fulfillment.id, result);
+    } catch (e) {
+      // Kegagalan di sini SEKARANG cuma karena masalah nyata (provider belum dikonfigurasi,
+      // kredensial rusak/hilang, atau error adapter/jaringan sungguhan) - bukan kill-switch,
+      // yang sudah dilewati lewat allowInactive di atas. Eskalasi langsung ke NEEDS_REVIEW alih-alih
+      // membiarkan error ini menjalar ke retry/backoff generik runDueJobs, yang tidak pernah
+      // sampai ke shouldEscalateRecheck dan bisa membiarkan order macet diam-diam di PROCESSING.
+      console.error("recheck-fulfillment: getAdapter/checkStatus gagal, eskalasi ke NEEDS_REVIEW", {
+        orderId: order.id, fulfillmentId: fulfillment.id, error: e,
+      });
+      const note = `Eskalasi: gagal cek status fulfillment - ${e instanceof Error ? e.message : String(e)}`;
+      const escalated = await escalateOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        toStatus: "NEEDS_REVIEW",
+        note,
+      });
+      return escalated.claimed ? "escalated: checkStatus gagal" : "no-op: order sudah final";
+    }
 
     if (shouldEscalateRecheck(attempt, result.status)) {
       const note = "Eskalasi: 30x recheck tanpa hasil final";
