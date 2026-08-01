@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,34 @@ export function DepositForm() {
   const [selected, setSelected] = useState<bigint | "custom">(PRESETS[1]);
   const [custom, setCustom] = useState("");
   const [state, formAction, pending] = useActionState(createDeposit, INITIAL_STATE);
+  const [snapError, setSnapError] = useState<string | null>(null);
+  const router = useRouter();
+
+  const goToStatus = useCallback(() => {
+    if (state.depositId) router.push(`/account/deposit/${state.depositId}`);
+  }, [state.depositId, router]);
+
+  useEffect(() => {
+    setSnapError(null);
+    if (!state.snapToken) return;
+    if (!window.snap) {
+      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
+      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
+      return;
+    }
+    window.snap.pay(state.snapToken, {
+      onSuccess: goToStatus,
+      onPending: goToStatus,
+      onError: () => {
+        console.error("Snap: transaksi pembayaran gagal", { snapToken: state.snapToken });
+        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
+      },
+      onClose: () => {
+        // customer tutup popup tanpa bayar - deposit tetap PENDING, form
+        // tetap tampil, bisa submit ulang (dapat snapToken baru).
+      },
+    });
+  }, [state.snapToken, goToStatus]);
 
   const amount = selected === "custom" ? custom : selected.toString();
 
@@ -74,6 +103,7 @@ export function DepositForm() {
       )}
 
       {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}
+      {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
       <Button type="submit" disabled={pending || !amount} className="h-11 w-full text-base font-heading">
         {pending ? "Memproses..." : "Isi Saldo"}
       </Button>

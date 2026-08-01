@@ -1,15 +1,16 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { depositSchema } from "@/lib/validation/deposit";
-import { chargeQris } from "@/lib/midtrans/client";
+import { createSnapTransaction } from "@/lib/midtrans/client";
 
 const EXPIRY_MINUTES = 15;
 
 export interface DepositResult {
   error?: string;
+  depositId?: string;
+  snapToken?: string;
 }
 
 export async function createDeposit(
@@ -32,20 +33,21 @@ export async function createDeposit(
     },
   });
 
+  let snapToken: string;
   try {
     // deposit.id (cuid) dipakai langsung sebagai Midtrans order_id — Deposit
     // tidak punya nomor publik terpisah seperti Order.orderNumber, dan
-    // chargeQris generik terhadap format order_id (spec Fase 4 §4).
-    const charge = await chargeQris({ orderId: deposit.id, grossAmount: Number(parsed.data.amount) });
+    // createSnapTransaction generik terhadap format order_id.
+    const snap = await createSnapTransaction({ orderId: deposit.id, grossAmount: Number(parsed.data.amount) });
+    snapToken = snap.token;
     await db.deposit.update({
       where: { id: deposit.id },
       data: {
-        paymentRef: charge.transactionId,
-        rawResponse: { qrString: charge.qrString, chargeResponse: charge.raw } as object,
+        rawResponse: { snapToken: snap.token, redirectUrl: snap.redirectUrl } as object,
       },
     });
   } catch (e) {
-    console.error("Deposit: Midtrans charge gagal", { depositId: deposit.id, error: e });
+    console.error("Deposit: Midtrans Snap transaction gagal", { depositId: deposit.id, error: e });
     await db.deposit.update({ where: { id: deposit.id }, data: { status: "FAILED" } });
     return { error: "Gagal membuat pembayaran, silakan coba lagi." };
   }
@@ -59,5 +61,5 @@ export async function createDeposit(
     // tidak throw — deposit tetap valid untuk user, cuma auto-expire-nya berisiko tidak jalan
   }
 
-  redirect(`/account/deposit/${deposit.id}`);
+  return { depositId: deposit.id, snapToken };
 }
