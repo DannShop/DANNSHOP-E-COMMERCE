@@ -45,6 +45,7 @@ export function ProductDetailClient({
 }) {
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
+  const [snapError, setSnapError] = useState<string | null>(null);
   const selectedItem = purchasableItems.find((i) => i.id === selectedItemId) ?? purchasableItems[0];
 
   const router = useRouter();
@@ -55,6 +56,7 @@ export function ProductDetailClient({
   }, [state.publicToken, router]);
 
   useEffect(() => {
+    setSnapError(null);
     // paymentMethod "balance" tidak pernah balikin snapToken (bayar langsung
     // di server, tidak lewat Midtrans) - order.publicToken saja cukup buat
     // langsung ke invoice, tidak perlu tunggu popup Snap.
@@ -65,11 +67,16 @@ export function ProductDetailClient({
     if (!state.snapToken) return;
     if (!window.snap) {
       console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
+      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
       return;
     }
     window.snap.pay(state.snapToken, {
       onSuccess: goToInvoice,
       onPending: goToInvoice,
+      onError: () => {
+        console.error("Snap: transaksi pembayaran gagal", { snapToken: state.snapToken });
+        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
+      },
       onClose: () => {
         // customer tutup popup tanpa bayar - order tetap PENDING_PAYMENT,
         // form tetap tampil, bisa submit ulang (dapat snapToken baru).
@@ -181,6 +188,7 @@ export function ProductDetailClient({
         </div>
 
         {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}
+        {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
         <Button type="submit" disabled={pending} className="h-11 w-full text-base font-heading">
           {pending ? "Memproses..." : "Beli Sekarang"}
         </Button>
