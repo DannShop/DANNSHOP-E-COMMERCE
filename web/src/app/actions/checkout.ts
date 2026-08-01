@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { checkoutSchema, extractTargetFromFormData } from "@/lib/validation/checkout";
 import { generateOrderNumber } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
-import { chargeQris } from "@/lib/midtrans/client";
+import { createSnapTransaction } from "@/lib/midtrans/client";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
@@ -19,6 +19,7 @@ export interface CheckoutResult {
   error?: string;
   orderNumber?: string;
   publicToken?: string;
+  snapToken?: string;
 }
 
 class InsufficientBalanceError extends Error {}
@@ -176,28 +177,28 @@ async function createMidtransOrder(input: {
     sellingPrice: input.item.sellingPrice,
     total: input.item.sellingPrice,
     expiredAt,
-    payment: { create: { method: "qris", status: "PENDING", expiredAt } },
+    payment: { create: { method: "snap", status: "PENDING", expiredAt } },
   });
   await db.orderStatusHistory.create({
     data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout" },
   });
 
+  let snapToken: string;
   try {
-    const charge = await chargeQris({ orderId: order.orderNumber, grossAmount: Number(input.item.sellingPrice) });
+    const snap = await createSnapTransaction({ orderId: order.orderNumber, grossAmount: Number(input.item.sellingPrice) });
+    snapToken = snap.token;
     await db.orderPayment.update({
       where: { orderId: order.id },
       data: {
-        paymentRef: charge.transactionId,
-        actions: { qrString: charge.qrString },
-        rawResponse: charge.raw as object,
+        rawResponse: { snapToken: snap.token, redirectUrl: snap.redirectUrl } as object,
       },
     });
   } catch (e) {
-    console.error("Checkout: Midtrans charge gagal", { orderId: order.id, error: e });
+    console.error("Checkout: Midtrans Snap transaction gagal", { orderId: order.id, error: e });
     await db.order.update({ where: { id: order.id }, data: { status: "FAILED" } });
     await db.orderPayment.update({ where: { orderId: order.id }, data: { status: "FAILED" } });
     await db.orderStatusHistory.create({
-      data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "FAILED", note: "Charge Midtrans gagal" },
+      data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "FAILED", note: "Snap transaction Midtrans gagal" },
     });
     return { error: "Gagal membuat pembayaran, silakan coba lagi." };
   }
@@ -211,5 +212,5 @@ async function createMidtransOrder(input: {
     // tidak throw — order & pembayaran tetap valid untuk user, cuma auto-expire-nya berisiko tidak jalan
   }
 
-  return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
+  return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken, snapToken };
 }

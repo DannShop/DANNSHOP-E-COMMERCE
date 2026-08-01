@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { QrCode, Wallet, Zap } from "lucide-react";
@@ -50,9 +50,32 @@ export function ProductDetailClient({
   const router = useRouter();
   const [state, formAction, pending] = useActionState(withPrevState(createCheckoutOrder), INITIAL_STATE);
 
-  useEffect(() => {
+  const goToInvoice = useCallback(() => {
     if (state.publicToken) router.push(`/invoice/${state.publicToken}`);
   }, [state.publicToken, router]);
+
+  useEffect(() => {
+    // paymentMethod "balance" tidak pernah balikin snapToken (bayar langsung
+    // di server, tidak lewat Midtrans) - order.publicToken saja cukup buat
+    // langsung ke invoice, tidak perlu tunggu popup Snap.
+    if (state.publicToken && !state.snapToken) {
+      goToInvoice();
+      return;
+    }
+    if (!state.snapToken) return;
+    if (!window.snap) {
+      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
+      return;
+    }
+    window.snap.pay(state.snapToken, {
+      onSuccess: goToInvoice,
+      onPending: goToInvoice,
+      onClose: () => {
+        // customer tutup popup tanpa bayar - order tetap PENDING_PAYMENT,
+        // form tetap tampil, bisa submit ulang (dapat snapToken baru).
+      },
+    });
+  }, [state.snapToken, state.publicToken, goToInvoice]);
 
   if (purchasableItems.length === 0) {
     return (
@@ -123,7 +146,7 @@ export function ProductDetailClient({
             <RadioGroup name="paymentMethod" defaultValue="qris">
               <RadioGroupItem value="qris">
                 <QrCode className="size-4" aria-hidden="true" />
-                QRIS
+                QRIS, VA, & Lainnya
               </RadioGroupItem>
               <RadioGroupItem value="balance" disabled={!canPayWithBalance}>
                 <Wallet className="size-4" aria-hidden="true" />
