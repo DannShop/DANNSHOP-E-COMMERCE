@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Clock,
@@ -13,6 +13,7 @@ import {
   Check,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const FINAL_STATUSES = ["COMPLETED", "FAILED", "EXPIRED", "REFUNDED", "REFUND_PENDING", "NEEDS_REVIEW"];
@@ -24,6 +25,7 @@ interface OrderStatusResponse {
   itemName: string;
   total: string;
   qrString: string | null;
+  snapToken: string | null;
   expiredAt: string | null;
   sn: string | null;
 }
@@ -104,6 +106,11 @@ export function InvoiceStatus({
     }
   }
 
+  function handleContinuePayment() {
+    if (!order.snapToken || !window.snap) return;
+    window.snap.pay(order.snapToken, {});
+  }
+
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
       <div className="flex items-center justify-between gap-2">
@@ -141,6 +148,12 @@ export function InvoiceStatus({
           <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
           <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
         </div>
+      )}
+
+      {order.status === "PENDING_PAYMENT" && order.snapToken && !order.qrString && (
+        <Button onClick={handleContinuePayment} className="h-11 w-full text-base font-heading">
+          Lanjutkan Pembayaran
+        </Button>
       )}
 
       {order.status === "COMPLETED" && order.sn && (

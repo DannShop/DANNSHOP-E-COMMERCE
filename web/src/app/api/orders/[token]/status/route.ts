@@ -16,6 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
 
   const latestFulfillment = order.fulfillments[0];
   const actions = order.payment?.actions as { qrString?: string } | null;
+  const rawResponse = order.payment?.rawResponse as { snapToken?: string } | null;
 
   return NextResponse.json(
     {
@@ -25,6 +26,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       itemName: order.itemName,
       total: order.total.toString(),
       qrString: actions?.qrString ?? null,
+      snapToken: rawResponse?.snapToken ?? null,
       expiredAt: order.expiredAt,
       sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,
     },

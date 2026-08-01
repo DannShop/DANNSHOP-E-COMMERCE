@@ -19,6 +19,7 @@ export default async function InvoicePage({
   if (!order) notFound();
 
   const actions = order.payment?.actions as { qrString?: string } | null;
+  const rawResponse = order.payment?.rawResponse as { snapToken?: string } | null;
   const latestFulfillment = order.fulfillments[0];
   const qrDataUri = actions?.qrString ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 }) : null;
 
@@ -37,6 +38,7 @@ export default async function InvoicePage({
           itemName: order.itemName,
           total: order.total.toString(),
           qrString: actions?.qrString ?? null,
+          snapToken: rawResponse?.snapToken ?? null,
           expiredAt: order.expiredAt?.toISOString() ?? null,
           sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,
         }}
