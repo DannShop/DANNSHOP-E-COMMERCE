@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Clock,
@@ -80,6 +80,7 @@ export function InvoiceStatus({
   initial: OrderStatusResponse;
 }) {
   const [copied, setCopied] = useState(false);
+  const [snapError, setSnapError] = useState<string | null>(null);
   const { data, isFetching } = useQuery<OrderStatusResponse>({
     queryKey: ["order-status", token],
     queryFn: async () => {
@@ -107,8 +108,19 @@ export function InvoiceStatus({
   }
 
   function handleContinuePayment() {
-    if (!order.snapToken || !window.snap) return;
-    window.snap.pay(order.snapToken, {});
+    setSnapError(null);
+    if (!order.snapToken) return;
+    if (!window.snap) {
+      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
+      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
+      return;
+    }
+    window.snap.pay(order.snapToken, {
+      onError: () => {
+        console.error("Snap: transaksi pembayaran gagal", { orderNumber: order.orderNumber });
+        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
+      },
+    });
   }
 
   return (
@@ -151,9 +163,12 @@ export function InvoiceStatus({
       )}
 
       {order.status === "PENDING_PAYMENT" && order.snapToken && !order.qrString && (
-        <Button onClick={handleContinuePayment} className="h-11 w-full text-base font-heading">
-          Lanjutkan Pembayaran
-        </Button>
+        <>
+          {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
+          <Button onClick={handleContinuePayment} className="h-11 w-full text-base font-heading">
+            Lanjutkan Pembayaran
+          </Button>
+        </>
       )}
 
       {order.status === "COMPLETED" && order.sn && (
