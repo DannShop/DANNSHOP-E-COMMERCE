@@ -122,3 +122,37 @@ export async function getTransactionStatus(
     raw,
   };
 }
+
+function snapBaseUrl(creds: MidtransCreds): string {
+  return creds.isProduction ? "https://app.midtrans.com" : "https://app.sandbox.midtrans.com";
+}
+
+const snapTransactionSchema = z.object({
+  token: z.string(),
+  redirect_url: z.string(),
+});
+
+export interface SnapTransactionResult {
+  token: string;
+  redirectUrl: string;
+}
+
+export async function createSnapTransaction(
+  input: { orderId: string; grossAmount: number },
+  creds: MidtransCreds = {
+    serverKey: process.env.MIDTRANS_SERVER_KEY ?? "",
+    isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
+  },
+): Promise<SnapTransactionResult> {
+  const raw = await request(`${snapBaseUrl(creds)}/snap/v1/transactions`, creds, {
+    method: "POST",
+    body: JSON.stringify({
+      transaction_details: { order_id: input.orderId, gross_amount: input.grossAmount },
+    }),
+  });
+  const parsed = snapTransactionSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`Snap transaction: response tidak sesuai (${JSON.stringify(raw).slice(0, 200)})`);
+  }
+  return { token: parsed.data.token, redirectUrl: parsed.data.redirect_url };
+}
