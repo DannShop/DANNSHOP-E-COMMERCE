@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Clock, CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const FINAL_STATUSES = ["PAID", "FAILED", "EXPIRED"];
@@ -12,6 +14,7 @@ interface DepositStatusResponse {
   status: string;
   amount: string;
   qrString: string | null;
+  snapToken: string | null;
   expiredAt: string | null;
 }
 
@@ -56,9 +59,27 @@ export function DepositStatus({
     refetchInterval: (query) => (FINAL_STATUSES.includes(query.state.data?.status ?? "") ? false : 3000),
   });
 
+  const [snapError, setSnapError] = useState<string | null>(null);
+
   const deposit = data ?? initial;
   const isFinal = FINAL_STATUSES.includes(deposit.status);
   const StatusIcon = STATUS_ICON[deposit.status] ?? Clock;
+
+  function handleContinuePayment() {
+    setSnapError(null);
+    if (!deposit.snapToken) return;
+    if (!window.snap) {
+      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
+      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
+      return;
+    }
+    window.snap.pay(deposit.snapToken, {
+      onError: () => {
+        console.error("Snap: transaksi pembayaran gagal", { depositId: deposit.depositId });
+        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
+      },
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
@@ -90,6 +111,15 @@ export function DepositStatus({
           <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
           <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
         </div>
+      )}
+
+      {deposit.status === "PENDING" && deposit.snapToken && !deposit.qrString && (
+        <>
+          {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
+          <Button onClick={handleContinuePayment} className="h-11 w-full text-base font-heading">
+            Lanjutkan Pembayaran
+          </Button>
+        </>
       )}
 
       {deposit.status === "PAID" && (

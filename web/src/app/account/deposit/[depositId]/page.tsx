@@ -17,7 +17,7 @@ export default async function DepositStatusPage({
   const deposit = await db.deposit.findUnique({ where: { id: depositId } });
   if (!deposit || deposit.userId !== session.user.id) notFound();
 
-  const rawResponse = deposit.rawResponse as { qrString?: string } | null;
+  const rawResponse = deposit.rawResponse as { qrString?: string; snapToken?: string } | null;
   const qrDataUri = rawResponse?.qrString ? await QRCode.toDataURL(rawResponse.qrString, { width: 240, margin: 1 }) : null;
 
   return (
@@ -33,6 +33,7 @@ export default async function DepositStatusPage({
           status: deposit.status,
           amount: deposit.amount.toString(),
           qrString: rawResponse?.qrString ?? null,
+          snapToken: rawResponse?.snapToken ?? null,
           expiredAt: deposit.expiredAt?.toISOString() ?? null,
         }}
       />

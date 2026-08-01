@@ -10,7 +10,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dep
   const deposit = await db.deposit.findUnique({ where: { id: depositId } });
   if (!deposit || deposit.userId !== session.user.id) return NextResponse.json({ error: "Deposit tidak ditemukan" }, { status: 404 });
 
-  const rawResponse = deposit.rawResponse as { qrString?: string } | null;
+  const rawResponse = deposit.rawResponse as { qrString?: string; snapToken?: string } | null;
 
   return NextResponse.json(
     {
@@ -18,6 +18,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dep
       status: deposit.status,
       amount: deposit.amount.toString(),
       qrString: rawResponse?.qrString ?? null,
+      snapToken: rawResponse?.snapToken ?? null,
       expiredAt: deposit.expiredAt,
     },
     { headers: { "Cache-Control": "no-store" } },
