@@ -1,0 +1,17 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - link "← DannShop" [ref=f1e3] [cursor=pointer]:
+      - /url: /
+    - generic [ref=f1e4]:
+      - generic [ref=f1e5]:
+        - generic [ref=f1e6]: INV-TEST-0001
+        - generic [ref=f1e7]: Berhasil
+      - paragraph [ref=f1e11]: Mobile Legends · 86 Diamonds
+      - paragraph [ref=f1e12]: Rp 22.000
+      - generic [ref=f1e13]:
+        - generic [ref=f1e14]:
+          - paragraph [ref=f1e15]: Serial Number / Voucher
+          - button "Tersalin" [active] [ref=f1e31]
+        - paragraph [ref=f1e20]: SN-8842-TEST-VOUCHER-CODE
+  - button "Open Next.js Dev Tools" [ref=f1e26] [cursor=pointer]
+  - alert [ref=f1e30]

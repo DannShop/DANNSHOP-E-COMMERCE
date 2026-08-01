@@ -1,0 +1,17 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - link "← DannShop" [ref=f4e3] [cursor=pointer]:
+      - /url: /
+    - generic [ref=f4e4]:
+      - generic [ref=f4e5]:
+        - generic [ref=f4e6]: INV-TASK13-POLL-157988
+        - generic [ref=f4e7]: Berhasil
+      - paragraph [ref=f4e10]: Mobile Legends · 86 Diamonds
+      - paragraph [ref=f4e11]: Rp 22.000
+      - generic [ref=f4e29]:
+        - generic [ref=f4e30]:
+          - paragraph [ref=f4e31]: Serial Number / Voucher
+          - button "Salin" [ref=f4e32]
+        - paragraph [ref=f4e36]: SN-TASK13-TEST-999888777
+  - button "Open Next.js Dev Tools" [ref=f4e21] [cursor=pointer]
+  - alert [ref=f4e25]

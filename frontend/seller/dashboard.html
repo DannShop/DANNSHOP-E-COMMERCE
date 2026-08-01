@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Dashboard — DannShop Seller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../public/storefront.css">
+  <link rel="stylesheet" href="../public/product-detail.css">
+  <link rel="stylesheet" href="seller-dashboard.css">
+</head>
+<body>
+
+  <div class="dashboard-shell">
+    <div id="dashboard-sidebar-mount"></div>
+
+    <div class="dashboard-main">
+      <header class="dashboard-header">
+        <h1>Dashboard</h1>
+      </header>
+
+      <div class="dashboard-content">
+        <!-- Stat cards: Saldo Tersedia leads, largest/leftmost per
+             Design System §9.1 — populated by dashboard.js -->
+        <div class="stat-row" id="stat-row">
+          <div class="stat-card primary-balance">
+            <div class="label">Saldo Tersedia</div>
+            <div class="skeleton-block" style="height:26px; width:70%;"></div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Penjualan Hari Ini</div>
+            <div class="skeleton-block" style="height:26px; width:70%;"></div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Pesanan Baru</div>
+            <div class="skeleton-block" style="height:26px; width:50%;"></div>
+          </div>
+        </div>
+
+        <div id="debt-warning-banner"></div>
+
+        <h2 style="font-size:15px; font-weight:600; margin-bottom:10px;">Pesanan Terbaru</h2>
+        <div id="recent-orders-container">
+          <div class="skeleton-block" style="height:120px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom-tab-bar-mount"></div>
+
+  <script src="auth.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

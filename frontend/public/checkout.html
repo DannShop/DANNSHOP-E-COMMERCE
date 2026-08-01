@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Checkout — DannShop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="storefront.css">
+  <link rel="stylesheet" href="product-detail.css">
+</head>
+<body>
+
+  <header class="storefront-topbar">
+    <a href="javascript:history.back()" style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:18px;">←</span>
+      <span class="store-name">Checkout</span>
+    </a>
+  </header>
+
+  <div class="checkout-page">
+
+    <!-- Product summary, populated by checkout.js -->
+    <div class="checkout-summary" id="checkout-summary">
+      <div class="skeleton-block" style="height:16px; width:70%; margin-bottom:8px;"></div>
+      <div class="skeleton-block" style="height:22px; width:40%;"></div>
+    </div>
+
+    <!-- Per Architecture v1 §9: guest checkout is mandatory — no
+         account creation field anywhere on this form -->
+    <form id="checkout-form">
+      <div id="form-error-banner"></div>
+
+      <div class="form-group">
+        <label class="form-label" for="buyer_email">Email</label>
+        <input type="email" id="buyer_email" name="buyer_email" class="form-input" placeholder="nama@email.com" required>
+        <div class="form-error-text" id="error-buyer_email"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="buyer_phone">Nomor HP / WhatsApp</label>
+        <input type="tel" id="buyer_phone" name="buyer_phone" class="form-input" placeholder="08123456789" required>
+        <div class="form-error-text" id="error-buyer_phone"></div>
+      </div>
+
+      <p style="font-size:12px; color:var(--color-gray-600); margin-bottom:20px;">
+        Email dan nomor HP digunakan untuk mengirim bukti pembayaran dan akses produk Anda. Tidak perlu membuat akun.
+      </p>
+
+      <button type="submit" class="btn btn-cta-gold" id="submit-button">
+        ★ Lanjutkan ke Pembayaran
+      </button>
+    </form>
+  </div>
+
+  <script src="checkout.js"></script>
+</body>
+</html>

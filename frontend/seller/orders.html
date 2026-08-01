@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Pesanan — DannShop Seller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../public/storefront.css">
+  <link rel="stylesheet" href="../public/product-detail.css">
+  <link rel="stylesheet" href="seller-dashboard.css">
+</head>
+<body>
+
+  <div class="dashboard-shell">
+    <div id="dashboard-sidebar-mount"></div>
+
+    <div class="dashboard-main">
+      <header class="dashboard-header">
+        <h1>Pesanan</h1>
+      </header>
+
+      <div class="dashboard-content">
+        <div id="orders-container">
+          <div class="skeleton-block" style="height:300px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom-tab-bar-mount"></div>
+
+  <script src="auth.js"></script>
+  <script src="orders.js"></script>
+</body>
+</html>

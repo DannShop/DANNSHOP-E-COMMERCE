@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Masuk — DannShop Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../public/storefront.css">
+  <link rel="stylesheet" href="../public/product-detail.css">
+  <link rel="stylesheet" href="../seller/seller-dashboard.css">
+  <link rel="stylesheet" href="admin-dashboard.css">
+</head>
+<body>
+
+  <div class="auth-page">
+    <div class="logo">DannShop Admin</div>
+    <h1>Masuk sebagai Admin</h1>
+
+    <div id="form-error-banner"></div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label class="form-label" for="email">Email</label>
+        <input type="email" id="email" class="form-input" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input type="password" id="password" class="form-input" required>
+      </div>
+      <button type="submit" class="btn btn-primary" id="submit-button" style="margin-top:8px;">Masuk</button>
+    </form>
+  </div>
+
+  <script src="admin-auth.js"></script>
+  <script src="login.js"></script>
+</body>
+</html>
