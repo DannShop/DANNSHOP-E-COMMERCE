@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getCatalogHomeData } from "@/lib/catalog/public";
 import { CatalogTabs } from "./catalog-tabs";
 
@@ -12,7 +13,9 @@ export default async function HomePage() {
           Isi ulang diamond, pulsa, dan voucher favoritmu dengan cepat dan aman.
         </p>
       </section>
-      <CatalogTabs categories={categories} />
+      <Suspense>
+        <CatalogTabs categories={categories} />
+      </Suspense>
     </div>
   );
 }

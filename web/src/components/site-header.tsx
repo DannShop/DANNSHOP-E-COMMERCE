@@ -3,9 +3,12 @@ import { auth, signOut } from "@/lib/auth";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SearchOverlay } from "@/components/search-overlay";
+import { CategoryDrawer } from "@/components/category-drawer";
+import { getCatalogHomeData } from "@/lib/catalog/public";
 
 export async function SiteHeader() {
-  const session = await auth();
+  const [session, categories] = await Promise.all([auth(), getCatalogHomeData()]);
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background">
@@ -14,7 +17,9 @@ export async function SiteHeader() {
           DannShop
         </Link>
         <nav className="flex items-center gap-2">
+          <SearchOverlay />
           <ThemeToggle />
+          <CategoryDrawer categories={categories} />
           {session?.user ? (
             <>
               {session.user.role === "ADMIN" && (

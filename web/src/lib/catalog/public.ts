@@ -60,6 +60,36 @@ export async function getCatalogHomeData(): Promise<CatalogCategory[]> {
   }));
 }
 
+export interface ProductSearchResult {
+  id: string;
+  slug: string;
+  categorySlug: string;
+  name: string;
+  publisher: string | null;
+}
+
+export async function searchProducts(query: string): Promise<ProductSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const products = await db.product.findMany({
+    where: {
+      isActive: true,
+      items: { some: { isActive: true } },
+      name: { contains: q },
+    },
+    select: { id: true, slug: true, name: true, publisher: true, category: { select: { slug: true } } },
+    take: 20,
+    orderBy: { name: "asc" },
+  });
+  return products.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    categorySlug: p.category.slug,
+    name: p.name,
+    publisher: p.publisher,
+  }));
+}
+
 export interface ProductForCheckout {
   id: string;
   slug: string;

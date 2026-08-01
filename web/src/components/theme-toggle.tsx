@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
+import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function ThemeToggle() {
@@ -11,18 +12,18 @@ export function ThemeToggle() {
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
-    return <Button variant="ghost" size="sm" disabled aria-hidden="true" />;
+    return <Button variant="ghost" size="icon" disabled aria-hidden="true" />;
   }
 
   const isDark = resolvedTheme === "dark";
   return (
     <Button
       variant="ghost"
-      size="default"
+      size="icon"
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-label={isDark ? "Ganti ke mode terang" : "Ganti ke mode gelap"}
     >
-      {isDark ? "Terang" : "Gelap"}
+      {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </Button>
   );
 }

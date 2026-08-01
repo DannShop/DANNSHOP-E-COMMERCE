@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "./product-card";
 import type { CatalogCategory } from "@/lib/catalog/public";
 
 export function CatalogTabs({ categories }: { categories: CatalogCategory[] }) {
-  const defaultCategory = categories.find((c) => c.products.length > 0) ?? categories[0];
+  const searchParams = useSearchParams();
+  const categoryParam = searchParams.get("kategori");
+  const defaultCategory =
+    categories.find((c) => c.slug === categoryParam) ??
+    categories.find((c) => c.products.length > 0) ??
+    categories[0];
   const [selectedSlug, setSelectedSlug] = useState(defaultCategory?.slug);
   const selected = categories.find((c) => c.slug === selectedSlug) ?? defaultCategory;
 
