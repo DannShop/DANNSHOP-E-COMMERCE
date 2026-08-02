@@ -68,6 +68,20 @@ export function ProductDetailClient({
 
   const canPayWithBalance = session ? hasSufficientBalance(session.walletBalance, selectedItem?.sellingPrice ?? 0n) : false;
 
+  // Preview "Total Bayar" harus ikut fee metode pembayaran yang lagi
+  // dipilih (bukan cuma sellingPrice) - fee final tetap dihitung ulang
+  // otoritatif di server (createCheckoutOrder), ini murni tampilan supaya
+  // tidak menyesatkan dibanding breakdown fee yang sudah ada di tiap baris
+  // metode. Kode unik (Rp1-999) sengaja tidak diikutkan ke angka karena
+  // di-generate acak di server, bukan bisa diprediksi di client.
+  const isBalanceSelected = Boolean(session) && selectedMethod === "balance";
+  const selectedMethodConfig = paymentMethods.find((m) => m.code === selectedMethod);
+  const previewFee =
+    selectedItem && selectedMethodConfig && !isBalanceSelected
+      ? (selectedItem.sellingPrice * BigInt(selectedMethodConfig.feePercent)) / 10_000n + BigInt(selectedMethodConfig.feeFlat)
+      : 0n;
+  const previewTotal = selectedItem ? selectedItem.sellingPrice + previewFee : 0n;
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <div>
@@ -137,11 +151,18 @@ export function ProductDetailClient({
             ))}
           </div>
           {selectedItem && (
-            <div className="flex items-center justify-between rounded-md bg-muted px-4 py-3">
-              <span className="text-sm text-muted-foreground">Total Bayar</span>
-              <span className="font-heading text-2xl font-bold text-primary">
-                {formatRupiah(selectedItem.sellingPrice)}
-              </span>
+            <div className="flex flex-col gap-1 rounded-md bg-muted px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Bayar</span>
+                <span className="font-heading text-2xl font-bold text-primary">
+                  {formatRupiah(previewTotal)}
+                </span>
+              </div>
+              {!isBalanceSelected && (
+                <p className="text-right text-xs text-muted-foreground">
+                  Sudah termasuk fee metode pembayaran. Belum termasuk kode unik (+ Rp1-999, muncul di halaman invoice).
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -203,7 +224,11 @@ export function ProductDetailClient({
         </div>
 
         {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}
-        <Button type="submit" disabled={pending} className="h-11 w-full text-base font-heading">
+        <Button
+          type="submit"
+          disabled={pending || Boolean(state.publicToken)}
+          className="h-11 w-full text-base font-heading"
+        >
           {pending ? "Memproses..." : "Beli Sekarang"}
         </Button>
       </form>

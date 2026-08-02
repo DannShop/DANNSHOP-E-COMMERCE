@@ -19,6 +19,7 @@ describe("checkoutSchema", () => {
       productItemId: "item-1",
       buyerEmail: "a@b.com",
       target: { user_id: "123456789" },
+      paymentMethod: "qris",
     });
     expect(result.success).toBe(true);
   });
@@ -46,6 +47,7 @@ describe("checkoutSchema", () => {
       productItemId: "item-1",
       buyerEmail: "a@b.com",
       target: {},
+      paymentMethod: "qris",
     });
     expect(result.success).toBe(true); // schema sendiri memang tidak tahu inputFields produk - itu tugas createCheckoutOrder
   });
@@ -77,20 +79,25 @@ describe("checkoutSchema", () => {
       productItemId: "item-1",
       buyerEmail: "a@b.com",
       target,
+      paymentMethod: "qris",
     });
     expect(result.success).toBe(true);
   });
 });
 
 describe("checkoutSchema paymentMethod", () => {
-  it("default ke qris kalau tidak diisi", () => {
+  // Metode sekarang dinamis dari tabel PaymentMethodConfig, bukan literal
+  // tetap - skema Zod cuma memastikan field-nya string non-kosong. Validasi
+  // keberadaan & status aktif kode metode dilakukan di server action
+  // (createCheckoutOrder), bukan di sini.
+  it("gagal kalau paymentMethod kosong", () => {
     const result = checkoutSchema.safeParse({
       productItemId: "item-1",
       buyerEmail: "a@b.com",
       target: { user_id: "123" },
+      paymentMethod: "",
     });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.paymentMethod).toBe("qris");
+    expect(result.success).toBe(false);
   });
 
   it("terima 'balance' eksplisit", () => {
@@ -103,13 +110,13 @@ describe("checkoutSchema paymentMethod", () => {
     expect(result.success).toBe(true);
   });
 
-  it("tolak nilai selain qris/balance", () => {
+  it("terima kode metode apa pun yang non-kosong (keberadaan/status aktifnya dicek di server action, bukan skema)", () => {
     const result = checkoutSchema.safeParse({
       productItemId: "item-1",
       buyerEmail: "a@b.com",
       target: { user_id: "123" },
-      paymentMethod: "credit_card",
+      paymentMethod: "va_bca",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 });
