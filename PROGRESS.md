@@ -1,6 +1,8 @@
 # Progress DannShop Topup Platform — Checkpoint
 
-Terakhir update: 2026-08-02 (Migrasi Midtrans Snap **SELESAI TOTAL, SUDAH MERGE ke `main`** commit `01de312`. Semua checkout/deposit sekarang pakai Snap popup, bukan QRIS-only Core API. Belum ada spec/plan untuk fase berikutnya.)
+Terakhir update: 2026-08-02 (deadline user: **2026-08-05**). **HANDOFF POINT — lanjut dari sini:** redesign storefront (referensi `konteronline.id`) + migrasi Snap→Core API inline sudah di-spec penuh (`docs/superpowers/specs/2026-08-02-redesign-storefront-pembayaran-inline-design.md`), dipecah 3 bagian berurutan **B (pembayaran) → C (email invoice + cek transaksi) → A (visual storefront)**. **Cuma Bagian B yang udah ada plan** (`docs/superpowers/plans/2026-08-02-pembayaran-inline-core-api.md`, 10 task, sudah di-commit `66cabbf`, BELUM dieksekusi). User pilih `superpowers:subagent-driven-development` buat eksekusi Bagian B — mulai sesi berikutnya dengan itu, jangan plan ulang dari nol. Detail lengkap di memory `project_dannshop_repo.md` (auto-memory Claude Code).
+
+Sebelum itu, sesi 2026-08-02 ini (mode "eksekusi cepat", langsung ke `main`, sudah live di Production semua): navbar dipindah ke sidebar drawer, upload banner produk via Vercel Blob, bulk-import produk dari Digiflazz, fix latency checkout (Vercel function region `iad1`→`sin1` biar dekat TiDB Singapore), storefront full-width + kartu produk didesain ulang sesuai referensi.
 
 ## Status Migrasi Midtrans Snap (mulai 2026-08-01, selesai & merge 2026-08-02) — 6 TASK CODE + TASK 7 E2E + FINAL REVIEW SELESAI
 
