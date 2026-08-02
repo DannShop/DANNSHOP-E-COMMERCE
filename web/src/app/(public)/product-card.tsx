@@ -12,8 +12,8 @@ export function ProductCard({
 }) {
   return (
     <Link href={`/${categorySlug}/${product.slug}`}>
-      <Card className="p-0 transition-shadow hover:shadow-md">
-        <div className="relative aspect-3/4 w-full bg-gradient-to-br from-primary to-accent">
+      <Card className="gap-0 p-0 transition-shadow hover:shadow-md">
+        <div className="relative aspect-4/3 w-full bg-gradient-to-br from-primary to-accent">
           {product.banner && (
             <Image
               src={product.banner}
@@ -24,11 +24,10 @@ export function ProductCard({
               unoptimized
             />
           )}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-3 pt-10 pb-3">
-            <span className="font-heading text-sm font-bold text-white drop-shadow-sm line-clamp-2">
-              {product.name}
-            </span>
-          </div>
+          <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/25 to-transparent" />
+        </div>
+        <div className="px-3 py-2.5">
+          <span className="font-heading text-sm font-bold line-clamp-2">{product.name}</span>
         </div>
       </Card>
     </Link>
