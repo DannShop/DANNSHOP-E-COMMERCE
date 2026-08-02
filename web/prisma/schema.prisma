@@ -132,16 +132,20 @@ model WalletLedger {
 }
 
 model Deposit {
-  id          String        @id @default(cuid())
-  userId      String
-  user        User          @relation(fields: [userId], references: [id])
-  amount      BigInt
-  status      DepositStatus @default(PENDING)
-  paymentRef  String?
-  rawResponse Json?
-  expiredAt   DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  amount        BigInt
+  fee           BigInt        @default(0)
+  uniqueCode    Int           @default(0)
+  totalPaid     BigInt        @default(0)
+  paymentMethod String?
+  status        DepositStatus @default(PENDING)
+  paymentRef    String?
+  rawResponse   Json?
+  expiredAt     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 // ===== Blok 1: Katalog =====
@@ -235,6 +239,9 @@ model Order {
   paidVia       PaidVia?
   sellingPrice  BigInt
   total         BigInt
+  fee           BigInt        @default(0)
+  uniqueCode    Int           @default(0)
+  paymentMethod String?
   expiredAt     DateTime?
   completedAt   DateTime?
   manualSn      String?              @db.Text // SN/kode voucher diisi admin lewat "Tandai Selesai Manual" - dipakai invoice kalau tidak ada OrderFulfillment SUCCESS
@@ -246,6 +253,19 @@ model Order {
 
   @@index([status, createdAt])
   @@index([publicToken])
+}
+
+model PaymentMethodConfig {
+  id         String   @id @default(cuid())
+  code       String   @unique // "qris" | "va_bca" | "va_bni" | "va_bri" | "va_mandiri" | "va_permata" | "va_cimb"
+  label      String
+  logoUrl    String?
+  feeFlat    BigInt   @default(0)
+  feePercent Int      @default(0) // basis point: 100 = 1.00%
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model OrderPayment {

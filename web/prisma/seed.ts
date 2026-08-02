@@ -18,6 +18,16 @@ const PROVIDERS = [
   { key: "QIOSPAY" as const, displayName: "QiosPay", priority: 40 },
 ];
 
+const PAYMENT_METHODS = [
+  { code: "qris", label: "QRIS", feeFlat: 0n, feePercent: 70, sortOrder: 1 },
+  { code: "va_bca", label: "BCA Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 2 },
+  { code: "va_bni", label: "BNI Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 3 },
+  { code: "va_bri", label: "BRI Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 4 },
+  { code: "va_mandiri", label: "Mandiri Bill Payment", feeFlat: 4000n, feePercent: 0, sortOrder: 5 },
+  { code: "va_permata", label: "Permata Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 6 },
+  { code: "va_cimb", label: "CIMB Niaga Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 7 },
+];
+
 const SAMPLE_PRODUCTS = [
   {
     slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton",
@@ -69,6 +79,14 @@ async function main() {
       where: { key: p.key },
       update: { displayName: p.displayName, priority: p.priority },
       create: p, // isActive false, credentials null — diisi lewat admin
+    });
+  }
+
+  for (const m of PAYMENT_METHODS) {
+    await db.paymentMethodConfig.upsert({
+      where: { code: m.code },
+      update: {}, // sengaja no-op — jangan timpa fee yang mungkin sudah diubah admin lewat panel
+      create: m,
     });
   }
 
