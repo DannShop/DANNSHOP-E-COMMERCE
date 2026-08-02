@@ -1,4 +1,4 @@
-# Redesign Storefront + Pembayaran Inline Core API — Spec Desain
+# Redesign Storefront + Pembayaran Inline + Pengiriman Invoice — Spec Desain
 
 Status: Disetujui Wildan (2026-08-02)
 
@@ -17,6 +17,9 @@ User memberikan `https://konteronline.id/` sebagai referensi struktur & fitur, p
 | Arsitektur pembayaran | **Core API inline penuh** — pilih metode di halaman kita, QR/nomor VA tampil inline di invoice, tanpa popup Snap sama sekali |
 | Metode yang didukung | **QRIS + Virtual Account** (BCA, BNI, BRI, Mandiri, Permata, CIMB). Kartu kredit & e-wallet deeplink **tidak** dikerjakan |
 | Scope pembayaran | **Checkout order DAN deposit saldo** dua-duanya pindah ke inline; Snap dibuang total |
+| Pemilihan metode | Tampil untuk **guest maupun member** (sekarang guest tidak dapat pilihan sama sekali) |
+| Pengiriman invoice | **Email otomatis via Resend** (user punya domain + akses DNS). WhatsApp otomatis tidak dikerjakan |
+| Akses invoice hilang | Halaman **`/cek-transaksi`** (email + nomor invoice) + tombol **share ke WhatsApp** di invoice |
 | Kode unik | **Random Rp1–999 menambah total** (bukan diskon) |
 | Konfigurasi fee | **Tabel DB + halaman admin**, bukan hardcode |
 | Kategori | Rename + tambah sesuai referensi, **plus admin CRUD kategori** |
@@ -26,7 +29,7 @@ User memberikan `https://konteronline.id/` sebagai referensi struktur & fitur, p
 
 ## 3. Bagian B — Pembayaran Inline Core API
 
-Dikerjakan **lebih dulu** dari Bagian A: menyentuh uang langsung, butuh verifikasi E2E sandbox, dan paling berisiko kalau dikejar di jam-jam akhir menjelang deadline.
+Dikerjakan **paling dulu**: menyentuh uang langsung, butuh verifikasi E2E sandbox, dan paling berisiko kalau dikejar di jam-jam akhir menjelang deadline.
 
 ### 3.1 Model baru: `PaymentMethodConfig`
 
@@ -49,7 +52,7 @@ model PaymentMethodConfig {
 
 Di-seed dengan 7 baris di atas. Admin mengaturnya lewat halaman `/admin/payment-methods` (form sederhana: label, fee flat, fee persen, aktif/nonaktif, urutan). Metode yang `isActive: false` hilang dari pilihan checkout **dan** dari marquee di Bagian A.
 
-Upload `logoUrl` memakai server action Blob yang sudah ada (`uploadProductBanner`) — logo metode pembayaran adalah gambar biasa, jadi tidak perlu menunggu generalisasi upload di §4.2 yang baru dibutuhkan untuk logo brand bervideo.
+Upload `logoUrl` memakai server action Blob yang sudah ada (`uploadProductBanner`) — logo metode pembayaran adalah gambar biasa, jadi tidak perlu menunggu generalisasi upload di §5.2 yang baru dibutuhkan untuk logo brand bervideo.
 
 **"Saldo" bukan baris di tabel ini.** Bayar-pakai-saldo tidak lewat Midtrans dan sudah punya jalurnya sendiri (`createBalanceOrder`); ia tetap opsi hardcoded yang hanya muncul untuk member yang saldonya cukup, ditampilkan berdampingan dengan metode dari tabel ini dengan biaya Rp 0.
 
@@ -140,6 +143,8 @@ Deposit memakai `Deposit.rawResponse` untuk hal yang sama (model `Deposit` tidak
 
 Step "Pilih Pembayaran" menampilkan seluruh metode aktif dari `PaymentMethodConfig`, masing-masing dengan logo, label, dan **biayanya terlihat langsung** (mis. "+ Rp 4.000"). Total di panel bawah ter-update seketika saat metode diganti. Opsi "Saldo" (lihat §3.1) muncul di daftar yang sama untuk member dengan saldo cukup.
 
+**Step ini sekarang tampil untuk guest juga.** Kode saat ini membungkus seluruh step pemilihan pembayaran dengan `{session && (…)}` di `product-detail-client.tsx` — guest tidak pernah melihat pilihan apa pun dan selalu diarahkan ke satu metode. Pembungkus itu dihapus; yang tetap khusus member hanya baris opsi "Saldo". Urutan step jadi tetap 4 untuk semua orang (sebelumnya guest 3, member 4), sehingga penomoran `StepHeader` tidak lagi bercabang.
+
 Kode unik **tidak** ditampilkan saat memilih metode (belum digenerate — baru dibuat server saat order dibuat). Ia muncul di rincian invoice setelah order jadi.
 
 Invoice menampilkan rincian utuh, tidak cuma total gelondongan:
@@ -180,11 +185,55 @@ Sandbox Midtrans, memakai teknik yang sudah terdokumentasi dari Fase 7c & Task 7
 
 Yang wajib dibuktikan, bukan diasumsikan: total yang ditagih Midtrans **persis sama** dengan `order.total` / `deposit.totalPaid` termasuk fee & kode unik; deposit mengkredit **`amount` saja**, bukan `totalPaid`; dan satu deposit menghasilkan tepat satu baris `WalletLedger`.
 
-## 4. Bagian A — Redesign Storefront
+## 4. Bagian C — Pengiriman & Akses Invoice
 
-Dikerjakan setelah Bagian B. Murni presentasi, tidak menyentuh uang.
+### 4.1 Keadaan sekarang (diverifikasi, bukan asumsi)
 
-### 4.1 Model baru
+**Invoice tidak pernah dikirim ke mana pun.** Tidak ada paket pengirim email terpasang (`resend`/`nodemailer`/`@sendgrid/mail`/dll. — nol), dan `buyerEmail` hanya disimpan ke DB lalu ditampilkan di panel admin. Label field-nya berbunyi "Email (untuk akses invoice)", tapi satu-satunya cara mengakses invoice adalah URL ber-`publicToken`. Guest yang menutup tab kehilangan pesanannya, dan tidak ada halaman pencarian pesanan.
+
+Jadi ini fitur baru sepenuhnya, bukan penggantian saluran yang sudah ada.
+
+### 4.2 Email invoice via Resend
+
+User sudah punya domain dan bisa mengatur DNS-nya, sehingga pengiriman email ke alamat customer sungguhan layak dikerjakan (tanpa domain terverifikasi, layanan email hanya mengizinkan kirim ke alamat pemilik akun — tidak berguna untuk customer).
+
+Paket `resend`, dipasang lewat integrasi Vercel Marketplace supaya `RESEND_API_KEY` ter-provision otomatis ke semua environment. Domain diverifikasi lewat DNS (SPF/DKIM). Kuota gratisnya 3.000 email/bulan — jauh di atas kebutuhan saat ini.
+
+Tiga email, masing-masing satu template:
+
+| Pemicu | Isi |
+|---|---|
+| Order dibuat | Rincian pesanan + rincian biaya (§3.8) + instruksi bayar sesuai metode + link invoice |
+| Order sukses | SN/kode voucher + link invoice |
+| Order gagal/refund | Penjelasan + info saldo dikembalikan (kalau member) |
+
+**Kegagalan kirim email tidak boleh pernah menggagalkan pembayaran atau fulfillment.** Semua pemanggilan dibungkus try/catch, kegagalannya dicatat ke log, dan tidak pernah dilempar ke jalur webhook maupun job runner. Ini pelajaran yang sama dengan `sendTelegramAlert` di Fase 7b: saluran notifikasi tidak boleh jadi titik gagal jalur uang. Bedanya dengan kasus 7b — di sana pesan Telegram **adalah** deliverable-nya sehingga status baru ditulis setelah kirim berhasil; di sini email cuma salinan, sumber kebenarannya tetap halaman invoice, jadi fire-and-forget sudah tepat.
+
+Email order-sukses memuat SN/kode voucher. Ini **disengaja** dan tidak bertentangan dengan redaksi SN dari log (L-4, Fase 7d) — di sana masalahnya SN bocor ke log operasional; di sini SN memang barang yang dibeli customer dan harus sampai ke tangannya.
+
+### 4.3 Halaman Cek Transaksi
+
+Rute baru `/cek-transaksi`: guest memasukkan **email + nomor invoice**, lalu melihat pesanan yang cocok. Menuntut dua-duanya (bukan email saja) supaya tidak menjadi cara memanen daftar pesanan orang lain hanya bermodal tebakan email — semangat yang sama dengan penggantian `orderNumber` ke `publicToken` di Fase 7c (C-2).
+
+Endpoint pencariannya ikut kena rate limit (pola `checkRateLimit` yang sudah ada), karena form publik yang menerima tebakan berulang adalah persis bentuk yang perlu dibatasi.
+
+Link "Cek Transaksi" dipasang di header dan footer, sejajar dengan referensi.
+
+### 4.4 Tombol bagikan ke WhatsApp
+
+Di halaman invoice: tombol "Kirim ke WhatsApp" yang membuka `wa.me` dengan pesan berisi link invoice sudah terisi. Nol integrasi, nol biaya, jalan hari itu juga — customer mengirimkannya ke dirinya sendiri atau ke siapa pun.
+
+WhatsApp **otomatis** (WhatsApp Business API) sengaja tidak dikerjakan: perlu persetujuan Meta yang makan berminggu-minggu dan biaya per percakapan. Tidak realistis untuk tenggat 2026-08-05, dan email sudah menutupi kebutuhannya.
+
+### 4.5 Field kontak
+
+Step 4 checkout tetap "Detail Kontak": email (wajib, dipakai kirim invoice) + nomor WhatsApp (opsional, disimpan ke `Order.buyerPhone` yang kolomnya sudah ada tapi belum pernah diisi). Nomor WA dipakai admin untuk menghubungi customer bila ada masalah — bukan untuk pengiriman otomatis.
+
+## 5. Bagian A — Redesign Storefront
+
+Dikerjakan setelah Bagian B dan C. Murni presentasi, tidak menyentuh uang.
+
+### 5.1 Model baru
 
 ```prisma
 model Banner {
@@ -208,19 +257,19 @@ isTrending Boolean @default(false)
 
 `SiteSetting` sengaja berbentuk key-value, bukan tabel berkolom tetap: pengaturan situs akan bertambah seiring waktu, dan bentuk ini tidak menuntut migration tiap kali ada setting baru.
 
-### 4.2 Header
+### 5.2 Header
 
 Logo kiri diambil dari `SiteSetting`. Kalau `logo_type` = `"video"`, dirender `<video autoplay loop muted playsinline>`; kalau `"image"`, `<Image>` biasa. Upload lewat `/admin/settings` memakai server action upload Blob yang sudah ada (`uploadProductBanner` digeneralisasi jadi `uploadFile` dengan parameter folder; whitelist tipe ditambah `video/mp4` + `video/webm`).
 
 Search bar tampil sebagai input di tengah header (bukan cuma ikon seperti sekarang); mengkliknya membuka overlay pencarian yang sudah ada. Kanan: toggle tema + hamburger drawer (isi drawer tidak berubah dari hasil kerja hari ini).
 
-### 4.3 Banner carousel
+### 5.3 Banner carousel
 
 Auto-slide 5 detik, indikator dots yang bisa diklik, swipe di mobile, tombol panah di desktop. Diimplementasikan sendiri dengan CSS scroll-snap + `setInterval` — tidak menambah dependensi carousel demi satu komponen. Kalau tidak ada banner aktif, seluruh section tidak dirender (bukan menampilkan kotak kosong).
 
 Admin CRUD di `/admin/banners`: upload gambar, isi link tujuan opsional, atur urutan, aktif/nonaktif.
 
-### 4.4 Section Trending
+### 5.4 Section Trending
 
 Judul "🔥 TRENDING" + 4 kartu (ikon kecil + nama produk, layout mendatar seperti referensi). Sumbernya ditentukan `SiteSetting["trending_mode"]`:
 
@@ -229,7 +278,7 @@ Judul "🔥 TRENDING" + 4 kartu (ikon kecil + nama produk, layout mendatar seper
 
 Switch mode-nya ada di `/admin/settings`, checkbox `isTrending` ada di form produk. Kalau mode `"auto"` menghasilkan kurang dari 4 (toko masih sepi), sisanya diisi dari produk manual sebagai cadangan — supaya section tidak pernah tampil setengah kosong saat launching.
 
-### 4.5 Kategori
+### 5.5 Kategori
 
 Rename: Games → **Top Up Game**, Pulsa & Data → **Pulsa**, PLN → **Token Listrik**. E-Money & Voucher tetap.
 Tambah: **Paket Internet, Telepon & SMS, Masa Aktif, Aktivasi Voucher, Tagihan**.
@@ -240,13 +289,13 @@ Admin CRUD kategori di `/admin/categories`: tambah, edit nama & urutan, hapus. *
 
 Pills kategori di storefront jadi scrollable horizontal (jumlahnya sekarang 10). Kategori tanpa produk aktif tetap tampil, isinya pesan "Segera hadir".
 
-### 4.6 Marquee metode pembayaran
+### 5.6 Marquee metode pembayaran
 
 Strip logo metode pembayaran berjalan mendatar terus-menerus di atas footer, berhenti saat hover. Sumbernya `PaymentMethodConfig` yang `isActive` — mematikan metode di admin otomatis menghilangkannya dari marquee, tanpa ada daftar kedua yang harus diingat untuk disinkronkan.
 
 Animasinya CSS murni (`@keyframes` + `transform: translateX`), dan **wajib menghormati `prefers-reduced-motion`** — sebagian orang mengalami pusing/mual karena gerakan terus-menerus di layar, jadi animasi berhenti untuk mereka.
 
-### 4.7 Footer + halaman statis
+### 5.7 Footer + halaman statis
 
 Footer 4 kolom: brand + deskripsi singkat, Peta Situs (link kategori), Dukungan (FAQ, S&K, Kebijakan Privasi, Kontak), dan info pembayaran. Di mobile jadi accordion/tumpuk.
 
@@ -261,27 +310,34 @@ Halaman baru — konten statis, di-draft dalam Bahasa Indonesia dan bisa diedit 
 
 Ini halaman statis biasa di route group `(public)`, tidak butuh model DB.
 
-## 5. Urutan Pengerjaan
+## 6. Urutan Pengerjaan
 
-1. **Bagian B lebih dulu** — schema + fee + metode pembayaran + charge + invoice + E2E sandbox. Ini menyentuh uang dan butuh verifikasi nyata; tidak boleh terdesak deadline.
-2. **Bagian A menyusul** — visual, cepat, aman dikebut.
+1. **Bagian B** — schema + fee + metode pembayaran + charge + invoice + E2E sandbox. Menyentuh uang dan butuh verifikasi nyata; tidak boleh terdesak deadline.
+2. **Bagian C** — email invoice + Cek Transaksi + share WA. Isi emailnya memuat rincian biaya dari Bagian B, jadi harus menyusul, bukan mendahului.
+3. **Bagian A** — visual, cepat, aman dikebut.
 
-Marquee (§4.6) bergantung pada tabel yang dibuat Bagian B, jadi urutan ini juga menghindari ketergantungan mundur.
+Marquee (§5.6) bergantung pada tabel yang dibuat Bagian B, jadi urutan ini juga menghindari ketergantungan mundur.
 
-Spec ini cakupannya besar (3 model baru, rearsitektur pembayaran, 4 halaman admin, 4 halaman statis). Karena itu ia dipecah jadi **dua rencana implementasi terpisah** — satu untuk Bagian B, satu untuk Bagian A — bukan satu rencana raksasa. Bagian B bisa selesai, di-review, dan di-merge sendiri sebelum Bagian A dimulai; kalau deadline mepet, yang sudah jadi tetap bisa rilis.
+Bagian C didahulukan dari Bagian A dengan alasan yang disengaja: customer yang sudah membayar tapi kehilangan invoice-nya adalah masalah kepercayaan yang nyata, sementara carousel dan marquee murni hiasan. Kalau tenggat 5 Agustus terlanjur mepet, yang paling aman dipotong adalah Bagian A — bukan C.
 
-## 6. Yang Sengaja TIDAK Dikerjakan
+Spec ini cakupannya besar (5 model baru, rearsitektur pembayaran, integrasi email, 4 halaman admin, 5 halaman publik baru). Karena itu ia dipecah jadi **tiga rencana implementasi terpisah** — B, C, A — bukan satu rencana raksasa. Masing-masing bisa selesai, di-review, dan di-merge sendiri; yang sudah jadi tetap bisa rilis meski sisanya belum.
+
+## 7. Yang Sengaja TIDAK Dikerjakan
 
 - **Kartu kredit/debit** — butuh tokenisasi + alur 3D Secure, jauh lebih berat, dan jarang dipakai untuk top-up nominal kecil.
-- **E-wallet deeplink** (GoPay/ShopeePay tombol khusus) — QRIS sudah mencakup semuanya lewat scan; menambah keluarga integrasi baru untuk nilai tambah kecil.
+- **E-wallet deeplink** (GoPay/ShopeePay tombol khusus) — QRIS sudah mencakup semuanya lewat scan; menambah keluarga integrasi baru untuk nilai tambah kecil. Kalau nanti diinginkan, arsitekturnya sudah siap: cukup satu baris baru di `PaymentMethodConfig` + satu fungsi charge, tanpa membongkar apa pun.
+- **WhatsApp otomatis** (WhatsApp Business API) — persetujuan Meta makan berminggu-minggu + biaya per percakapan; tidak realistis untuk tenggat ini. Digantikan email (§4.2) + tombol share manual (§4.4).
 - **Menyalin identitas visual referensi** (warna cyan, font, gaya logo) — yang disamakan struktur & fitur, bukan tampilan brand.
 - **CMS untuk halaman statis** — konten FAQ/S&K/Privasi jarang berubah; file statis cukup, tabel DB + editor jadi beban tanpa manfaat sepadan.
 
-## 7. Risiko yang Diketahui
+## 8. Risiko yang Diketahui
 
 | Risiko | Penanganan |
 |---|---|
 | `deposit.amount` vs `totalPaid` tertukar → customer dikredit fee + kode unik | Ditulis eksplisit di §3.4 sebagai titik paling rawan; wajib diverifikasi di E2E, bukan diasumsikan |
 | Bentuk API Mandiri (`echannel`) diasumsikan sama dengan `bank_transfer` | §3.6 mewajibkan cek dokumentasi resmi saat implementasi |
 | Fee/kode unik tidak ikut ke `order.total` → webhook amount-check menolak semua pembayaran | §3.3 menetapkan `total` = jumlah yang ditagih; E2E membuktikannya |
-| Bagian A memakan waktu Bagian B menjelang deadline | Urutan dikunci di §5: uang dulu, visual belakangan |
+| Kegagalan kirim email menggagalkan webhook/fulfillment | §4.2 mewajibkan fire-and-forget ber-try/catch, tidak pernah melempar ke jalur uang |
+| Verifikasi domain Resend (DNS) memakan waktu di luar kendali kita | Dikerjakan paling awal di Bagian C supaya propagasi DNS berjalan sementara kode ditulis |
+| `/cek-transaksi` jadi cara memanen pesanan orang lain | §4.3 menuntut email **dan** nomor invoice sekaligus, plus rate limit |
+| Bagian A memakan waktu bagian berisiko menjelang deadline | Urutan dikunci di §6: uang dulu, akses invoice, visual terakhir |
