@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useCallback } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -40,50 +40,23 @@ function StepHeader({ n, title }: { n: number; title: string }) {
 export function ProductDetailClient({
   product,
   session,
+  paymentMethods,
 }: {
   product: ProductForCheckout;
   session: { email: string; walletBalance: bigint } | null;
+  paymentMethods: { code: string; label: string; feeFlat: string; feePercent: number }[];
 }) {
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
-  const [snapError, setSnapError] = useState<string | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState(paymentMethods[0]?.code ?? "");
   const selectedItem = purchasableItems.find((i) => i.id === selectedItemId) ?? purchasableItems[0];
 
   const router = useRouter();
   const [state, formAction, pending] = useActionState(withPrevState(createCheckoutOrder), INITIAL_STATE);
 
-  const goToInvoice = useCallback(() => {
+  useEffect(() => {
     if (state.publicToken) router.push(`/invoice/${state.publicToken}`);
   }, [state.publicToken, router]);
-
-  useEffect(() => {
-    setSnapError(null);
-    // paymentMethod "balance" tidak pernah balikin snapToken (bayar langsung
-    // di server, tidak lewat Midtrans) - order.publicToken saja cukup buat
-    // langsung ke invoice, tidak perlu tunggu popup Snap.
-    if (state.publicToken && !state.snapToken) {
-      goToInvoice();
-      return;
-    }
-    if (!state.snapToken) return;
-    if (!window.snap) {
-      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
-      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
-      return;
-    }
-    window.snap.pay(state.snapToken, {
-      onSuccess: goToInvoice,
-      onPending: goToInvoice,
-      onError: () => {
-        console.error("Snap: transaksi pembayaran gagal", { snapToken: state.snapToken });
-        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
-      },
-      onClose: () => {
-        // customer tutup popup tanpa bayar - order tetap PENDING_PAYMENT,
-        // form tetap tampil, bisa submit ulang (dapat snapToken baru).
-      },
-    });
-  }, [state.snapToken, state.publicToken, goToInvoice]);
 
   if (purchasableItems.length === 0) {
     return (
@@ -173,33 +146,49 @@ export function ProductDetailClient({
           )}
         </div>
 
-        {session && (
-          <div className="flex flex-col gap-3 border-t pt-6">
-            <StepHeader n={3} title="Pilih Pembayaran" />
-            <RadioGroup name="paymentMethod" defaultValue="qris">
-              <RadioGroupItem value="qris">
-                <QrCode className="size-4" aria-hidden="true" />
-                QRIS, VA, & Lainnya
-              </RadioGroupItem>
+        <div className="flex flex-col gap-3 border-t pt-6">
+          <StepHeader n={3} title="Pilih Pembayaran" />
+          <input
+            type="hidden"
+            name="paymentMethod"
+            value={session && selectedMethod === "balance" ? "balance" : selectedMethod}
+          />
+          <RadioGroup value={selectedMethod} onValueChange={setSelectedMethod}>
+            {paymentMethods.map((m) => {
+              const feeBp = m.feePercent;
+              const fee = selectedItem
+                ? (selectedItem.sellingPrice * BigInt(feeBp)) / 10_000n + BigInt(m.feeFlat)
+                : 0n;
+              return (
+                <RadioGroupItem key={m.code} value={m.code}>
+                  <QrCode className="size-4" aria-hidden="true" />
+                  {m.label}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {fee > 0n ? `+ ${formatRupiah(fee)}` : "Gratis"}
+                  </span>
+                </RadioGroupItem>
+              );
+            })}
+            {session && (
               <RadioGroupItem value="balance" disabled={!canPayWithBalance}>
                 <Wallet className="size-4" aria-hidden="true" />
                 Saldo ({formatRupiah(session.walletBalance)})
               </RadioGroupItem>
-            </RadioGroup>
-            {!canPayWithBalance && (
-              <p className="text-xs text-muted-foreground">
-                Saldo tidak cukup.{" "}
-                <Link href="/account/deposit" className="text-primary underline">
-                  Isi saldo dulu
-                </Link>
-                .
-              </p>
             )}
-          </div>
-        )}
+          </RadioGroup>
+          {session && !canPayWithBalance && (
+            <p className="text-xs text-muted-foreground">
+              Saldo tidak cukup.{" "}
+              <Link href="/account/deposit" className="text-primary underline">
+                Isi saldo dulu
+              </Link>
+              .
+            </p>
+          )}
+        </div>
 
         <div className="flex flex-col gap-3 border-t pt-6">
-          <StepHeader n={session ? 4 : 3} title="Detail Kontak" />
+          <StepHeader n={4} title="Detail Kontak" />
           <div className="flex flex-col gap-2">
             <Label htmlFor="buyerEmail">Email (untuk akses invoice)</Label>
             <Input
@@ -214,7 +203,6 @@ export function ProductDetailClient({
         </div>
 
         {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}
-        {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
         <Button type="submit" disabled={pending} className="h-11 w-full text-base font-heading">
           {pending ? "Memproses..." : "Beli Sekarang"}
         </Button>

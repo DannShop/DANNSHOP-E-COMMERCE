@@ -6,7 +6,8 @@ import { auth } from "@/lib/auth";
 import { checkoutSchema, extractTargetFromFormData } from "@/lib/validation/checkout";
 import { generateOrderNumber } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
-import { createSnapTransaction } from "@/lib/midtrans/client";
+import { chargeByMethodCode } from "@/lib/midtrans/client";
+import { calculateFee, calculateTotal, generateUniqueCode } from "@/lib/payment/fee";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
@@ -19,7 +20,6 @@ export interface CheckoutResult {
   error?: string;
   orderNumber?: string;
   publicToken?: string;
-  snapToken?: string;
 }
 
 class InsufficientBalanceError extends Error {}
@@ -81,6 +81,11 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   const decision = selectFulfillmentSku({ sellingPrice: item.sellingPrice }, item.providerSkus, activeProviders);
   if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
 
+  if (parsed.data.paymentMethod !== "balance") {
+    const method = await db.paymentMethodConfig.findUnique({ where: { code: parsed.data.paymentMethod } });
+    if (!method || !method.isActive) return { error: "Metode pembayaran tidak tersedia." };
+  }
+
   const now = new Date();
   const orderNumber = generateOrderNumber(now);
 
@@ -88,7 +93,15 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     return createBalanceOrder({ userId: userId!, orderNumber, item, target: parsed.data.target, buyerEmail: parsed.data.buyerEmail });
   }
 
-  return createMidtransOrder({ userId, orderNumber, item, target: parsed.data.target, buyerEmail: parsed.data.buyerEmail, now });
+  return createMidtransOrder({
+    userId,
+    orderNumber,
+    item,
+    target: parsed.data.target,
+    buyerEmail: parsed.data.buyerEmail,
+    now,
+    paymentMethodCode: parsed.data.paymentMethod,
+  });
 }
 
 async function createBalanceOrder(input: {
@@ -110,6 +123,7 @@ async function createBalanceOrder(input: {
     paidVia: "BALANCE",
     sellingPrice: input.item.sellingPrice,
     total: input.item.sellingPrice,
+    paymentMethod: "balance",
     payment: { create: { method: "balance", status: "PENDING" } },
   });
   await db.orderStatusHistory.create({
@@ -165,8 +179,16 @@ async function createMidtransOrder(input: {
   target: Record<string, string>;
   buyerEmail: string;
   now: Date;
+  paymentMethodCode: string;
 }): Promise<CheckoutResult> {
   const expiredAt = new Date(input.now.getTime() + EXPIRY_MINUTES * 60_000);
+
+  const method = await db.paymentMethodConfig.findUnique({ where: { code: input.paymentMethodCode } });
+  if (!method || !method.isActive) return { error: "Metode pembayaran tidak tersedia." };
+
+  const fee = calculateFee(input.item.sellingPrice, method.feeFlat, method.feePercent);
+  const uniqueCode = generateUniqueCode();
+  const total = calculateTotal(input.item.sellingPrice, fee, uniqueCode);
 
   const order = await createOrderWithRetry({
     orderNumber: input.orderNumber,
@@ -179,37 +201,33 @@ async function createMidtransOrder(input: {
     buyerEmail: input.buyerEmail,
     paidVia: "MIDTRANS",
     sellingPrice: input.item.sellingPrice,
-    total: input.item.sellingPrice,
+    fee,
+    uniqueCode,
+    total,
+    paymentMethod: method.code,
     expiredAt,
-    payment: { create: { method: "snap", status: "PENDING", expiredAt } },
+    payment: { create: { method: method.code, status: "PENDING", expiredAt } },
   });
   // Ditembak duluan, di-await belakangan bareng orderPayment.update — history
   // insert ini tidak perlu selesai dulu sebelum manggil Midtrans, jadi latency-nya
-  // numpuk di belakang panggilan Snap (yang jauh lebih lambat karena network
+  // numpuk di belakang panggilan Midtrans (yang jauh lebih lambat karena network
   // eksternal) alih-alih nambah 1 round-trip berurutan di depan.
   const historyPromise = db.orderStatusHistory.create({
     data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout" },
   });
 
-  let snapToken: string;
   try {
-    const snap = await createSnapTransaction({ orderId: order.orderNumber, grossAmount: Number(input.item.sellingPrice) });
-    snapToken = snap.token;
+    const { actions } = await chargeByMethodCode(method.code, order.orderNumber, Number(total));
     await Promise.all([
-      db.orderPayment.update({
-        where: { orderId: order.id },
-        data: {
-          rawResponse: { snapToken: snap.token, redirectUrl: snap.redirectUrl } as object,
-        },
-      }),
+      db.orderPayment.update({ where: { orderId: order.id }, data: { actions } }),
       historyPromise,
     ]);
   } catch (e) {
-    console.error("Checkout: Midtrans Snap transaction gagal", { orderId: order.id, error: e });
+    console.error("Checkout: charge Midtrans gagal", { orderId: order.id, method: method.code, error: e });
     await db.order.update({ where: { id: order.id }, data: { status: "FAILED" } });
     await db.orderPayment.update({ where: { orderId: order.id }, data: { status: "FAILED" } });
     await db.orderStatusHistory.create({
-      data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "FAILED", note: "Snap transaction Midtrans gagal" },
+      data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "FAILED", note: "Charge Midtrans gagal" },
     });
     return { error: "Gagal membuat pembayaran, silakan coba lagi." };
   }
@@ -223,5 +241,5 @@ async function createMidtransOrder(input: {
     // tidak throw — order & pembayaran tetap valid untuk user, cuma auto-expire-nya berisiko tidak jalan
   }
 
-  return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken, snapToken };
+  return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
 }

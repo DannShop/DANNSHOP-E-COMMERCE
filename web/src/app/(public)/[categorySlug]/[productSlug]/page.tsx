@@ -10,7 +10,10 @@ export default async function ProductDetailPage({
   params: Promise<{ categorySlug: string; productSlug: string }>;
 }) {
   const { categorySlug, productSlug } = await params;
-  const product = await getProductForCheckout(categorySlug, productSlug);
+  const [product, paymentMethods] = await Promise.all([
+    getProductForCheckout(categorySlug, productSlug),
+    db.paymentMethodConfig.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+  ]);
   if (!product) notFound();
 
   const authSession = await auth();
@@ -20,5 +23,16 @@ export default async function ProductDetailPage({
     session = { email: authSession.user.email ?? "", walletBalance: wallet?.balance ?? 0n };
   }
 
-  return <ProductDetailClient product={product} session={session} />;
+  return (
+    <ProductDetailClient
+      product={product}
+      session={session}
+      paymentMethods={paymentMethods.map((m) => ({
+        code: m.code,
+        label: m.label,
+        feeFlat: m.feeFlat.toString(),
+        feePercent: m.feePercent,
+      }))}
+    />
+  );
 }

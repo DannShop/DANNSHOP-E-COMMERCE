@@ -5,7 +5,7 @@ export const checkoutSchema = z.object({
   buyerEmail: z.string().email("Email tidak valid"),
   target: z.record(z.string(), z.string().min(1, "Wajib diisi").max(255, "Terlalu panjang"))
     .refine((t) => Object.keys(t).length <= 10, "Terlalu banyak field"),
-  paymentMethod: z.enum(["qris", "balance"]).default("qris"),
+  paymentMethod: z.string().min(1, "Metode pembayaran wajib dipilih"),
 });
 
 export function extractTargetFromFormData(formData: FormData): Record<string, string> {
