@@ -61,10 +61,15 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     return { error: "Harus login untuk bayar pakai saldo." };
   }
 
-  const item = await db.productItem.findUnique({
-    where: { id: parsed.data.productItemId, isActive: true },
-    include: { product: true, providerSkus: true },
-  });
+  // item & activeProviders tidak saling bergantung — ambil paralel, bukan
+  // berurutan, biar tidak nambah 1 round-trip DB percuma sebelum tahu itemnya valid.
+  const [item, activeProviders] = await Promise.all([
+    db.productItem.findUnique({
+      where: { id: parsed.data.productItemId, isActive: true },
+      include: { product: true, providerSkus: true },
+    }),
+    getActiveProviders(),
+  ]);
   if (!item || !item.product.isActive) return { error: "Produk tidak ditemukan atau tidak aktif." };
 
   const inputFields = item.product.inputFields as { name: string; label: string }[];
@@ -73,7 +78,6 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     return { error: `${missingField.label} wajib diisi.` };
   }
 
-  const activeProviders = await getActiveProviders();
   const decision = selectFulfillmentSku({ sellingPrice: item.sellingPrice }, item.providerSkus, activeProviders);
   if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
 
@@ -179,7 +183,11 @@ async function createMidtransOrder(input: {
     expiredAt,
     payment: { create: { method: "snap", status: "PENDING", expiredAt } },
   });
-  await db.orderStatusHistory.create({
+  // Ditembak duluan, di-await belakangan bareng orderPayment.update — history
+  // insert ini tidak perlu selesai dulu sebelum manggil Midtrans, jadi latency-nya
+  // numpuk di belakang panggilan Snap (yang jauh lebih lambat karena network
+  // eksternal) alih-alih nambah 1 round-trip berurutan di depan.
+  const historyPromise = db.orderStatusHistory.create({
     data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout" },
   });
 
@@ -187,12 +195,15 @@ async function createMidtransOrder(input: {
   try {
     const snap = await createSnapTransaction({ orderId: order.orderNumber, grossAmount: Number(input.item.sellingPrice) });
     snapToken = snap.token;
-    await db.orderPayment.update({
-      where: { orderId: order.id },
-      data: {
-        rawResponse: { snapToken: snap.token, redirectUrl: snap.redirectUrl } as object,
-      },
-    });
+    await Promise.all([
+      db.orderPayment.update({
+        where: { orderId: order.id },
+        data: {
+          rawResponse: { snapToken: snap.token, redirectUrl: snap.redirectUrl } as object,
+        },
+      }),
+      historyPromise,
+    ]);
   } catch (e) {
     console.error("Checkout: Midtrans Snap transaction gagal", { orderId: order.id, error: e });
     await db.order.update({ where: { id: order.id }, data: { status: "FAILED" } });

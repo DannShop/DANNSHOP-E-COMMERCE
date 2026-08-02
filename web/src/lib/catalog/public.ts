@@ -16,6 +16,7 @@ export interface CatalogProduct {
   slug: string;
   name: string;
   publisher: string | null;
+  banner: string | null;
   startingPrice: bigint;
 }
 
@@ -40,6 +41,7 @@ export async function getCatalogHomeData(): Promise<CatalogCategory[]> {
           slug: true,
           name: true,
           publisher: true,
+          banner: true,
           items: { where: { isActive: true }, select: { sellingPrice: true } },
         },
       },
@@ -55,6 +57,7 @@ export async function getCatalogHomeData(): Promise<CatalogCategory[]> {
       slug: p.slug,
       name: p.name,
       publisher: p.publisher,
+      banner: p.banner,
       startingPrice: p.items.reduce((min, i) => (i.sellingPrice < min ? i.sellingPrice : min), p.items[0].sellingPrice),
     })),
   }));

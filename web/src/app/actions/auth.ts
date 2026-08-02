@@ -2,7 +2,7 @@
 
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
-import { signIn } from "@/lib/auth";
+import { signIn, signOut } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { registerSchema } from "@/lib/validation/auth";
@@ -77,4 +77,8 @@ export async function registerAction(
   }
 
   redirect("/login?registered=1");
+}
+
+export async function logoutAction() {
+  await signOut({ redirectTo: "/" });
 }

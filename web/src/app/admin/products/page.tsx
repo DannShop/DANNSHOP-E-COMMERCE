@@ -21,9 +21,14 @@ export default async function AdminProductsPage() {
             Kelola produk dan daftar item/harga yang tampil di katalog member.
           </p>
         </div>
-        <Link href="/admin/products/new" className={buttonVariants({})}>
-          + Produk baru
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/admin/products/import" className={buttonVariants({ variant: "outline" })}>
+            Tambah dari Digiflazz
+          </Link>
+          <Link href="/admin/products/new" className={buttonVariants({})}>
+            + Produk baru
+          </Link>
+        </div>
       </div>
 
       <div className="rounded-xl ring-1 ring-foreground/10">

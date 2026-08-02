@@ -5,6 +5,7 @@ export const productSchema = z.object({
   slug: z.string().min(1, "Slug wajib diisi").regex(/^[a-z0-9-]+$/, "Slug hanya huruf kecil, angka, tanda hubung"),
   name: z.string().min(1, "Nama wajib diisi"),
   publisher: z.string().optional().transform((v) => (v === "" ? undefined : v)),
+  banner: z.string().optional().transform((v) => (v === "" ? undefined : v)),
   description: z.string().optional().transform((v) => (v === "" ? undefined : v)),
   // inputFields dikirim sebagai JSON string dari textarea admin
   inputFields: z.string().transform((v, ctx) => {
@@ -26,4 +27,14 @@ export const productItemSchema = z.object({
   sellingPrice: z.coerce.bigint().positive("Harga jual harus > 0"),
   memberPrice: z.coerce.bigint().positive("Harga member harus > 0"),
   sortOrder: z.coerce.number().int().default(0),
+});
+
+export const bulkImportSchema = z.object({
+  categoryId: z.string().min(1, "Kategori wajib dipilih"),
+  provider: z.string().min(1, "Provider wajib dipilih"),
+  brand: z.string().min(1, "Brand wajib dipilih"),
+  slug: z.string().min(1, "Slug wajib diisi").regex(/^[a-z0-9-]+$/, "Slug hanya huruf kecil, angka, tanda hubung"),
+  markupPercent: z.coerce.number().min(0, "Markup harga jual harus >= 0"),
+  memberMarkupPercent: z.coerce.number().min(0, "Markup harga member harus >= 0"),
+  skuCodes: z.array(z.string().min(1)).min(1, "Pilih minimal 1 produk untuk ditambahkan"),
 });

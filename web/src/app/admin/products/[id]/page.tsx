@@ -79,6 +79,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             slug: product.slug,
             name: product.name,
             publisher: product.publisher,
+            banner: product.banner,
             description: product.description,
             inputFields: product.inputFields,
             nicknameCheckKey: product.nicknameCheckKey,

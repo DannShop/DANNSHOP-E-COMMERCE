@@ -26,6 +26,7 @@ export interface ProductFormInitial {
   slug: string;
   name: string;
   publisher: string | null;
+  banner: string | null;
   description: string | null;
   inputFields: unknown;
   nicknameCheckKey: string | null;
@@ -92,6 +93,20 @@ export function ProductForm({
         <div className="space-y-1.5">
           <Label htmlFor="publisher">Publisher (opsional)</Label>
           <Input id="publisher" name="publisher" defaultValue={initial?.publisher ?? ""} placeholder="Moonton" />
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="banner">URL banner/logo (opsional)</Label>
+          <Input
+            id="banner"
+            name="banner"
+            type="url"
+            defaultValue={initial?.banner ?? ""}
+            placeholder="https://upload.wikimedia.org/.../logo.png"
+          />
+          <p className="text-xs text-muted-foreground">
+            Ditampilkan sebagai gambar kartu produk. Kosongkan untuk pakai warna gradien default.
+          </p>
         </div>
       </div>
 

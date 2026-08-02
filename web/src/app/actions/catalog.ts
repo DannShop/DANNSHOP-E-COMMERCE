@@ -2,7 +2,8 @@ import { revalidatePath } from "next/cache";
 import { ProviderKey } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { productSchema, productItemSchema } from "@/lib/validation/catalog";
+import { productSchema, productItemSchema, bulkImportSchema } from "@/lib/validation/catalog";
+import { applyMarkup } from "@/lib/catalog/bulk-import";
 
 const PROVIDER_KEYS = Object.values(ProviderKey);
 
@@ -52,6 +53,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
     slug: formData.get("slug"),
     name: formData.get("name"),
     publisher: formData.get("publisher") ?? "",
+    banner: formData.get("banner") ?? "",
     description: formData.get("description") ?? "",
     inputFields: formData.get("inputFields"),
     nicknameCheckKey: formData.get("nicknameCheckKey") ?? "",
@@ -64,6 +66,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
       slug: parsed.data.slug,
       name: parsed.data.name,
       publisher: parsed.data.publisher,
+      banner: parsed.data.banner,
       description: parsed.data.description,
       inputFields: parsed.data.inputFields,
       nicknameCheckKey: parsed.data.nicknameCheckKey,
@@ -88,6 +91,7 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
     slug: formData.get("slug"),
     name: formData.get("name"),
     publisher: formData.get("publisher") ?? "",
+    banner: formData.get("banner") ?? "",
     description: formData.get("description") ?? "",
     inputFields: formData.get("inputFields"),
     nicknameCheckKey: formData.get("nicknameCheckKey") ?? "",
@@ -101,6 +105,7 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
       slug: parsed.data.slug,
       name: parsed.data.name,
       publisher: parsed.data.publisher,
+      banner: parsed.data.banner,
       description: parsed.data.description,
       inputFields: parsed.data.inputFields,
       nicknameCheckKey: parsed.data.nicknameCheckKey,
@@ -286,4 +291,122 @@ export async function unmapProviderSku(formData: FormData): Promise<ActionResult
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${mapping.productItem.productId}`);
   return { ok: "Mapping SKU dihapus." };
+}
+
+// Bulk-add: satu brand Digiflazz (mis. "Mobile Legends") -> satu Product kita,
+// tiap baris price-list yang dicentang admin -> satu ProductItem + mapping
+// ProviderSku baru. Harga jual/member SELALU dihitung ulang di server dari
+// costPrice yang dibaca fresh dari ProviderPriceListCache (skuCodes) — bukan
+// dari costPrice yang (mungkin) dikirim balik lewat form — supaya harga yang
+// akhirnya dibayar customer tidak pernah bisa dipengaruhi payload klien.
+// Idempotent by design: SKU yang providerSku-nya sudah pernah dipetakan
+// (created di run sebelumnya) DILEWATI, tidak di-reprice — biar tidak
+// menimpa harga yang mungkin sudah diedit manual admin setelah import
+// pertama. Re-price SKU lama tetap lewat "Sync Harga" (runPriceSync) yang
+// sudah ada, bukan tanggung jawab bulk-import.
+export async function bulkImportProducts(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = bulkImportSchema.safeParse({
+    categoryId: formData.get("categoryId"),
+    provider: formData.get("provider"),
+    brand: formData.get("brand"),
+    slug: formData.get("slug"),
+    markupPercent: formData.get("markupPercent"),
+    memberMarkupPercent: formData.get("memberMarkupPercent"),
+    skuCodes: formData.getAll("skuCodes"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  if (!PROVIDER_KEYS.includes(parsed.data.provider as ProviderKey)) {
+    return { error: "Provider tidak valid." };
+  }
+  const providerKey = parsed.data.provider as ProviderKey;
+
+  const category = await db.category.findUnique({ where: { id: parsed.data.categoryId } });
+  if (!category) return { error: "Kategori tidak ditemukan." };
+
+  const rows = await db.providerPriceListCache.findMany({
+    where: {
+      provider: providerKey,
+      brand: parsed.data.brand,
+      skuCode: { in: parsed.data.skuCodes },
+    },
+  });
+  if (rows.length === 0) {
+    return { error: "Data price-list tidak ditemukan lagi di cache — coba sync harga ulang lalu cari ulang." };
+  }
+
+  try {
+    const result = await db.$transaction(async (tx) => {
+      const product = await tx.product.upsert({
+        where: { slug: parsed.data.slug },
+        update: {},
+        create: {
+          categoryId: parsed.data.categoryId,
+          slug: parsed.data.slug,
+          name: parsed.data.brand,
+          inputFields: [{ name: "user_id", label: "ID Tujuan" }],
+          isActive: false,
+        },
+      });
+
+      let created = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        const already = await tx.providerSku.findFirst({
+          where: { provider: providerKey, providerSkuCode: row.skuCode },
+        });
+        if (already) {
+          skipped++;
+          continue;
+        }
+
+        const item = await tx.productItem.create({
+          data: {
+            productId: product.id,
+            name: row.productName,
+            sellingPrice: applyMarkup(row.costPrice, parsed.data.markupPercent),
+            memberPrice: applyMarkup(row.costPrice, parsed.data.memberMarkupPercent),
+            sortOrder: 0,
+            isActive: row.available,
+          },
+        });
+        await tx.providerSku.create({
+          data: {
+            productItemId: item.id,
+            provider: providerKey,
+            providerSkuCode: row.skuCode,
+            costPrice: row.costPrice,
+            status: row.available ? "ACTIVE" : "UNAVAILABLE",
+            lastSyncedAt: new Date(),
+          },
+        });
+        created++;
+      }
+
+      return { productId: product.id, created, skipped };
+    });
+
+    await logAdmin(admin.adminId, "catalog.bulk_import", result.productId, {
+      brand: parsed.data.brand,
+      provider: providerKey,
+      created: result.created,
+      skipped: result.skipped,
+    });
+    revalidatePath("/admin/products");
+    revalidatePath(`/admin/products/${result.productId}`);
+
+    if (result.created === 0) {
+      return { ok: `Semua ${result.skipped} item yang dicentang sudah pernah diimpor sebelumnya — tidak ada yang baru ditambahkan.` };
+    }
+    return {
+      ok: `${result.created} item baru ditambahkan ke produk "${parsed.data.brand}"${result.skipped > 0 ? ` (${result.skipped} item dilewati karena sudah pernah diimpor)` : ""}. Buka halaman produk untuk cek harga lalu aktifkan.`,
+    };
+  } catch (e) {
+    console.error("bulkImportProducts gagal", { brand: parsed.data.brand, error: e });
+    return { error: e instanceof Error ? e.message : "Gagal bulk-import, coba lagi." };
+  }
 }

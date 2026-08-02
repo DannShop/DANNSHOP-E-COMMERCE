@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { auth, signOut } from "@/lib/auth";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { auth } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SearchOverlay } from "@/components/search-overlay";
 import { CategoryDrawer } from "@/components/category-drawer";
@@ -19,47 +17,7 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-2">
           <SearchOverlay />
           <ThemeToggle />
-          <CategoryDrawer categories={categories} />
-          {session?.user ? (
-            <>
-              {session.user.role === "ADMIN" && (
-                <Link
-                  href="/admin"
-                  className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
-                >
-                  Admin
-                </Link>
-              )}
-              <Link
-                href="/account"
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
-              >
-                Akun
-              </Link>
-              <form
-                action={async () => {
-                  "use server";
-                  await signOut({ redirectTo: "/" });
-                }}
-              >
-                <Button type="submit" variant="outline" size="sm">
-                  Keluar
-                </Button>
-              </form>
-            </>
-          ) : (
-            <>
-              <Link
-                href="/login"
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
-              >
-                Masuk
-              </Link>
-              <Link href="/register" className={cn(buttonVariants({ size: "sm" }))}>
-                Daftar
-              </Link>
-            </>
-          )}
+          <CategoryDrawer categories={categories} session={session} />
         </nav>
       </div>
     </header>
