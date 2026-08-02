@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { QrCode, Wallet, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,8 +98,33 @@ export function ProductDetailClient({
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <div>
-        <h1 className="font-heading text-2xl font-bold text-balance">{product.name}</h1>
-        {product.publisher && <p className="mt-1 text-sm text-muted-foreground">{product.publisher}</p>}
+        {product.banner && (
+          <div className="relative aspect-21/9 w-full overflow-hidden rounded-[var(--radius)] bg-gradient-to-br from-primary to-accent">
+            <Image
+              src={product.banner}
+              alt={product.name}
+              fill
+              sizes="(min-width: 1024px) 672px, 100vw"
+              className="object-cover"
+              unoptimized
+            />
+            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
+          </div>
+        )}
+
+        <div className="relative flex items-end gap-3 px-1">
+          <div
+            className={`relative z-10 size-16 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-primary to-accent ring-4 ring-background ${product.banner ? "-mt-8" : ""}`}
+          >
+            {product.banner && (
+              <Image src={product.banner} alt="" fill sizes="64px" className="object-cover" unoptimized />
+            )}
+          </div>
+          <div className="pb-1">
+            <h1 className="font-heading text-2xl font-bold text-balance">{product.name}</h1>
+            {product.publisher && <p className="text-sm text-muted-foreground">{product.publisher}</p>}
+          </div>
+        </div>
       </div>
 
       <TrustBadges />
