@@ -1,9 +1,13 @@
 import { revalidatePath } from "next/cache";
 import { ProviderKey } from "@prisma/client";
+import { put } from "@vercel/blob";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { productSchema, productItemSchema, bulkImportSchema } from "@/lib/validation/catalog";
 import { applyMarkup } from "@/lib/catalog/bulk-import";
+
+const MAX_BANNER_BYTES = 5 * 1024 * 1024; // 5MB — cukup besar untuk logo/banner produk, cukup kecil untuk cegah abuse storage
+const ALLOWED_BANNER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
 
 const PROVIDER_KEYS = Object.values(ProviderKey);
 
@@ -41,6 +45,42 @@ async function logAdmin(adminId: string, action: string, targetId: string, detai
   await db.adminActionLog.create({
     data: { adminId, action, targetType: "product", targetId, detail },
   });
+}
+
+// Upload banner/logo produk ke Vercel Blob (public) — dipanggil terpisah dari
+// createProduct/updateProduct (bukan lewat form submit utama), supaya admin
+// bisa lihat hasil upload/preview sebelum benar-benar submit form produk.
+// Nama file dibuat dari productId (kalau edit) atau random (kalau produk
+// baru belum punya id) + addRandomSuffix, jadi tidak ada risiko tabrakan
+// nama antar produk maupun antar upload ulang produk yang sama.
+export async function uploadProductBanner(formData: FormData): Promise<{ url?: string; error?: string }> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "File tidak ditemukan." };
+  if (!ALLOWED_BANNER_TYPES.has(file.type)) {
+    return { error: "Format file harus PNG, JPEG, WebP, atau SVG." };
+  }
+  if (file.size > MAX_BANNER_BYTES) {
+    return { error: "Ukuran file maksimal 5MB." };
+  }
+
+  const productId = formData.get("productId");
+  const prefix = typeof productId === "string" && productId ? productId : "new";
+  const ext = file.name.split(".").pop() ?? "png";
+
+  try {
+    const blob = await put(`product-banners/${prefix}.${ext}`, file, {
+      access: "public",
+      addRandomSuffix: true,
+    });
+    return { url: blob.url };
+  } catch (e) {
+    console.error("uploadProductBanner gagal", { productId: prefix, error: e });
+    return { error: "Gagal upload file, coba lagi." };
+  }
 }
 
 export async function createProduct(formData: FormData): Promise<ActionResult> {

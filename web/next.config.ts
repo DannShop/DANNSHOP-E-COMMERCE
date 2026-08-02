@@ -6,7 +6,7 @@ const CSP = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline' ${MIDTRANS_SNAP_DOMAINS}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  "img-src 'self' data: https://*.public.blob.vercel-storage.com",
   "font-src 'self'",
   `connect-src 'self' ${MIDTRANS_SNAP_DOMAINS}`,
   `frame-src ${MIDTRANS_SNAP_DOMAINS}`,

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,14 +38,44 @@ export function ProductForm({
   categories,
   initial,
   submitLabel,
+  uploadProductBanner,
 }: {
   action: ServerAction;
   categories: ProductFormCategory[];
   initial?: ProductFormInitial;
   submitLabel: string;
+  uploadProductBanner: (formData: FormData) => Promise<{ url?: string; error?: string }>;
 }) {
   const [state, formAction, pending] = useActionState(withPrevState(action), INITIAL_STATE);
   const inputFieldsDefault = initial ? JSON.stringify(initial.inputFields ?? [], null, 2) : "";
+
+  const [bannerUrl, setBannerUrl] = useState(initial?.banner ?? "");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset supaya bisa pilih file yang sama lagi kalau mau ganti ulang
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      if (initial?.id) fd.set("productId", initial.id);
+      const result = await uploadProductBanner(fd);
+      if (result.error) {
+        setUploadError(result.error);
+      } else if (result.url) {
+        setBannerUrl(result.url);
+      }
+    } catch {
+      setUploadError("Gagal upload file, coba lagi.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <form action={formAction} className="space-y-4">
@@ -96,17 +127,35 @@ export function ProductForm({
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="banner">URL banner/logo (opsional)</Label>
-          <Input
-            id="banner"
-            name="banner"
-            type="url"
-            defaultValue={initial?.banner ?? ""}
-            placeholder="https://upload.wikimedia.org/.../logo.png"
-          />
-          <p className="text-xs text-muted-foreground">
-            Ditampilkan sebagai gambar kartu produk. Kosongkan untuk pakai warna gradien default.
-          </p>
+          <Label htmlFor="bannerFile">Banner/logo produk (opsional)</Label>
+          <input type="hidden" name="banner" value={bannerUrl} />
+          <div className="flex items-center gap-3">
+            {bannerUrl && (
+              <div className="relative size-14 shrink-0 overflow-hidden rounded-md ring-1 ring-foreground/10">
+                <Image src={bannerUrl} alt="Preview banner" fill sizes="56px" className="object-cover" unoptimized />
+              </div>
+            )}
+            <div className="flex-1 space-y-1">
+              <Input
+                id="bannerFile"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+              <p className="text-xs text-muted-foreground">
+                {uploading
+                  ? "Mengupload..."
+                  : "Ditampilkan sebagai gambar kartu produk. Kosongkan untuk pakai warna gradien default. Maks 5MB."}
+              </p>
+              {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
+            </div>
+            {bannerUrl && !uploading && (
+              <Button type="button" variant="outline" size="xs" onClick={() => setBannerUrl("")}>
+                Hapus
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -147,7 +196,7 @@ export function ProductForm({
       </div>
 
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || uploading}>
           {pending ? "Menyimpan..." : submitLabel}
         </Button>
         <ActionMessage state={state} />

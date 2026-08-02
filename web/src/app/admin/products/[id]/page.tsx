@@ -9,6 +9,7 @@ import {
   toggleProductActive,
   mapProviderSku,
   unmapProviderSku,
+  uploadProductBanner,
 } from "@/app/actions/catalog";
 import { ProductForm } from "../product-form";
 import { ProductItemsManager } from "../product-items-manager";
@@ -73,6 +74,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           action={updateProduct}
           categories={categories}
           submitLabel="Simpan perubahan"
+          uploadProductBanner={uploadProductBanner}
           initial={{
             id: product.id,
             categoryId: product.categoryId,

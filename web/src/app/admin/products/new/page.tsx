@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { createProduct } from "@/app/actions/catalog";
+import { createProduct, uploadProductBanner } from "@/app/actions/catalog";
 import { ProductForm } from "../product-form";
 
 export default async function NewProductPage() {
@@ -18,7 +18,12 @@ export default async function NewProductPage() {
         </p>
       </div>
 
-      <ProductForm action={createProduct} categories={categories} submitLabel="Buat produk" />
+      <ProductForm
+        action={createProduct}
+        categories={categories}
+        submitLabel="Buat produk"
+        uploadProductBanner={uploadProductBanner}
+      />
     </div>
   );
 }
