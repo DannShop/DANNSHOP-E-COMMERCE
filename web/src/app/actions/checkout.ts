@@ -12,6 +12,7 @@ import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 import { getActiveProviders } from "@/lib/providers/registry";
+import { sendOrderCreatedEmail } from "@/lib/notify/email";
 
 const EXPIRY_MINUTES = 15;
 
@@ -43,6 +44,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   const parsed = checkoutSchema.safeParse({
     productItemId: formData.get("productItemId"),
     buyerEmail: formData.get("buyerEmail"),
+    buyerPhone: formData.get("buyerPhone") ?? "",
     target: extractTargetFromFormData(formData),
     paymentMethod: formData.get("paymentMethod") ?? "qris",
   });
@@ -90,7 +92,14 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   const orderNumber = generateOrderNumber(now);
 
   if (parsed.data.paymentMethod === "balance") {
-    return createBalanceOrder({ userId: userId!, orderNumber, item, target: parsed.data.target, buyerEmail: parsed.data.buyerEmail });
+    return createBalanceOrder({
+      userId: userId!,
+      orderNumber,
+      item,
+      target: parsed.data.target,
+      buyerEmail: parsed.data.buyerEmail,
+      buyerPhone: parsed.data.buyerPhone,
+    });
   }
 
   return createMidtransOrder({
@@ -99,6 +108,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     item,
     target: parsed.data.target,
     buyerEmail: parsed.data.buyerEmail,
+    buyerPhone: parsed.data.buyerPhone,
     now,
     paymentMethodCode: parsed.data.paymentMethod,
   });
@@ -110,6 +120,7 @@ async function createBalanceOrder(input: {
   item: { id: string; sellingPrice: bigint; product: { name: string }; name: string };
   target: Record<string, string>;
   buyerEmail: string;
+  buyerPhone?: string;
 }): Promise<CheckoutResult> {
   const order = await createOrderWithRetry({
     orderNumber: input.orderNumber,
@@ -120,6 +131,7 @@ async function createBalanceOrder(input: {
     itemName: input.item.name,
     target: input.target,
     buyerEmail: input.buyerEmail,
+    buyerPhone: input.buyerPhone,
     paidVia: "BALANCE",
     sellingPrice: input.item.sellingPrice,
     total: input.item.sellingPrice,
@@ -169,6 +181,7 @@ async function createBalanceOrder(input: {
   }
 
   await dispatchFulfillment(order.id);
+  await sendOrderCreatedEmail(order, null);
   return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
 }
 
@@ -178,6 +191,7 @@ async function createMidtransOrder(input: {
   item: { id: string; sellingPrice: bigint; product: { name: string }; name: string };
   target: Record<string, string>;
   buyerEmail: string;
+  buyerPhone?: string;
   now: Date;
   paymentMethodCode: string;
 }): Promise<CheckoutResult> {
@@ -199,6 +213,7 @@ async function createMidtransOrder(input: {
     itemName: input.item.name,
     target: input.target,
     buyerEmail: input.buyerEmail,
+    buyerPhone: input.buyerPhone,
     paidVia: "MIDTRANS",
     sellingPrice: input.item.sellingPrice,
     fee,
@@ -216,8 +231,10 @@ async function createMidtransOrder(input: {
     data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout" },
   });
 
+  let chargedActions: Awaited<ReturnType<typeof chargeByMethodCode>>["actions"];
   try {
     const { actions } = await chargeByMethodCode(method.code, order.orderNumber, Number(total), EXPIRY_MINUTES);
+    chargedActions = actions;
     await Promise.all([
       db.orderPayment.update({ where: { orderId: order.id }, data: { actions } }),
       historyPromise,
@@ -241,5 +258,6 @@ async function createMidtransOrder(input: {
     // tidak throw — order & pembayaran tetap valid untuk user, cuma auto-expire-nya berisiko tidak jalan
   }
 
+  await sendOrderCreatedEmail(order, chargedActions);
   return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
 }

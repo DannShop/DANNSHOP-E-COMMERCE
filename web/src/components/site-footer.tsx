@@ -7,6 +7,7 @@ const WHATSAPP_CS = process.env.NEXT_PUBLIC_WHATSAPP_CS ?? "";
 const TELEGRAM_CS = process.env.NEXT_PUBLIC_TELEGRAM_CS ?? "";
 
 const SUPPORT_LINKS = [
+  { href: "/cek-transaksi", label: "Cek Transaksi" },
   { href: "/faq", label: "FAQ" },
   { href: "/syarat-ketentuan", label: "Syarat & Ketentuan" },
   { href: "/kebijakan-privasi", label: "Kebijakan Privasi" },

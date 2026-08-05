@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  MessageCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -242,6 +243,19 @@ export function InvoiceStatus({
           <p className="mt-1 font-mono text-xl font-bold tracking-wide break-all">{order.sn}</p>
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={() => {
+          const url = `${window.location.origin}/invoice/${token}`;
+          const text = `Invoice pesanan ${order.orderNumber} - ${url}`;
+          window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+        }}
+        className="flex items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium hover:bg-muted"
+      >
+        <MessageCircle className="size-4" aria-hidden="true" />
+        Kirim ke WhatsApp
+      </button>
     </div>
   );
 }

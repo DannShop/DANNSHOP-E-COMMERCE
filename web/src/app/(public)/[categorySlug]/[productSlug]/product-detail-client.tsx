@@ -221,6 +221,17 @@ export function ProductDetailClient({
               className="h-11 text-base"
             />
           </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="buyerPhone">Nomor WhatsApp (opsional)</Label>
+            <Input
+              id="buyerPhone"
+              name="buyerPhone"
+              type="tel"
+              placeholder="08xxxxxxxxxx"
+              className="h-11 text-base"
+            />
+            <p className="text-xs text-muted-foreground">Dipakai CS untuk menghubungi Anda kalau ada kendala pesanan.</p>
+          </div>
         </div>
 
         {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}

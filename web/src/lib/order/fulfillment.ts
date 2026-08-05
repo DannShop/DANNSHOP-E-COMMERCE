@@ -7,6 +7,7 @@ import { generateRefId } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { decideRefundDestination } from "@/lib/wallet/decisions";
 import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
+import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 import { decideFulfillmentRetry } from "@/lib/order/retry-decision";
 import { truncateNote } from "@/lib/order/status-note";
 
@@ -207,6 +208,8 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
     await db.orderStatusHistory.create({
       data: { orderId: fulfillment.orderId, toStatus: "COMPLETED", note: truncateNote(`SN: ${result.sn ?? "-"}`) },
     });
+    const completedOrder = await db.order.findUnique({ where: { id: fulfillment.orderId } });
+    if (completedOrder) await sendOrderCompletedEmail(completedOrder, result.sn ?? null);
   } else if (status === "FAILED") {
     const order = await db.order.findUniqueOrThrow({ where: { id: fulfillment.orderId } });
 
@@ -244,6 +247,7 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
         await db.orderStatusHistory.create({
           data: { orderId: order.id, toStatus: "REFUNDED", note: truncateNote(`Auto-refund ke saldo: ${result.message}`) },
         });
+        await sendOrderFailedEmail(order, result.message, { toWallet: true });
       } catch (e) {
         if (e instanceof Error && e.message === "ORDER_ALREADY_TERMINAL") {
           // Transaksi sudah di-rollback oleh Prisma (kredit wallet & ledger TIDAK jadi ditulis) -
@@ -268,6 +272,7 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
         toStatus: "REFUND_PENDING",
         note: result.message,
       });
+      await sendOrderFailedEmail(order, result.message, { toWallet: false });
     }
   }
 }

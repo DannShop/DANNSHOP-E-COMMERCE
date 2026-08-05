@@ -13,6 +13,7 @@ import {
   User,
   Shield,
   LogOut,
+  Receipt,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,17 @@ export function CategoryDrawer({
                   {c.name}
                 </Link>
               ))}
+            </div>
+
+            <div className="flex flex-col gap-1 border-t pt-3">
+              <Link
+                href="/cek-transaksi"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted"
+              >
+                <Receipt className="size-4 text-muted-foreground" aria-hidden="true" />
+                Cek Transaksi
+              </Link>
             </div>
 
             <div className="flex flex-col gap-1 border-t pt-3">

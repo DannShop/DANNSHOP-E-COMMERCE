@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { retryOrderFulfillment, retryOrderRefund } from "@/lib/order/fulfillment";
 import { truncateNote } from "@/lib/order/status-note";
+import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 
 export interface ActionResult {
   ok?: string;
@@ -112,6 +113,8 @@ export async function markCompletedManualAction(formData: FormData): Promise<Act
   await db.orderStatusHistory.create({
     data: { orderId, toStatus: "COMPLETED", note: truncateNote(`Ditandai selesai manual oleh admin. SN: ${sn.trim()}`) },
   });
+  const completedOrder = await db.order.findUnique({ where: { id: orderId } });
+  if (completedOrder) await sendOrderCompletedEmail(completedOrder, sn.trim());
   await logAdmin(admin.adminId, "order.mark_completed_manual", orderId, { sn: sn.trim() });
   revalidatePath("/admin/orders");
   revalidatePath(`/admin/orders/${orderNumber}`);
@@ -142,6 +145,14 @@ export async function markRefundedAction(formData: FormData): Promise<ActionResu
   await db.orderStatusHistory.create({
     data: { orderId, toStatus: "REFUNDED", note: truncateNote(`Direfund manual oleh admin: ${note.trim()}`) },
   });
+  const refundedOrder = await db.order.findUnique({ where: { id: orderId } });
+  if (refundedOrder) {
+    await sendOrderFailedEmail(
+      refundedOrder,
+      `Dana Anda sudah kami kirim kembali secara manual (ref: ${note.trim()}).`,
+      null,
+    );
+  }
   await logAdmin(admin.adminId, "order.mark_refunded", orderId, { note: note.trim() });
   revalidatePath("/admin/orders");
   revalidatePath(`/admin/orders/${orderNumber}`);
