@@ -1,15 +1,12 @@
 import type { NextConfig } from "next";
 
-const MIDTRANS_SNAP_DOMAINS = "https://app.sandbox.midtrans.com https://app.midtrans.com";
-
 const CSP = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' ${MIDTRANS_SNAP_DOMAINS}`,
+  "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https://*.public.blob.vercel-storage.com",
   "font-src 'self'",
-  `connect-src 'self' ${MIDTRANS_SNAP_DOMAINS}`,
-  `frame-src ${MIDTRANS_SNAP_DOMAINS}`,
+  "connect-src 'self'",
   "frame-ancestors 'none'",
 ].join("; ");
 

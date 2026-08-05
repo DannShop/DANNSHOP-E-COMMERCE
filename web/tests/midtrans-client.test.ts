@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chargeQris, getTransactionStatus, chargeBankTransfer, chargePermataVA, chargeEchannel, createSnapTransaction } from "@/lib/midtrans/client";
+import { chargeQris, getTransactionStatus, chargeBankTransfer, chargePermataVA, chargeEchannel } from "@/lib/midtrans/client";
 
 const creds = { serverKey: "SB-server-key", isProduction: false };
 
@@ -60,43 +60,6 @@ describe("getTransactionStatus", () => {
     expect(result.transactionStatus).toBe("settlement");
     expect(result.fraudStatus).toBe("accept");
     expect(result.grossAmount).toBe("22000.00");
-  });
-});
-
-describe("createSnapTransaction", () => {
-  it("POST ke /snap/v1/transactions dengan Basic Auth, tanpa payment_type", async () => {
-    const fn = mockFetchOnce({
-      token: "snap-token-abc",
-      redirect_url: "https://app.sandbox.midtrans.com/snap/v3/redirection/snap-token-abc",
-    });
-
-    const result = await createSnapTransaction({ orderId: "INV-1", grossAmount: 22000 }, creds);
-
-    const [url, init] = fn.mock.calls[0];
-    expect(url).toBe("https://app.sandbox.midtrans.com/snap/v1/transactions");
-    const req = init as RequestInit;
-    expect((req.headers as Record<string, string>).Authorization).toBe(
-      `Basic ${Buffer.from("SB-server-key:").toString("base64")}`,
-    );
-    const body = JSON.parse(req.body as string);
-    expect(body.payment_type).toBeUndefined();
-    expect(body.transaction_details).toEqual({ order_id: "INV-1", gross_amount: 22000 });
-
-    expect(result.token).toBe("snap-token-abc");
-    expect(result.redirectUrl).toBe("https://app.sandbox.midtrans.com/snap/v3/redirection/snap-token-abc");
-  });
-
-  it("pakai base URL production kalau isProduction true", async () => {
-    const fn = mockFetchOnce({ token: "t", redirect_url: "https://app.midtrans.com/snap/v3/redirection/t" });
-    await createSnapTransaction({ orderId: "INV-1", grossAmount: 1000 }, { serverKey: "prod-key", isProduction: true });
-    expect(fn.mock.calls[0][0]).toBe("https://app.midtrans.com/snap/v1/transactions");
-  });
-
-  it("lempar error kalau response tidak sesuai skema", async () => {
-    mockFetchOnce({ error_messages: ["invalid"] });
-    await expect(createSnapTransaction({ orderId: "INV-1", grossAmount: 1000 }, creds)).rejects.toThrow(
-      /Snap transaction: response tidak sesuai/,
-    );
   });
 });
 

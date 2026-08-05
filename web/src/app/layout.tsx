@@ -3,8 +3,6 @@ import { Baloo_2, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
-import Script from "next/script";
-import { SNAP_JS_URL } from "@/lib/midtrans/snap-config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,11 +41,6 @@ export default function RootLayout({
         <ThemeProvider>
           <QueryProvider>{children}</QueryProvider>
         </ThemeProvider>
-        <Script
-          src={SNAP_JS_URL}
-          data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
-          strategy="afterInteractive"
-        />
       </body>
     </html>
   );
