@@ -68,7 +68,9 @@ export async function uploadProductBanner(formData: FormData): Promise<{ url?: s
   }
 
   const productId = formData.get("productId");
-  const prefix = typeof productId === "string" && productId ? productId : "new";
+  const kind = formData.get("kind");
+  const base = typeof productId === "string" && productId ? productId : "new";
+  const prefix = kind === "icon" ? `${base}-icon` : base;
   const ext = file.name.split(".").pop() ?? "png";
 
   try {
@@ -93,6 +95,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
     slug: formData.get("slug"),
     name: formData.get("name"),
     publisher: formData.get("publisher") ?? "",
+    iconUrl: formData.get("iconUrl") ?? "",
     banner: formData.get("banner") ?? "",
     description: formData.get("description") ?? "",
     inputFields: formData.get("inputFields"),
@@ -107,6 +110,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
       slug: parsed.data.slug,
       name: parsed.data.name,
       publisher: parsed.data.publisher,
+      iconUrl: parsed.data.iconUrl,
       banner: parsed.data.banner,
       description: parsed.data.description,
       inputFields: parsed.data.inputFields,
@@ -133,6 +137,7 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
     slug: formData.get("slug"),
     name: formData.get("name"),
     publisher: formData.get("publisher") ?? "",
+    iconUrl: formData.get("iconUrl") ?? "",
     banner: formData.get("banner") ?? "",
     description: formData.get("description") ?? "",
     inputFields: formData.get("inputFields"),
@@ -148,6 +153,7 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
       slug: parsed.data.slug,
       name: parsed.data.name,
       publisher: parsed.data.publisher,
+      iconUrl: parsed.data.iconUrl,
       banner: parsed.data.banner,
       description: parsed.data.description,
       inputFields: parsed.data.inputFields,

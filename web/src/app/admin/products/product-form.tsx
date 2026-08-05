@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import Image from "next/image";
+import { useActionState, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ImageUploadField } from "@/components/admin/image-upload-field";
+import { MAX_DIMENSION } from "@/lib/image-processing";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -28,6 +29,7 @@ export interface ProductFormInitial {
   slug: string;
   name: string;
   publisher: string | null;
+  iconUrl: string | null;
   banner: string | null;
   description: string | null;
   inputFields: unknown;
@@ -51,33 +53,23 @@ export function ProductForm({
   const [state, formAction, pending] = useActionState(withPrevState(action), INITIAL_STATE);
   const inputFieldsDefault = initial ? JSON.stringify(initial.inputFields ?? [], null, 2) : "";
 
+  const [iconUrl, setIconUrl] = useState(initial?.iconUrl ?? "");
   const [bannerUrl, setBannerUrl] = useState(initial?.banner ?? "");
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [iconUploading, setIconUploading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const uploading = iconUploading || bannerUploading;
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // reset supaya bisa pilih file yang sama lagi kalau mau ganti ulang
-    if (!file) return;
-
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const fd = new FormData();
-      fd.set("file", file);
-      if (initial?.id) fd.set("productId", initial.id);
-      const result = await uploadProductBanner(fd);
-      if (result.error) {
-        setUploadError(result.error);
-      } else if (result.url) {
-        setBannerUrl(result.url);
-      }
-    } catch {
-      setUploadError("Gagal upload file, coba lagi.");
-    } finally {
-      setUploading(false);
-    }
-  }
+  // Di-memo supaya identitas objeknya stabil — ImageUploadField memakainya
+  // sebagai dependency, objek baru tiap render bikin callback-nya ikut berubah.
+  const productId = initial?.id;
+  const iconFields = useMemo(
+    () => ({ kind: "icon", ...(productId ? { productId } : {}) }),
+    [productId],
+  );
+  const bannerFields = useMemo(
+    () => ({ kind: "banner", ...(productId ? { productId } : {}) }),
+    [productId],
+  );
 
   return (
     <form action={formAction} className="space-y-4">
@@ -128,36 +120,40 @@ export function ProductForm({
           <Input id="publisher" name="publisher" defaultValue={initial?.publisher ?? ""} placeholder="Moonton" />
         </div>
 
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="bannerFile">Banner/logo produk (opsional)</Label>
+        <div className="sm:col-span-2">
+          <input type="hidden" name="iconUrl" value={iconUrl} />
+          <ImageUploadField
+            id="iconFile"
+            label="Ikon produk — persegi (opsional)"
+            value={iconUrl}
+            onChange={setIconUrl}
+            upload={uploadProductBanner}
+            uploadFields={iconFields}
+            aspect={1}
+            maxDimension={MAX_DIMENSION.productIcon}
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            helpText="Dipakai di kartu katalog, section Trending, dan ikon halaman produk. Kosongkan untuk pakai gradien default."
+            previewClassName="size-14 rounded-md"
+            onUploadingChange={setIconUploading}
+          />
+        </div>
+
+        <div className="sm:col-span-2">
           <input type="hidden" name="banner" value={bannerUrl} />
-          <div className="flex items-center gap-3">
-            {bannerUrl && (
-              <div className="relative size-14 shrink-0 overflow-hidden rounded-md ring-1 ring-foreground/10">
-                <Image src={bannerUrl} alt="Preview banner" fill sizes="56px" className="object-cover" unoptimized />
-              </div>
-            )}
-            <div className="flex-1 space-y-1">
-              <Input
-                id="bannerFile"
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                onChange={handleFileChange}
-                disabled={uploading}
-              />
-              <p className="text-xs text-muted-foreground">
-                {uploading
-                  ? "Mengupload..."
-                  : "Ditampilkan sebagai gambar kartu produk. Kosongkan untuk pakai warna gradien default. Maks 5MB."}
-              </p>
-              {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
-            </div>
-            {bannerUrl && !uploading && (
-              <Button type="button" variant="outline" size="xs" onClick={() => setBannerUrl("")}>
-                Hapus
-              </Button>
-            )}
-          </div>
+          <ImageUploadField
+            id="bannerFile"
+            label="Banner lebar halaman produk (opsional)"
+            value={bannerUrl}
+            onChange={setBannerUrl}
+            upload={uploadProductBanner}
+            uploadFields={bannerFields}
+            aspect={21 / 9}
+            maxDimension={MAX_DIMENSION.productBanner}
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            helpText="Gambar lebar di bagian atas halaman produk. Kosongkan kalau tidak perlu."
+            previewClassName="h-14 w-32 rounded-md"
+            onUploadingChange={setBannerUploading}
+          />
         </div>
       </div>
 

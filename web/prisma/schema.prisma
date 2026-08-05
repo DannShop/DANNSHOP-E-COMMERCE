@@ -165,7 +165,8 @@ model Product {
   slug             String        @unique
   name             String
   publisher        String?
-  banner           String?
+  iconUrl          String? // gambar persegi (1:1) - kartu katalog, trending, ikon halaman produk
+  banner           String? // gambar lebar (21:9) - hero halaman produk
   description      String?       @db.Text
   isActive         Boolean       @default(false)
   isTrending       Boolean       @default(false)

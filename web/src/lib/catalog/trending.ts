@@ -8,7 +8,8 @@ export interface TrendingProduct {
   slug: string;
   categorySlug: string;
   name: string;
-  banner: string | null;
+  /** Ikon persegi produk; tampil di kotak 1:1 pada kartu trending. */
+  iconUrl: string | null;
 }
 
 async function getManualTrending(excludeIds: string[] = [], take: number = TRENDING_LIMIT): Promise<TrendingProduct[]> {
@@ -16,9 +17,9 @@ async function getManualTrending(excludeIds: string[] = [], take: number = TREND
     where: { isTrending: true, isActive: true, id: { notIn: excludeIds } },
     orderBy: { name: "asc" },
     take,
-    select: { id: true, slug: true, name: true, banner: true, category: { select: { slug: true } } },
+    select: { id: true, slug: true, name: true, iconUrl: true, category: { select: { slug: true } } },
   });
-  return products.map((p) => ({ id: p.id, slug: p.slug, categorySlug: p.category.slug, name: p.name, banner: p.banner }));
+  return products.map((p) => ({ id: p.id, slug: p.slug, categorySlug: p.category.slug, name: p.name, iconUrl: p.iconUrl }));
 }
 
 async function getAutoTrending(): Promise<TrendingProduct[]> {
@@ -33,7 +34,7 @@ async function getAutoTrending(): Promise<TrendingProduct[]> {
   const itemIds = grouped.map((g) => g.productItemId as string);
   const items = await db.productItem.findMany({
     where: { id: { in: itemIds } },
-    select: { id: true, productId: true, product: { select: { id: true, slug: true, name: true, banner: true, isActive: true, category: { select: { slug: true } } } } },
+    select: { id: true, productId: true, product: { select: { id: true, slug: true, name: true, iconUrl: true, isActive: true, category: { select: { slug: true } } } } },
   });
   const itemToProduct = new Map(items.map((i) => [i.id, i.product]));
 
@@ -50,7 +51,7 @@ async function getAutoTrending(): Promise<TrendingProduct[]> {
   return Array.from(countByProduct.values())
     .sort((a, b) => b.count - a.count)
     .slice(0, TRENDING_LIMIT)
-    .map(({ product }) => ({ id: product.id, slug: product.slug, categorySlug: product.category.slug, name: product.name, banner: product.banner }));
+    .map(({ product }) => ({ id: product.id, slug: product.slug, categorySlug: product.category.slug, name: product.name, iconUrl: product.iconUrl }));
 }
 
 export async function getTrendingProducts(mode: "manual" | "auto"): Promise<TrendingProduct[]> {

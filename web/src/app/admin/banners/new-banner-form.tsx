@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ImageUploadField } from "@/components/admin/image-upload-field";
+import { MAX_DIMENSION } from "@/lib/image-processing";
 
 type ActionResult = { ok?: string; error?: string };
 const INITIAL_STATE: ActionResult = {};
@@ -22,43 +23,27 @@ export function NewBannerForm({
   );
   const [imageUrl, setImageUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const fd = new FormData();
-      fd.set("file", file);
-      const result = await uploadBannerImage(fd);
-      if (result.error) setUploadError(result.error);
-      else if (result.url) setImageUrl(result.url);
-    } catch {
-      setUploadError("Gagal upload file, coba lagi.");
-    } finally {
-      setUploading(false);
-    }
-  }
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="imageUrl" value={imageUrl} />
 
-      <div>
-        <Label htmlFor="new-banner-file" className="text-xs">Gambar Banner</Label>
-        <Input id="new-banner-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleFileChange} disabled={uploading} />
-        {uploading && <p className="mt-1 text-xs text-muted-foreground">Mengunggah...</p>}
-        {uploadError && <p className="mt-1 text-xs text-destructive">{uploadError}</p>}
-        {imageUrl && (
-          <div className="relative mt-2 aspect-21/9 w-full max-w-sm overflow-hidden rounded-md border">
-            <Image src={imageUrl} alt="Preview banner" fill sizes="384px" className="object-cover" unoptimized />
-          </div>
-        )}
-      </div>
+      <ImageUploadField
+        id="new-banner-file"
+        label="Gambar Banner"
+        value={imageUrl}
+        onChange={setImageUrl}
+        upload={uploadBannerImage}
+        // Carousel tampil 21:9 di HP dan 32:9 di desktop. Crop dikunci ke 21:9
+        // (versi HP) karena mayoritas pengunjung memakai HP; di desktop sisi
+        // atas-bawahnya yang terpotong sedikit.
+        aspect={21 / 9}
+        maxDimension={MAX_DIMENSION.heroBanner}
+        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+        helpText="Tampil di carousel beranda. Area dalam kotak crop itulah yang terlihat di HP."
+        previewClassName="aspect-21/9 w-40 rounded-md"
+        onUploadingChange={setUploading}
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:max-w-md">
         <div>
@@ -71,7 +56,7 @@ export function NewBannerForm({
         </div>
       </div>
 
-      <Button type="submit" disabled={pending || !imageUrl} className="self-start">
+      <Button type="submit" disabled={pending || uploading || !imageUrl} className="self-start">
         {pending ? "..." : "Tambah Banner"}
       </Button>
 

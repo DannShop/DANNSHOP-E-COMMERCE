@@ -103,8 +103,8 @@ export function ProductDetailClient({
           <div
             className={`relative z-10 size-16 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-primary to-accent ring-4 ring-background ${product.banner ? "-mt-8" : ""}`}
           >
-            {product.banner && (
-              <Image src={product.banner} alt="" fill sizes="64px" className="object-cover" unoptimized />
+            {(product.iconUrl ?? product.banner) && (
+              <Image src={(product.iconUrl ?? product.banner)!} alt="" fill sizes="64px" className="object-cover" unoptimized />
             )}
           </div>
           <div className="pb-1">

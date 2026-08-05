@@ -5,7 +5,11 @@ export const productSchema = z.object({
   slug: z.string().min(1, "Slug wajib diisi").regex(/^[a-z0-9-]+$/, "Slug hanya huruf kecil, angka, tanda hubung"),
   name: z.string().min(1, "Nama wajib diisi"),
   publisher: z.string().optional().transform((v) => (v === "" ? undefined : v)),
-  banner: z.string().optional().transform((v) => (v === "" ? undefined : v)),
+  // iconUrl/banner dipetakan ke null (bukan undefined) saat kosong: undefined
+  // bikin Prisma melewati kolomnya, sehingga tombol "Hapus" di form tidak
+  // pernah benar-benar menghapus gambar yang sudah tersimpan.
+  iconUrl: z.string().optional().transform((v) => (v === "" || v == null ? null : v)),
+  banner: z.string().optional().transform((v) => (v === "" || v == null ? null : v)),
   description: z.string().optional().transform((v) => (v === "" ? undefined : v)),
   // inputFields dikirim sebagai JSON string dari textarea admin
   inputFields: z.string().transform((v, ctx) => {
