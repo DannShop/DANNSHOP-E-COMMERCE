@@ -51,8 +51,18 @@ export interface MidtransChargeResult {
   raw: unknown;
 }
 
+// custom_expiry menyamakan jam kadaluarsa DI SISI MIDTRANS dengan job lokal
+// expire-order/expire-deposit (EXPIRY_MINUTES di checkout.ts/deposit.ts) -
+// tanpa ini, VA/echannel Midtrans defaultnya baru expired ~24 jam kemudian
+// sementara order/deposit lokal sudah EXPIRED di menit ke-15, jadi customer
+// masih bisa transfer nyata ke VA yang "sudah kadaluarsa" di app tapi masih
+// hidup di Midtrans - saldo/fulfillment tidak pernah otomatis diproses.
+function customExpiry(expiryMinutes: number) {
+  return { custom_expiry: { expiry_duration: expiryMinutes, unit: "minute" } };
+}
+
 export async function chargeQris(
-  input: { orderId: string; grossAmount: number },
+  input: { orderId: string; grossAmount: number; expiryMinutes: number },
   creds: MidtransCreds = {
     serverKey: process.env.MIDTRANS_SERVER_KEY ?? "",
     isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
@@ -63,6 +73,7 @@ export async function chargeQris(
     body: JSON.stringify({
       payment_type: "qris",
       transaction_details: { order_id: input.orderId, gross_amount: input.grossAmount },
+      ...customExpiry(input.expiryMinutes),
     }),
   });
   const parsed = chargeSchema.safeParse(raw);
@@ -98,7 +109,7 @@ export interface BankTransferResult {
 }
 
 export async function chargeBankTransfer(
-  input: { orderId: string; grossAmount: number; bank: "bca" | "bni" | "bri" | "cimb" },
+  input: { orderId: string; grossAmount: number; bank: "bca" | "bni" | "bri" | "cimb"; expiryMinutes: number },
   creds: MidtransCreds = {
     serverKey: process.env.MIDTRANS_SERVER_KEY ?? "",
     isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
@@ -110,6 +121,7 @@ export async function chargeBankTransfer(
       payment_type: "bank_transfer",
       transaction_details: { order_id: input.orderId, gross_amount: input.grossAmount },
       bank_transfer: { bank: input.bank },
+      ...customExpiry(input.expiryMinutes),
     }),
   });
   const parsed = bankTransferSchema.safeParse(raw);
@@ -148,7 +160,7 @@ export interface PermataResult {
 // otomatis mengartikannya sebagai permintaan Permata VA. Response-nya juga
 // field top-level permata_va_number, bukan array va_numbers.
 export async function chargePermataVA(
-  input: { orderId: string; grossAmount: number },
+  input: { orderId: string; grossAmount: number; expiryMinutes: number },
   creds: MidtransCreds = {
     serverKey: process.env.MIDTRANS_SERVER_KEY ?? "",
     isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
@@ -159,6 +171,7 @@ export async function chargePermataVA(
     body: JSON.stringify({
       payment_type: "bank_transfer",
       transaction_details: { order_id: input.orderId, gross_amount: input.grossAmount },
+      ...customExpiry(input.expiryMinutes),
     }),
   });
   const parsed = permataSchema.safeParse(raw);
@@ -196,7 +209,7 @@ export interface EchannelResult {
 // dan tidak menghasilkan nomor VA sama sekali, melainkan pasangan
 // biller_code + bill_key yang dimasukkan customer lewat ATM/e-banking.
 export async function chargeEchannel(
-  input: { orderId: string; grossAmount: number },
+  input: { orderId: string; grossAmount: number; expiryMinutes: number },
   creds: MidtransCreds = {
     serverKey: process.env.MIDTRANS_SERVER_KEY ?? "",
     isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
@@ -208,6 +221,7 @@ export async function chargeEchannel(
       payment_type: "echannel",
       transaction_details: { order_id: input.orderId, gross_amount: input.grossAmount },
       echannel: { bill_info1: "Pembayaran", bill_info2: "DannShop" },
+      ...customExpiry(input.expiryMinutes),
     }),
   });
   const parsed = echannelSchema.safeParse(raw);
@@ -276,22 +290,23 @@ export async function chargeByMethodCode(
   method: string,
   orderId: string,
   grossAmount: number,
+  expiryMinutes: number,
 ): Promise<{ actions: PaymentActions }> {
   if (method === "qris") {
-    const r = await chargeQris({ orderId, grossAmount });
+    const r = await chargeQris({ orderId, grossAmount, expiryMinutes });
     return { actions: { kind: "qris", qrString: r.qrString ?? "" } };
   }
   if (method === "va_permata") {
-    const r = await chargePermataVA({ orderId, grossAmount });
+    const r = await chargePermataVA({ orderId, grossAmount, expiryMinutes });
     return { actions: { kind: "va", bank: "permata", vaNumber: r.vaNumber } };
   }
   if (method === "va_mandiri") {
-    const r = await chargeEchannel({ orderId, grossAmount });
+    const r = await chargeEchannel({ orderId, grossAmount, expiryMinutes });
     return { actions: { kind: "echannel", billerCode: r.billerCode, billKey: r.billKey } };
   }
   if (method.startsWith("va_")) {
     const bank = method.slice(3) as "bca" | "bni" | "bri" | "cimb";
-    const r = await chargeBankTransfer({ orderId, grossAmount, bank });
+    const r = await chargeBankTransfer({ orderId, grossAmount, bank, expiryMinutes });
     return { actions: { kind: "va", bank: r.bank, vaNumber: r.vaNumber } };
   }
   throw new Error(`Metode pembayaran tidak dikenali: ${method}`);

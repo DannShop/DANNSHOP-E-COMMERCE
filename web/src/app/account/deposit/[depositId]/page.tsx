@@ -19,7 +19,10 @@ export default async function DepositStatusPage({
   if (!deposit || deposit.userId !== session.user.id) notFound();
 
   const actions = deposit.rawResponse as PaymentActions | null;
-  const qrDataUri = actions?.kind === "qris" ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 }) : null;
+  const qrDataUri =
+    actions?.kind === "qris" && actions.qrString
+      ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 })
+      : null;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-10">

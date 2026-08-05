@@ -118,6 +118,17 @@ export function InvoiceStatus({
     }
   }
 
+  async function handleCopyVa() {
+    if (order.payment?.kind !== "va") return;
+    try {
+      await navigator.clipboard.writeText(order.payment.vaNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard API bisa tidak tersedia (mis. http tanpa TLS) — abaikan diam-diam
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
       <div className="flex items-center justify-between gap-2">
@@ -179,16 +190,16 @@ export function InvoiceStatus({
           </p>
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-xl font-bold tracking-wide">{order.payment.vaNumber}</span>
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => {
-                const vaNumber = order.payment?.kind === "va" ? order.payment.vaNumber : "";
-                if (vaNumber) void navigator.clipboard.writeText(vaNumber);
-              }}
-            >
-              <Copy className="size-3.5" /> Salin
+            <Button type="button" size="xs" variant="outline" onClick={handleCopyVa}>
+              {copied ? (
+                <>
+                  <Check className="size-3.5" /> Tersalin
+                </>
+              ) : (
+                <>
+                  <Copy className="size-3.5" /> Salin
+                </>
+              )}
             </Button>
           </div>
         </div>

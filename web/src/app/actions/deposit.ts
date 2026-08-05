@@ -48,7 +48,7 @@ export async function createDeposit(
   try {
     // deposit.id (cuid) dipakai langsung sebagai Midtrans order_id - Deposit
     // tidak punya nomor publik terpisah seperti Order.orderNumber.
-    const { actions } = await chargeByMethodCode(method.code, deposit.id, Number(totalPaid));
+    const { actions } = await chargeByMethodCode(method.code, deposit.id, Number(totalPaid), EXPIRY_MINUTES);
     await db.deposit.update({ where: { id: deposit.id }, data: { rawResponse: actions as object } });
   } catch (e) {
     console.error("Deposit: charge Midtrans gagal", { depositId: deposit.id, method: method.code, error: e });

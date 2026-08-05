@@ -217,7 +217,7 @@ async function createMidtransOrder(input: {
   });
 
   try {
-    const { actions } = await chargeByMethodCode(method.code, order.orderNumber, Number(total));
+    const { actions } = await chargeByMethodCode(method.code, order.orderNumber, Number(total), EXPIRY_MINUTES);
     await Promise.all([
       db.orderPayment.update({ where: { orderId: order.id }, data: { actions } }),
       historyPromise,

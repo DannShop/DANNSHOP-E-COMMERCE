@@ -77,6 +77,9 @@ async function handleOrderWebhook(
           "Webhook Midtrans order: settlement 'paid' datang setelah order tidak lagi PENDING_PAYMENT/PAID - perlu investigasi manual",
           { orderId: order.id, statusSaatIni: current?.status, eventKey: `midtrans:${notif.order_id}:${notif.transaction_status}`, order_id: notif.order_id },
         );
+        await sendTelegramAlert(
+          `⚠️ Order ${order.orderNumber} settlement Midtrans datang setelah status jadi "${current?.status}" (bukan PENDING_PAYMENT/PAID) - order TIDAK diproses otomatis, perlu investigasi manual.`,
+        );
       }
     }
   } else if (mapped === "failed" || mapped === "expired") {
@@ -158,6 +161,9 @@ async function handleDepositWebhook(
         console.error(
           "Webhook Midtrans deposit: settlement 'paid' datang setelah deposit tidak lagi PENDING - saldo BELUM dikredit, perlu investigasi manual",
           { depositId: deposit.id, statusSaatIni: current?.status, eventKey: `midtrans:${notif.order_id}` },
+        );
+        await sendTelegramAlert(
+          `⚠️ Deposit ${deposit.id} settlement Midtrans datang setelah status jadi "${current?.status}" (bukan PENDING) - saldo BELUM dikredit, perlu investigasi manual.`,
         );
         return "paid_but_not_pending";
       }

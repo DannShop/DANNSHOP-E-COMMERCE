@@ -22,7 +22,7 @@ describe("chargeQris", () => {
       expiry_time: "2026-07-26 10:15:00",
     });
 
-    const result = await chargeQris({ orderId: "INV-1", grossAmount: 22000 }, creds);
+    const result = await chargeQris({ orderId: "INV-1", grossAmount: 22000, expiryMinutes: 15 }, creds);
 
     const [url, init] = fn.mock.calls[0];
     expect(url).toBe("https://api.sandbox.midtrans.com/v2/charge");
@@ -33,6 +33,7 @@ describe("chargeQris", () => {
     const body = JSON.parse(req.body as string);
     expect(body.payment_type).toBe("qris");
     expect(body.transaction_details).toEqual({ order_id: "INV-1", gross_amount: 22000 });
+    expect(body.custom_expiry).toEqual({ expiry_duration: 15, unit: "minute" });
 
     expect(result.transactionId).toBe("trx-1");
     expect(result.qrString).toBe("00020101...");
@@ -44,7 +45,7 @@ describe("chargeQris", () => {
       status_code: "201", transaction_id: "t", order_id: "INV-1",
       transaction_status: "pending", qr_string: null, actions: [], expiry_time: null,
     });
-    await chargeQris({ orderId: "INV-1", grossAmount: 1000 }, { serverKey: "prod-key", isProduction: true });
+    await chargeQris({ orderId: "INV-1", grossAmount: 1000, expiryMinutes: 15 }, { serverKey: "prod-key", isProduction: true });
     expect(fn.mock.calls[0][0]).toBe("https://api.midtrans.com/v2/charge");
   });
 });
@@ -72,13 +73,14 @@ describe("chargeBankTransfer", () => {
       va_numbers: [{ bank: "bca", va_number: "812785002530231" }],
     });
 
-    const result = await chargeBankTransfer({ orderId: "INV-1", grossAmount: 44000, bank: "bca" }, creds);
+    const result = await chargeBankTransfer({ orderId: "INV-1", grossAmount: 44000, bank: "bca", expiryMinutes: 15 }, creds);
 
     const [url, init] = fn.mock.calls[0];
     expect(url).toBe("https://api.sandbox.midtrans.com/v2/charge");
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.payment_type).toBe("bank_transfer");
     expect(body.bank_transfer).toEqual({ bank: "bca" });
+    expect(body.custom_expiry).toEqual({ expiry_duration: 15, unit: "minute" });
 
     expect(result.bank).toBe("bca");
     expect(result.vaNumber).toBe("812785002530231");
@@ -92,7 +94,7 @@ describe("chargeBankTransfer", () => {
       payment_type: "bank_transfer",
       va_numbers: [{ bank: "cimb", va_number: "9998887776665" }],
     });
-    const result = await chargeBankTransfer({ orderId: "INV-2", grossAmount: 10000, bank: "cimb" }, creds);
+    const result = await chargeBankTransfer({ orderId: "INV-2", grossAmount: 10000, bank: "cimb", expiryMinutes: 15 }, creds);
     expect(result.vaNumber).toBe("9998887776665");
   });
 
@@ -101,9 +103,9 @@ describe("chargeBankTransfer", () => {
       status_code: "201", transaction_id: "trx-x", order_id: "INV-1",
       transaction_status: "pending", gross_amount: "1000.00", currency: "IDR", payment_type: "bank_transfer",
     });
-    await expect(chargeBankTransfer({ orderId: "INV-1", grossAmount: 1000, bank: "bca" }, creds)).rejects.toThrow(
-      /Midtrans bank_transfer: response tidak sesuai/,
-    );
+    await expect(
+      chargeBankTransfer({ orderId: "INV-1", grossAmount: 1000, bank: "bca", expiryMinutes: 15 }, creds),
+    ).rejects.toThrow(/Midtrans bank_transfer: response tidak sesuai/);
   });
 });
 
@@ -116,12 +118,13 @@ describe("chargePermataVA", () => {
       permata_va_number: "850003072869607",
     });
 
-    const result = await chargePermataVA({ orderId: "INV-3", grossAmount: 44000 }, creds);
+    const result = await chargePermataVA({ orderId: "INV-3", grossAmount: 44000, expiryMinutes: 15 }, creds);
 
     const [, init] = fn.mock.calls[0];
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.payment_type).toBe("bank_transfer");
     expect(body.bank_transfer).toBeUndefined();
+    expect(body.custom_expiry).toEqual({ expiry_duration: 15, unit: "minute" });
 
     expect(result.vaNumber).toBe("850003072869607");
   });
@@ -137,12 +140,13 @@ describe("chargeEchannel", () => {
       biller_code: "70012",
     });
 
-    const result = await chargeEchannel({ orderId: "INV-4", grossAmount: 44000 }, creds);
+    const result = await chargeEchannel({ orderId: "INV-4", grossAmount: 44000, expiryMinutes: 15 }, creds);
 
     const [, init] = fn.mock.calls[0];
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.payment_type).toBe("echannel");
     expect(body.transaction_details).toEqual({ order_id: "INV-4", gross_amount: 44000 });
+    expect(body.custom_expiry).toEqual({ expiry_duration: 15, unit: "minute" });
 
     expect(result.billKey).toBe("778347787706");
     expect(result.billerCode).toBe("70012");

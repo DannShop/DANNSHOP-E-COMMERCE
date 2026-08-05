@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, CheckCircle2, XCircle, Copy } from "lucide-react";
+import { Clock, CheckCircle2, XCircle, Copy, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -70,9 +71,21 @@ export function DepositStatus({
     refetchInterval: (query) => (FINAL_STATUSES.includes(query.state.data?.status ?? "") ? false : 3000),
   });
 
+  const [copied, setCopied] = useState(false);
   const deposit = data ?? initial;
   const isFinal = FINAL_STATUSES.includes(deposit.status);
   const StatusIcon = STATUS_ICON[deposit.status] ?? Clock;
+
+  async function handleCopyVa() {
+    if (deposit.payment?.kind !== "va") return;
+    try {
+      await navigator.clipboard.writeText(deposit.payment.vaNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard API bisa tidak tersedia (mis. http tanpa TLS) — abaikan diam-diam
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
@@ -128,16 +141,16 @@ export function DepositStatus({
           </p>
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-xl font-bold tracking-wide">{deposit.payment.vaNumber}</span>
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => {
-                const vaNumber = deposit.payment?.kind === "va" ? deposit.payment.vaNumber : "";
-                if (vaNumber) void navigator.clipboard.writeText(vaNumber);
-              }}
-            >
-              <Copy className="size-3.5" /> Salin
+            <Button type="button" size="xs" variant="outline" onClick={handleCopyVa}>
+              {copied ? (
+                <>
+                  <Check className="size-3.5" /> Tersalin
+                </>
+              ) : (
+                <>
+                  <Copy className="size-3.5" /> Salin
+                </>
+              )}
             </Button>
           </div>
         </div>

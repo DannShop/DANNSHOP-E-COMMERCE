@@ -1,0 +1,14 @@
+-- Backfill totalPaid untuk deposit yang dibuat SEBELUM kolom ini ada
+-- (migrasi sebelumnya, 20260802084517_add_payment_method_config, default-kan
+-- totalPaid=0 untuk semua row lama). Webhook (route.ts) membandingkan
+-- settlement Midtrans dengan deposit.totalPaid, bukan deposit.amount lagi -
+-- tanpa backfill ini, deposit lama yang masih PENDING saat deploy akan
+-- ditolak webhook (amount_mismatch, gross_amount asli != 0) dan saldo TIDAK
+-- dikredit meski customer sudah bayar. Deposit lama yang sudah PAID/EXPIRED
+-- juga ikut dibetulkan supaya halaman status tidak menampilkan "Total Bayar
+-- Rp0".
+--
+-- totalPaid=0 hanya mungkin terjadi pada row pra-migrasi: kode baru selalu
+-- menghasilkan totalPaid = amount + fee + uniqueCode, dan uniqueCode selalu
+-- 1-999 (tidak pernah 0), jadi totalPaid pada deposit baru tidak pernah 0.
+UPDATE `deposit` SET `totalPaid` = `amount` WHERE `totalPaid` = 0;
