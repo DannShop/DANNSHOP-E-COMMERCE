@@ -55,15 +55,9 @@ export function SearchOverlay() {
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Cari produk"
-        onClick={() => setOpen(true)}
-        className="flex h-9 w-full items-center gap-2 rounded-full border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      >
-        <Search className="size-4 shrink-0" />
-        <span className="truncate">Cari produk atau game...</span>
-      </button>
+      <Button variant="ghost" size="icon" aria-label="Cari produk" onClick={() => setOpen(true)}>
+        <Search className="size-4" />
+      </Button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4 backdrop-blur-sm sm:items-start sm:justify-center">

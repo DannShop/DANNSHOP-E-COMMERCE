@@ -32,11 +32,8 @@ export async function SiteHeader() {
           )}
         </Link>
 
-        <div className="mx-auto min-w-0 w-full max-w-md">
+        <nav className="ml-auto flex shrink-0 items-center gap-2">
           <SearchOverlay />
-        </div>
-
-        <nav className="flex shrink-0 items-center gap-2">
           <ThemeToggle />
           <CategoryDrawer categories={categories} session={session} />
         </nav>
