@@ -122,8 +122,8 @@ export function DepositForm({
               return (
                 <RadioGroupItem key={m.code} value={m.code}>
                   {m.logoUrl ? (
-                    <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-white p-0.5">
-                      <Image src={m.logoUrl} alt="" fill sizes="20px" className="object-contain" unoptimized />
+                    <span className="relative h-6 w-11 shrink-0">
+                      <Image src={m.logoUrl} alt="" fill sizes="44px" className="object-contain" unoptimized />
                     </span>
                   ) : (
                     <QrCode className="size-4" aria-hidden="true" />

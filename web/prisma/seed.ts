@@ -90,10 +90,11 @@ async function main() {
   for (const m of PAYMENT_METHODS) {
     await db.paymentMethodConfig.upsert({
       where: { code: m.code },
-      // logoUrl selalu disinkron dari seed (aset statis, bukan sesuatu yang
-      // diubah admin lewat panel) — fee/label sengaja no-op supaya tidak
-      // menimpa nilai yang mungkin sudah diubah admin lewat panel.
-      update: { logoUrl: m.logoUrl },
+      // logoUrl sekarang bisa diubah admin lewat panel (URL atau upload file) —
+      // sama seperti fee/label, update sengaja no-op supaya re-seed tidak menimpa
+      // balik logo custom admin ke SVG default. logoUrl default cuma keisi pas
+      // baris ini pertama kali dibuat (create).
+      update: {},
       create: m,
     });
   }

@@ -1,9 +1,12 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { uploadToBlob } from "@/lib/blob-upload";
 import { z } from "zod";
 
 export type ActionResult = { ok?: string; error?: string };
+
+const ALLOWED_LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
 
 // Catatan: requireAdmin/logAdmin didefinisikan lokal (bukan diimpor dari
 // actions/catalog.ts atau file actions/* lain) — pola yang sama di seluruh
@@ -25,6 +28,18 @@ async function logAdmin(adminId: string, action: string, targetId: string, detai
   await db.adminActionLog.create({
     data: { adminId, action, targetType: "payment_method", targetId, detail },
   });
+}
+
+export async function uploadPaymentMethodLogo(formData: FormData): Promise<{ url?: string; error?: string }> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "File tidak ditemukan." };
+  const code = formData.get("code");
+  const prefix = typeof code === "string" && code ? code : `logo-${Date.now()}`;
+  return uploadToBlob("payment-method-logos", prefix, file, ALLOWED_LOGO_TYPES);
 }
 
 const updateSchema = z.object({

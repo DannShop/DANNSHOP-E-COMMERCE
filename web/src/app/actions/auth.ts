@@ -23,11 +23,19 @@ export async function loginAction(
     if (!emailLimit.allowed) return { error: "Terlalu banyak percobaan login untuk akun ini, coba lagi nanti." };
   }
 
+  // Lookup role duluan buat nentuin tujuan redirect (admin -> /admin, user -> /account).
+  // Query ini SELALU dijalankan terlepas email ada/tidak/passwordnya benar, jadi tidak
+  // menambah timing side-channel baru — signIn di bawah tetap satu-satunya yang
+  // memvalidasi password asli (pola timing-safe sama seperti TIMING_DUMMY_PASSWORD
+  // di registerAction).
+  const user = email ? await db.user.findUnique({ where: { email }, select: { role: true } }) : null;
+  const redirectTo = user?.role === "ADMIN" ? "/admin" : "/account";
+
   try {
     await signIn("credentials", {
       email: formData.get("email"),
       password: formData.get("password"),
-      redirectTo: "/account",
+      redirectTo,
     });
     return {};
   } catch (err) {

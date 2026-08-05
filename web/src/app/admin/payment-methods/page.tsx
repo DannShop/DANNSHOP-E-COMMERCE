@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { PaymentMethodForm } from "./payment-method-form";
-import { updatePaymentMethod } from "@/app/actions/payment-methods";
+import { updatePaymentMethod, uploadPaymentMethodLogo } from "@/app/actions/payment-methods";
 
 export default async function PaymentMethodsPage() {
   const methods = await db.paymentMethodConfig.findMany({ orderBy: { sortOrder: "asc" } });
@@ -28,6 +28,7 @@ export default async function PaymentMethodsPage() {
               isActive: m.isActive,
             }}
             action={updatePaymentMethod}
+            uploadLogo={uploadPaymentMethodLogo}
           />
         ))}
       </div>
