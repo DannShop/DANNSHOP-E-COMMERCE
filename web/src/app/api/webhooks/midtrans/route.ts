@@ -97,18 +97,18 @@ async function handleOrderWebhook(
 }
 
 async function handleDepositWebhook(
-  deposit: { id: string; amount: bigint },
+  deposit: { id: string; totalPaid: bigint },
   notif: z.infer<typeof notifSchema>,
 ): Promise<string> {
   const confirmed = await getTransactionStatus(notif.order_id);
   const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
 
-  if (mapped === "paid" && BigInt(Math.round(Number(confirmed.grossAmount))) !== deposit.amount) {
+  if (mapped === "paid" && BigInt(Math.round(Number(confirmed.grossAmount))) !== deposit.totalPaid) {
     console.error("handleDepositWebhook: nominal settlement tidak cocok, saldo TIDAK dikredit", {
-      depositId: deposit.id, expected: deposit.amount.toString(), received: confirmed.grossAmount,
+      depositId: deposit.id, expected: deposit.totalPaid.toString(), received: confirmed.grossAmount,
     });
     await sendTelegramAlert(
-      `⚠️ Deposit ${deposit.id} nominal settlement TIDAK COCOK (expected Rp ${deposit.amount.toString()}, diterima ${confirmed.grossAmount}) - saldo TIDAK dikredit, perlu investigasi manual.`,
+      `⚠️ Deposit ${deposit.id} nominal settlement TIDAK COCOK (expected Rp ${deposit.totalPaid.toString()}, diterima ${confirmed.grossAmount}) - saldo TIDAK dikredit, perlu investigasi manual.`,
     );
     return "amount_mismatch";
   }

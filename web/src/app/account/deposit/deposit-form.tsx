@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { createDeposit, type DepositResult } from "@/app/actions/deposit";
 import { MIN_DEPOSIT, MAX_DEPOSIT } from "@/lib/validation/deposit";
 
@@ -16,46 +18,54 @@ function formatRupiah(amount: bigint): string {
   );
 }
 
+// Nominal custom cuma dipakai untuk preview fee di client - kalau bukan
+// digit murni (kosong, minus, koma, dst), preview jatuh ke 0 dan menunggu
+// input valid. Validasi otoritatif tetap di server lewat depositSchema.
+function parseAmountForPreview(raw: string): bigint {
+  if (!/^\d+$/.test(raw)) return 0n;
+  try {
+    return BigInt(raw);
+  } catch {
+    return 0n;
+  }
+}
+
 const INITIAL_STATE: DepositResult = {};
 
-export function DepositForm() {
+export function DepositForm({
+  paymentMethods,
+}: {
+  paymentMethods: { code: string; label: string; feeFlat: string; feePercent: number }[];
+}) {
   const [selected, setSelected] = useState<bigint | "custom">(PRESETS[1]);
   const [custom, setCustom] = useState("");
+  const [selectedMethod, setSelectedMethod] = useState(paymentMethods[0]?.code ?? "");
   const [state, formAction, pending] = useActionState(createDeposit, INITIAL_STATE);
-  const [snapError, setSnapError] = useState<string | null>(null);
   const router = useRouter();
 
-  const goToStatus = useCallback(() => {
+  useEffect(() => {
     if (state.depositId) router.push(`/account/deposit/${state.depositId}`);
   }, [state.depositId, router]);
 
-  useEffect(() => {
-    setSnapError(null);
-    if (!state.snapToken) return;
-    if (!window.snap) {
-      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
-      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
-      return;
-    }
-    window.snap.pay(state.snapToken, {
-      onSuccess: goToStatus,
-      onPending: goToStatus,
-      onError: () => {
-        console.error("Snap: transaksi pembayaran gagal", { snapToken: state.snapToken });
-        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
-      },
-      onClose: () => {
-        // customer tutup popup tanpa bayar - deposit tetap PENDING, form
-        // tetap tampil, bisa submit ulang (dapat snapToken baru).
-      },
-    });
-  }, [state.snapToken, goToStatus]);
-
   const amount = selected === "custom" ? custom : selected.toString();
+  const amountForPreview = selected === "custom" ? parseAmountForPreview(custom) : selected;
+
+  // Preview "Total Bayar" harus ikut fee metode pembayaran yang lagi dipilih
+  // (bukan cuma nominal isi saldo) - fee final tetap dihitung ulang otoritatif
+  // di server (createDeposit), ini murni tampilan supaya tidak menyesatkan
+  // dibanding breakdown fee yang sudah ada di tiap baris metode. Kode unik
+  // (Rp1-999) sengaja tidak diikutkan ke angka karena di-generate acak di
+  // server, bukan bisa diprediksi di client.
+  const selectedMethodConfig = paymentMethods.find((m) => m.code === selectedMethod);
+  const previewFee = selectedMethodConfig
+    ? (amountForPreview * BigInt(selectedMethodConfig.feePercent)) / 10_000n + BigInt(selectedMethodConfig.feeFlat)
+    : 0n;
+  const previewTotal = amountForPreview + previewFee;
 
   return (
     <form action={formAction} className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-5">
       <input type="hidden" name="amount" value={amount} />
+      <input type="hidden" name="paymentMethod" value={selectedMethod} />
 
       <div className="grid grid-cols-3 gap-2">
         {PRESETS.map((preset) => (
@@ -102,9 +112,44 @@ export function DepositForm() {
         </div>
       )}
 
+      {paymentMethods.length > 0 && (
+        <div className="flex flex-col gap-3 border-t pt-4">
+          <Label>Metode Pembayaran</Label>
+          <RadioGroup value={selectedMethod} onValueChange={setSelectedMethod}>
+            {paymentMethods.map((m) => {
+              const fee = (amountForPreview * BigInt(m.feePercent)) / 10_000n + BigInt(m.feeFlat);
+              return (
+                <RadioGroupItem key={m.code} value={m.code}>
+                  <QrCode className="size-4" aria-hidden="true" />
+                  {m.label}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {fee > 0n ? `+ ${formatRupiah(fee)}` : "Gratis"}
+                  </span>
+                </RadioGroupItem>
+              );
+            })}
+          </RadioGroup>
+        </div>
+      )}
+
+      {amountForPreview > 0n && selectedMethodConfig && (
+        <div className="flex flex-col gap-1 rounded-md bg-muted px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Total Bayar</span>
+            <span className="font-heading text-2xl font-bold text-primary">{formatRupiah(previewTotal)}</span>
+          </div>
+          <p className="text-right text-xs text-muted-foreground">
+            Sudah termasuk fee metode pembayaran. Belum termasuk kode unik (+ Rp1-999, muncul di halaman status).
+          </p>
+        </div>
+      )}
+
       {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}
-      {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
-      <Button type="submit" disabled={pending || !amount} className="h-11 w-full text-base font-heading">
+      <Button
+        type="submit"
+        disabled={pending || Boolean(state.depositId) || !amount || !selectedMethod}
+        className="h-11 w-full text-base font-heading"
+      >
         {pending ? "Memproses..." : "Isi Saldo"}
       </Button>
     </form>
