@@ -124,7 +124,7 @@ export function SkuPicker({
       )}
 
       {rows.length > 0 && (
-        <div className="max-h-72 overflow-y-auto rounded-md ring-1 ring-foreground/10">
+        <div className="no-scrollbar max-h-72 overflow-y-auto rounded-md ring-1 ring-foreground/10">
           <Table>
             <TableHeader>
               <TableRow>

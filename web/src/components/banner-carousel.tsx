@@ -63,7 +63,7 @@ export function BannerCarousel({ banners }: { banners: BannerItem[] }) {
     <div className="group relative overflow-hidden rounded-[var(--radius)]">
       <div
         ref={trackRef}
-        className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto scroll-smooth"
       >
         {banners.map((b) => {
           const content = (

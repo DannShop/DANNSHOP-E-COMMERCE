@@ -199,7 +199,7 @@ export function BulkImportPicker({
               </div>
             </div>
 
-            <div className="max-h-64 overflow-y-auto rounded-md ring-1 ring-foreground/10">
+            <div className="no-scrollbar max-h-64 overflow-y-auto rounded-md ring-1 ring-foreground/10">
               <Table>
                 <TableHeader>
                   <TableRow>

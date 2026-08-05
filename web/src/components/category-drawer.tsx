@@ -50,7 +50,7 @@ export function CategoryDrawer({
 
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end bg-background/60 backdrop-blur-sm">
-          <div className="flex h-full w-full max-w-xs flex-col gap-4 overflow-y-auto border-l bg-card p-4">
+          <div className="no-scrollbar flex h-full w-full max-w-xs flex-col gap-4 overflow-y-auto border-l bg-card p-4">
             <div className="flex items-center justify-between">
               <span className="font-heading text-lg font-bold">Menu</span>
               <Button variant="ghost" size="icon" aria-label="Tutup menu" onClick={() => setOpen(false)}>

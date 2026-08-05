@@ -147,6 +147,17 @@
   }
 }
 
+/* Scroll tetap jalan, cuma scrollbar bawaan browser-nya yang disembunyikan -
+   dipakai di semua container overflow-x/y-auto (tab kategori, drawer, hasil
+   pencarian, dropdown select, tabel admin, dst). */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes marquee {
   from {
     transform: translateX(0);

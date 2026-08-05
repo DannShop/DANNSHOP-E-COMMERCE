@@ -22,7 +22,7 @@ export function CatalogTabs({ categories }: { categories: CatalogCategory[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
         {categories.map((c) => (
           <Button
             key={c.id}
