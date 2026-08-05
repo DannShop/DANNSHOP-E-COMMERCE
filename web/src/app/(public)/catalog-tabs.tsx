@@ -39,7 +39,7 @@ export function CatalogTabs({ categories }: { categories: CatalogCategory[] }) {
       {selected.products.length === 0 ? (
         <p className="text-muted-foreground">Segera hadir, nantikan produk kategori ini.</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {selected.products.map((p) => (
             <ProductCard key={p.id} product={p} categorySlug={selected.slug} />
           ))}

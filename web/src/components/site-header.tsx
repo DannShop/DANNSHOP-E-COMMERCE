@@ -32,7 +32,7 @@ export async function SiteHeader() {
           )}
         </Link>
 
-        <div className="mx-auto w-full max-w-md">
+        <div className="mx-auto min-w-0 w-full max-w-md">
           <SearchOverlay />
         </div>
 

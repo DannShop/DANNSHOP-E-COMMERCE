@@ -19,7 +19,7 @@ export function ProductCard({
               src={product.banner}
               alt={product.name}
               fill
-              sizes="(min-width: 1024px) 25vw, 50vw"
+              sizes="(min-width: 1024px) 20vw, 33vw"
               className="object-cover"
               unoptimized
             />
