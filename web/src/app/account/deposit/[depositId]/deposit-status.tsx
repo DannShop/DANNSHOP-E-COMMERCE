@@ -1,20 +1,31 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, CheckCircle2, XCircle } from "lucide-react";
+import { Clock, CheckCircle2, XCircle, Copy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const FINAL_STATUSES = ["PAID", "FAILED", "EXPIRED"];
 
+function formatRupiah(amount: string | number): string {
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
+    Number(amount),
+  );
+}
+
 interface DepositStatusResponse {
   depositId: string;
   status: string;
   amount: string;
-  qrString: string | null;
-  snapToken: string | null;
+  fee: string;
+  uniqueCode: number;
+  totalPaid: string;
+  payment:
+    | { kind: "qris"; qrString: string }
+    | { kind: "va"; bank: string; vaNumber: string }
+    | { kind: "echannel"; billerCode: string; billKey: string }
+    | null;
   expiredAt: string | null;
 }
 
@@ -59,27 +70,9 @@ export function DepositStatus({
     refetchInterval: (query) => (FINAL_STATUSES.includes(query.state.data?.status ?? "") ? false : 3000),
   });
 
-  const [snapError, setSnapError] = useState<string | null>(null);
-
   const deposit = data ?? initial;
   const isFinal = FINAL_STATUSES.includes(deposit.status);
   const StatusIcon = STATUS_ICON[deposit.status] ?? Clock;
-
-  function handleContinuePayment() {
-    setSnapError(null);
-    if (!deposit.snapToken) return;
-    if (!window.snap) {
-      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
-      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
-      return;
-    }
-    window.snap.pay(deposit.snapToken, {
-      onError: () => {
-        console.error("Snap: transaksi pembayaran gagal", { depositId: deposit.depositId });
-        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
-      },
-    });
-  }
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
@@ -90,11 +83,26 @@ export function DepositStatus({
           {STATUS_LABEL[deposit.status] ?? deposit.status}
         </Badge>
       </div>
-      <p className="font-heading text-2xl font-bold">
-        {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
-          Number(deposit.amount),
-        )}
-      </p>
+      <p className="font-heading text-2xl font-bold">{formatRupiah(deposit.totalPaid)}</p>
+
+      <div className="flex flex-col gap-1 rounded-md bg-muted px-4 py-3 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Nominal isi saldo</span>
+          <span>{formatRupiah(deposit.amount)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Biaya admin</span>
+          <span>{formatRupiah(deposit.fee)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Kode unik</span>
+          <span>{formatRupiah(deposit.uniqueCode)}</span>
+        </div>
+        <div className="mt-1 flex justify-between border-t pt-1 font-semibold">
+          <span>Total Bayar</span>
+          <span>{formatRupiah(deposit.totalPaid)}</span>
+        </div>
+      </div>
 
       {!isFinal && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status" aria-live="polite">
@@ -106,20 +114,47 @@ export function DepositStatus({
         </div>
       )}
 
-      {deposit.status === "PENDING" && deposit.qrString && qrDataUri && (
+      {deposit.status === "PENDING" && deposit.payment?.kind === "qris" && qrDataUri && (
         <div className="flex flex-col items-center gap-2">
           <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
           <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
         </div>
       )}
 
-      {deposit.status === "PENDING" && deposit.snapToken && !deposit.qrString && (
-        <>
-          {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
-          <Button onClick={handleContinuePayment} className="h-11 w-full text-base font-heading">
-            Lanjutkan Pembayaran
-          </Button>
-        </>
+      {deposit.status === "PENDING" && deposit.payment?.kind === "va" && (
+        <div className="flex flex-col gap-2 rounded-md border p-4">
+          <p className="text-sm text-muted-foreground">
+            Transfer ke Virtual Account {deposit.payment.bank.toUpperCase()}
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-xl font-bold tracking-wide">{deposit.payment.vaNumber}</span>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => {
+                const vaNumber = deposit.payment?.kind === "va" ? deposit.payment.vaNumber : "";
+                if (vaNumber) void navigator.clipboard.writeText(vaNumber);
+              }}
+            >
+              <Copy className="size-3.5" /> Salin
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {deposit.status === "PENDING" && deposit.payment?.kind === "echannel" && (
+        <div className="flex flex-col gap-2 rounded-md border p-4">
+          <p className="text-sm text-muted-foreground">Bayar lewat Mandiri Bill Payment (ATM/Livin&apos;)</p>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Kode Perusahaan</span>
+            <span className="font-mono font-bold">{deposit.payment.billerCode}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Kode Bayar</span>
+            <span className="font-mono font-bold">{deposit.payment.billKey}</span>
+          </div>
+        </div>
       )}
 
       {deposit.status === "PAID" && (

@@ -3,6 +3,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import type { PaymentActions } from "@/lib/midtrans/client";
 import { DepositStatus } from "./deposit-status";
 
 export default async function DepositStatusPage({
@@ -17,8 +18,8 @@ export default async function DepositStatusPage({
   const deposit = await db.deposit.findUnique({ where: { id: depositId } });
   if (!deposit || deposit.userId !== session.user.id) notFound();
 
-  const rawResponse = deposit.rawResponse as { qrString?: string; snapToken?: string } | null;
-  const qrDataUri = rawResponse?.qrString ? await QRCode.toDataURL(rawResponse.qrString, { width: 240, margin: 1 }) : null;
+  const actions = deposit.rawResponse as PaymentActions | null;
+  const qrDataUri = actions?.kind === "qris" ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 }) : null;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-10">
@@ -32,8 +33,10 @@ export default async function DepositStatusPage({
           depositId: deposit.id,
           status: deposit.status,
           amount: deposit.amount.toString(),
-          qrString: rawResponse?.qrString ?? null,
-          snapToken: rawResponse?.snapToken ?? null,
+          fee: deposit.fee.toString(),
+          uniqueCode: deposit.uniqueCode,
+          totalPaid: deposit.totalPaid.toString(),
+          payment: actions,
           expiredAt: deposit.expiredAt?.toISOString() ?? null,
         }}
       />

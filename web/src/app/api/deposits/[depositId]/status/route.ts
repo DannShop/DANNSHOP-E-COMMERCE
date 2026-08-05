@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import type { PaymentActions } from "@/lib/midtrans/client";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ depositId: string }> }) {
   const session = await auth();
@@ -10,15 +11,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dep
   const deposit = await db.deposit.findUnique({ where: { id: depositId } });
   if (!deposit || deposit.userId !== session.user.id) return NextResponse.json({ error: "Deposit tidak ditemukan" }, { status: 404 });
 
-  const rawResponse = deposit.rawResponse as { qrString?: string; snapToken?: string } | null;
+  const payment = deposit.rawResponse as PaymentActions | null;
 
   return NextResponse.json(
     {
       depositId: deposit.id,
       status: deposit.status,
       amount: deposit.amount.toString(),
-      qrString: rawResponse?.qrString ?? null,
-      snapToken: rawResponse?.snapToken ?? null,
+      fee: deposit.fee.toString(),
+      uniqueCode: deposit.uniqueCode,
+      totalPaid: deposit.totalPaid.toString(),
+      payment,
       expiredAt: deposit.expiredAt,
     },
     { headers: { "Cache-Control": "no-store" } },
