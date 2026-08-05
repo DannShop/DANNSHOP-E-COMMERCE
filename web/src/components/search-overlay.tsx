@@ -30,10 +30,7 @@ export function SearchOverlay() {
   }, [open]);
 
   useEffect(() => {
-    if (!open || !query.trim()) {
-      setResults([]);
-      return;
-    }
+    if (!open || !query.trim()) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       setLoading(true);
@@ -51,11 +48,22 @@ export function SearchOverlay() {
     };
   }, [query, open]);
 
+  // results tidak di-reset lewat effect (menghindari setState sinkron di body
+  // effect) - dropdown query kosong ditutupi di sini, hasil lama di state
+  // cukup diabaikan sampai fetch berikutnya menimpanya.
+  const visibleResults = query.trim() ? results : [];
+
   return (
     <>
-      <Button variant="ghost" size="icon" aria-label="Cari produk" onClick={() => setOpen(true)}>
-        <Search className="size-4" />
-      </Button>
+      <button
+        type="button"
+        aria-label="Cari produk"
+        onClick={() => setOpen(true)}
+        className="flex h-9 w-full items-center gap-2 rounded-full border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <Search className="size-4 shrink-0" />
+        <span className="truncate">Cari produk atau game...</span>
+      </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4 backdrop-blur-sm sm:items-start sm:justify-center">
@@ -75,12 +83,12 @@ export function SearchOverlay() {
             </div>
 
             {loading && <p className="text-sm text-muted-foreground">Mencari...</p>}
-            {!loading && query.trim() && results.length === 0 && (
+            {!loading && query.trim() && visibleResults.length === 0 && (
               <p className="text-sm text-muted-foreground">Tidak ada hasil untuk &quot;{query}&quot;.</p>
             )}
 
             <div className="flex flex-col gap-1 overflow-y-auto">
-              {results.map((r) => (
+              {visibleResults.map((r) => (
                 <Link
                   key={r.id}
                   href={`/${r.categorySlug}/${r.slug}`}

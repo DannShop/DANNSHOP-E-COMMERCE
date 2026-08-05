@@ -19,6 +19,7 @@ export const productSchema = z.object({
     }
   }),
   nicknameCheckKey: z.string().optional().transform((v) => (v === "" ? undefined : v)),
+  isTrending: z.string().optional(),
 });
 
 export const productItemSchema = z.object({

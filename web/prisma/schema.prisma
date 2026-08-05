@@ -168,11 +168,27 @@ model Product {
   banner           String?
   description      String?       @db.Text
   isActive         Boolean       @default(false)
+  isTrending       Boolean       @default(false)
   inputFields      Json // contoh ML: [{"name":"user_id","label":"User ID"},{"name":"zone_id","label":"Zone ID"}]
   nicknameCheckKey String?
   items            ProductItem[]
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+}
+
+model Banner {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  linkUrl   String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SiteSetting {
+  key   String @id // "logo_url", "logo_type" ("image"|"video"), "trending_mode" ("manual"|"auto")
+  value String @db.Text
 }
 
 model ProductItem {

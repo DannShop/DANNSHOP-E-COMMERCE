@@ -1,18 +1,26 @@
 import { Suspense } from "react";
 import { getCatalogHomeData } from "@/lib/catalog/public";
+import { db } from "@/lib/db";
+import { getSiteSettings } from "@/lib/site-settings";
 import { CatalogTabs } from "./catalog-tabs";
+import { BannerCarousel } from "@/components/banner-carousel";
+import { TrendingSection } from "@/components/trending-section";
+import { getTrendingProducts } from "@/lib/catalog/trending";
 
 export default async function HomePage() {
-  const categories = await getCatalogHomeData();
+  const [categories, banners, settings] = await Promise.all([
+    getCatalogHomeData(),
+    db.banner.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    getSiteSettings(),
+  ]);
+  const trending = await getTrendingProducts(settings.trendingMode);
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-xl bg-muted p-8">
-        <h1 className="text-3xl font-bold">Topup Game & PPOB Otomatis</h1>
-        <p className="mt-2 text-muted-foreground">
-          Isi ulang diamond, pulsa, dan voucher favoritmu dengan cepat dan aman.
-        </p>
-      </section>
+      {banners.length > 0 && (
+        <BannerCarousel banners={banners.map((b) => ({ id: b.id, imageUrl: b.imageUrl, linkUrl: b.linkUrl }))} />
+      )}
+      {trending.length > 0 && <TrendingSection products={trending} />}
       <Suspense>
         <CatalogTabs categories={categories} />
       </Suspense>

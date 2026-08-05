@@ -85,6 +85,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             description: product.description,
             inputFields: product.inputFields,
             nicknameCheckKey: product.nicknameCheckKey,
+            isTrending: product.isTrending,
           }}
         />
       </section>

@@ -4,11 +4,16 @@ import bcrypt from "bcryptjs";
 const db = new PrismaClient();
 
 const CATEGORIES = [
-  { slug: "games", name: "Games", sortOrder: 1 },
-  { slug: "pulsa-data", name: "Pulsa & Data", sortOrder: 2 },
-  { slug: "e-money", name: "E-Money", sortOrder: 3 },
-  { slug: "pln", name: "PLN", sortOrder: 4 },
-  { slug: "voucher", name: "Voucher", sortOrder: 5 },
+  { slug: "games", name: "Top Up Game", sortOrder: 1 },
+  { slug: "pulsa-data", name: "Pulsa", sortOrder: 2 },
+  { slug: "paket-internet", name: "Paket Internet", sortOrder: 3 },
+  { slug: "telepon-sms", name: "Telepon & SMS", sortOrder: 4 },
+  { slug: "masa-aktif", name: "Masa Aktif", sortOrder: 5 },
+  { slug: "pln", name: "Token Listrik", sortOrder: 6 },
+  { slug: "e-money", name: "E-Money", sortOrder: 7 },
+  { slug: "voucher", name: "Voucher", sortOrder: 8 },
+  { slug: "aktivasi-voucher", name: "Aktivasi Voucher", sortOrder: 9 },
+  { slug: "tagihan", name: "Tagihan", sortOrder: 10 },
 ];
 
 const PROVIDERS = [

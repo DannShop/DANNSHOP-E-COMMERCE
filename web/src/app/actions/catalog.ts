@@ -97,6 +97,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
     description: formData.get("description") ?? "",
     inputFields: formData.get("inputFields"),
     nicknameCheckKey: formData.get("nicknameCheckKey") ?? "",
+    isTrending: formData.get("isTrending"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -110,6 +111,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
       description: parsed.data.description,
       inputFields: parsed.data.inputFields,
       nicknameCheckKey: parsed.data.nicknameCheckKey,
+      isTrending: parsed.data.isTrending === "on",
       isActive: false,
     },
   });
@@ -135,6 +137,7 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
     description: formData.get("description") ?? "",
     inputFields: formData.get("inputFields"),
     nicknameCheckKey: formData.get("nicknameCheckKey") ?? "",
+    isTrending: formData.get("isTrending"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -149,6 +152,7 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
       description: parsed.data.description,
       inputFields: parsed.data.inputFields,
       nicknameCheckKey: parsed.data.nicknameCheckKey,
+      isTrending: parsed.data.isTrending === "on",
     },
   });
   await logAdmin(admin.adminId, "catalog.update_product", id);

@@ -6,8 +6,11 @@ const MENU = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/orders", label: "Orders" },
   { href: "/admin/products", label: "Produk & Harga" },
+  { href: "/admin/categories", label: "Kategori" },
+  { href: "/admin/banners", label: "Banner" },
   { href: "/admin/providers", label: "Providers" },
   { href: "/admin/payment-methods", label: "Metode Pembayaran" },
+  { href: "/admin/settings", label: "Pengaturan Situs" },
 ];
 
 export default async function AdminLayout({

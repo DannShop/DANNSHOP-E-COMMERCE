@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -31,6 +32,7 @@ export interface ProductFormInitial {
   description: string | null;
   inputFields: unknown;
   nicknameCheckKey: string | null;
+  isTrending: boolean;
 }
 
 export function ProductForm({
@@ -193,6 +195,13 @@ export function ProductForm({
           defaultValue={initial?.nicknameCheckKey ?? ""}
           placeholder="Kunci field untuk cek nickname otomatis, jika didukung provider"
         />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Checkbox id="isTrending" name="isTrending" defaultChecked={initial?.isTrending ?? false} />
+        <Label htmlFor="isTrending" className="font-normal">
+          Trending (tampil di section 🔥 Trending kalau mode manual)
+        </Label>
       </div>
 
       <div className="flex items-center gap-3">
