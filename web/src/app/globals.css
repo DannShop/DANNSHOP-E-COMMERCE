@@ -145,6 +145,18 @@
   html {
     @apply font-sans overflow-x-hidden;
   }
+  /* Scrollbar utama window ikut disembunyikan (scroll-nya sendiri tetap jalan
+     normal, termasuk wheel/keyboard/touch). Utility .no-scrollbar di bawah cuma
+     kena container overflow internal, jadi yang di root harus di-set terpisah. */
+  html,
+  body {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Scroll tetap jalan, cuma scrollbar bawaan browser-nya yang disembunyikan -
@@ -158,17 +170,21 @@
   display: none;
 }
 
+/* --marquee-shift diisi dari JS: lebar 1 grup logo dalam pixel presisi. Geseran
+   sebesar tepat 1 grup bikin frame terakhir identik dengan frame pertama, jadi
+   sambungan loop mulus. Nilai persen dipakai cuma sebagai fallback sebelum
+   pengukuran pertama (cocok dengan jumlah salinan awal = 4). */
 @keyframes marquee {
   from {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translateX(-50%);
+    transform: translate3d(calc(-1 * var(--marquee-shift, 25%)), 0, 0);
   }
 }
 
 .animate-marquee {
-  animation: marquee 25s linear infinite;
+  animation: marquee var(--marquee-duration, 17s) linear infinite;
 }
 
 .group:hover .animate-marquee {
