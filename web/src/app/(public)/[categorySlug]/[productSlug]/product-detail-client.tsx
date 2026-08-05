@@ -44,7 +44,7 @@ export function ProductDetailClient({
 }: {
   product: ProductForCheckout;
   session: { email: string; walletBalance: bigint } | null;
-  paymentMethods: { code: string; label: string; feeFlat: string; feePercent: number }[];
+  paymentMethods: { code: string; label: string; logoUrl: string | null; feeFlat: string; feePercent: number }[];
 }) {
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
@@ -182,7 +182,13 @@ export function ProductDetailClient({
                 : 0n;
               return (
                 <RadioGroupItem key={m.code} value={m.code}>
-                  <QrCode className="size-4" aria-hidden="true" />
+                  {m.logoUrl ? (
+                    <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-white p-0.5">
+                      <Image src={m.logoUrl} alt="" fill sizes="20px" className="object-contain" unoptimized />
+                    </span>
+                  ) : (
+                    <QrCode className="size-4" aria-hidden="true" />
+                  )}
                   {m.label}
                   <span className="ml-auto text-xs text-muted-foreground">
                     {fee > 0n ? `+ ${formatRupiah(fee)}` : "Gratis"}

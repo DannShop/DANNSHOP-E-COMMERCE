@@ -14,6 +14,7 @@ export default async function DepositPage() {
         paymentMethods={paymentMethods.map((m) => ({
           code: m.code,
           label: m.label,
+          logoUrl: m.logoUrl,
           feeFlat: m.feeFlat.toString(),
           feePercent: m.feePercent,
         }))}

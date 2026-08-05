@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ const INITIAL_STATE: DepositResult = {};
 export function DepositForm({
   paymentMethods,
 }: {
-  paymentMethods: { code: string; label: string; feeFlat: string; feePercent: number }[];
+  paymentMethods: { code: string; label: string; logoUrl: string | null; feeFlat: string; feePercent: number }[];
 }) {
   const [selected, setSelected] = useState<bigint | "custom">(PRESETS[1]);
   const [custom, setCustom] = useState("");
@@ -120,7 +121,13 @@ export function DepositForm({
               const fee = (amountForPreview * BigInt(m.feePercent)) / 10_000n + BigInt(m.feeFlat);
               return (
                 <RadioGroupItem key={m.code} value={m.code}>
-                  <QrCode className="size-4" aria-hidden="true" />
+                  {m.logoUrl ? (
+                    <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-white p-0.5">
+                      <Image src={m.logoUrl} alt="" fill sizes="20px" className="object-contain" unoptimized />
+                    </span>
+                  ) : (
+                    <QrCode className="size-4" aria-hidden="true" />
+                  )}
                   {m.label}
                   <span className="ml-auto text-xs text-muted-foreground">
                     {fee > 0n ? `+ ${formatRupiah(fee)}` : "Gratis"}

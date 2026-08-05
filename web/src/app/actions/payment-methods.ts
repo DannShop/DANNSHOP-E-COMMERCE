@@ -30,6 +30,12 @@ async function logAdmin(adminId: string, action: string, targetId: string, detai
 const updateSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1, "Label wajib diisi"),
+  logoUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((v) => (v ? v : null)),
   feeFlat: z.coerce.bigint().min(0n, "Fee flat tidak boleh negatif"),
   feePercent: z.coerce.number().int().min(0, "Fee persen tidak boleh negatif"),
   sortOrder: z.coerce.number().int().default(0),
@@ -44,6 +50,7 @@ export async function updatePaymentMethod(formData: FormData): Promise<ActionRes
   const parsed = updateSchema.safeParse({
     id: formData.get("id"),
     label: formData.get("label"),
+    logoUrl: formData.get("logoUrl"),
     feeFlat: formData.get("feeFlat"),
     feePercent: formData.get("feePercent"),
     sortOrder: formData.get("sortOrder") ?? 0,
@@ -55,6 +62,7 @@ export async function updatePaymentMethod(formData: FormData): Promise<ActionRes
     where: { id: parsed.data.id },
     data: {
       label: parsed.data.label,
+      logoUrl: parsed.data.logoUrl,
       feeFlat: parsed.data.feeFlat,
       feePercent: parsed.data.feePercent,
       sortOrder: parsed.data.sortOrder,

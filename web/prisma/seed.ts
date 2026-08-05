@@ -24,13 +24,13 @@ const PROVIDERS = [
 ];
 
 const PAYMENT_METHODS = [
-  { code: "qris", label: "QRIS", feeFlat: 0n, feePercent: 70, sortOrder: 1 },
-  { code: "va_bca", label: "BCA Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 2 },
-  { code: "va_bni", label: "BNI Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 3 },
-  { code: "va_bri", label: "BRI Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 4 },
-  { code: "va_mandiri", label: "Mandiri Bill Payment", feeFlat: 4000n, feePercent: 0, sortOrder: 5 },
-  { code: "va_permata", label: "Permata Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 6 },
-  { code: "va_cimb", label: "CIMB Niaga Virtual Account", feeFlat: 4000n, feePercent: 0, sortOrder: 7 },
+  { code: "qris", label: "QRIS", logoUrl: "/payment-logos/qris.svg", feeFlat: 0n, feePercent: 70, sortOrder: 1 },
+  { code: "va_bca", label: "BCA Virtual Account", logoUrl: "/payment-logos/bca.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 2 },
+  { code: "va_bni", label: "BNI Virtual Account", logoUrl: "/payment-logos/bni.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 3 },
+  { code: "va_bri", label: "BRI Virtual Account", logoUrl: "/payment-logos/bri.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 4 },
+  { code: "va_mandiri", label: "Mandiri Bill Payment", logoUrl: "/payment-logos/mandiri.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 5 },
+  { code: "va_permata", label: "Permata Virtual Account", logoUrl: "/payment-logos/permata.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 6 },
+  { code: "va_cimb", label: "CIMB Niaga Virtual Account", logoUrl: "/payment-logos/cimb-niaga.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 7 },
 ];
 
 const SAMPLE_PRODUCTS = [
@@ -90,7 +90,10 @@ async function main() {
   for (const m of PAYMENT_METHODS) {
     await db.paymentMethodConfig.upsert({
       where: { code: m.code },
-      update: {}, // sengaja no-op — jangan timpa fee yang mungkin sudah diubah admin lewat panel
+      // logoUrl selalu disinkron dari seed (aset statis, bukan sesuatu yang
+      // diubah admin lewat panel) — fee/label sengaja no-op supaya tidak
+      // menimpa nilai yang mungkin sudah diubah admin lewat panel.
+      update: { logoUrl: m.logoUrl },
       create: m,
     });
   }

@@ -21,6 +21,7 @@ export default async function PaymentMethodsPage() {
               id: m.id,
               code: m.code,
               label: m.label,
+              logoUrl: m.logoUrl,
               feeFlat: m.feeFlat.toString(),
               feePercent: m.feePercent,
               sortOrder: m.sortOrder,
