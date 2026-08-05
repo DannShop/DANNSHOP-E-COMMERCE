@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
+import type { PaymentActions } from "@/lib/midtrans/client";
 import { InvoiceStatus } from "./invoice-status";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +19,9 @@ export default async function InvoicePage({
   });
   if (!order) notFound();
 
-  const actions = order.payment?.actions as { qrString?: string } | null;
-  const rawResponse = order.payment?.rawResponse as { snapToken?: string } | null;
+  const actions = order.payment?.actions as PaymentActions | null;
   const latestFulfillment = order.fulfillments[0];
-  const qrDataUri = actions?.qrString ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 }) : null;
+  const qrDataUri = actions?.kind === "qris" ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 }) : null;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-10">
@@ -36,9 +36,11 @@ export default async function InvoicePage({
           status: order.status,
           productName: order.productName,
           itemName: order.itemName,
+          sellingPrice: order.sellingPrice.toString(),
+          fee: order.fee.toString(),
+          uniqueCode: order.uniqueCode,
           total: order.total.toString(),
-          qrString: actions?.qrString ?? null,
-          snapToken: rawResponse?.snapToken ?? null,
+          payment: actions,
           expiredAt: order.expiredAt?.toISOString() ?? null,
           sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,
         }}

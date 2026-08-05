@@ -18,14 +18,26 @@ import { cn } from "@/lib/utils";
 
 const FINAL_STATUSES = ["COMPLETED", "FAILED", "EXPIRED", "REFUNDED", "REFUND_PENDING", "NEEDS_REVIEW"];
 
+function formatRupiah(amount: string | number): string {
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
+    Number(amount),
+  );
+}
+
 interface OrderStatusResponse {
   orderNumber: string;
   status: string;
   productName: string;
   itemName: string;
+  sellingPrice: string;
+  fee: string;
+  uniqueCode: number;
   total: string;
-  qrString: string | null;
-  snapToken: string | null;
+  payment:
+    | { kind: "qris"; qrString: string }
+    | { kind: "va"; bank: string; vaNumber: string }
+    | { kind: "echannel"; billerCode: string; billKey: string }
+    | null;
   expiredAt: string | null;
   sn: string | null;
 }
@@ -80,7 +92,6 @@ export function InvoiceStatus({
   initial: OrderStatusResponse;
 }) {
   const [copied, setCopied] = useState(false);
-  const [snapError, setSnapError] = useState<string | null>(null);
   const { data, isFetching } = useQuery<OrderStatusResponse>({
     queryKey: ["order-status", token],
     queryFn: async () => {
@@ -107,22 +118,6 @@ export function InvoiceStatus({
     }
   }
 
-  function handleContinuePayment() {
-    setSnapError(null);
-    if (!order.snapToken) return;
-    if (!window.snap) {
-      console.error("Snap.js belum termuat, tidak bisa buka popup pembayaran");
-      setSnapError("Gagal memuat metode pembayaran. Refresh halaman dan coba lagi.");
-      return;
-    }
-    window.snap.pay(order.snapToken, {
-      onError: () => {
-        console.error("Snap: transaksi pembayaran gagal", { orderNumber: order.orderNumber });
-        setSnapError("Pembayaran gagal diproses. Coba lagi atau pilih metode lain.");
-      },
-    });
-  }
-
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
       <div className="flex items-center justify-between gap-2">
@@ -135,11 +130,26 @@ export function InvoiceStatus({
       <p className="font-heading text-lg font-bold text-balance">
         {order.productName} · {order.itemName}
       </p>
-      <p className="font-heading text-2xl font-bold">
-        {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
-          Number(order.total),
-        )}
-      </p>
+      <p className="font-heading text-2xl font-bold">{formatRupiah(order.total)}</p>
+
+      <div className="flex flex-col gap-1 rounded-md bg-muted px-4 py-3 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Harga item</span>
+          <span>{formatRupiah(order.sellingPrice)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Biaya admin</span>
+          <span>{formatRupiah(order.fee)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Kode unik</span>
+          <span>{formatRupiah(order.uniqueCode)}</span>
+        </div>
+        <div className="mt-1 flex justify-between border-t pt-1 font-semibold">
+          <span>Total</span>
+          <span>{formatRupiah(order.total)}</span>
+        </div>
+      </div>
 
       {!isFinal && (
         <div
@@ -155,20 +165,47 @@ export function InvoiceStatus({
         </div>
       )}
 
-      {order.status === "PENDING_PAYMENT" && order.qrString && qrDataUri && (
+      {order.status === "PENDING_PAYMENT" && order.payment?.kind === "qris" && qrDataUri && (
         <div className="flex flex-col items-center gap-2">
           <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
           <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
         </div>
       )}
 
-      {order.status === "PENDING_PAYMENT" && order.snapToken && !order.qrString && (
-        <>
-          {snapError && <p className="text-sm text-danger-foreground">{snapError}</p>}
-          <Button onClick={handleContinuePayment} className="h-11 w-full text-base font-heading">
-            Lanjutkan Pembayaran
-          </Button>
-        </>
+      {order.status === "PENDING_PAYMENT" && order.payment?.kind === "va" && (
+        <div className="flex flex-col gap-2 rounded-md border p-4">
+          <p className="text-sm text-muted-foreground">
+            Transfer ke Virtual Account {order.payment.bank.toUpperCase()}
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-xl font-bold tracking-wide">{order.payment.vaNumber}</span>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => {
+                const vaNumber = order.payment?.kind === "va" ? order.payment.vaNumber : "";
+                if (vaNumber) void navigator.clipboard.writeText(vaNumber);
+              }}
+            >
+              <Copy className="size-3.5" /> Salin
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {order.status === "PENDING_PAYMENT" && order.payment?.kind === "echannel" && (
+        <div className="flex flex-col gap-2 rounded-md border p-4">
+          <p className="text-sm text-muted-foreground">Bayar lewat Mandiri Bill Payment (ATM/Livin&apos;)</p>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Kode Perusahaan</span>
+            <span className="font-mono font-bold">{order.payment.billerCode}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Kode Bayar</span>
+            <span className="font-mono font-bold">{order.payment.billKey}</span>
+          </div>
+        </div>
       )}
 
       {order.status === "COMPLETED" && order.sn && (

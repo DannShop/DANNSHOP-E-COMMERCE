@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import type { PaymentActions } from "@/lib/midtrans/client";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   if (!order) return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404 });
 
   const latestFulfillment = order.fulfillments[0];
-  const actions = order.payment?.actions as { qrString?: string } | null;
-  const rawResponse = order.payment?.rawResponse as { snapToken?: string } | null;
+  const payment = order.payment?.actions as PaymentActions | null;
 
   return NextResponse.json(
     {
@@ -24,9 +24,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       status: order.status,
       productName: order.productName,
       itemName: order.itemName,
+      sellingPrice: order.sellingPrice.toString(),
+      fee: order.fee.toString(),
+      uniqueCode: order.uniqueCode,
       total: order.total.toString(),
-      qrString: actions?.qrString ?? null,
-      snapToken: rawResponse?.snapToken ?? null,
+      payment,
       expiredAt: order.expiredAt,
       sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,
     },
