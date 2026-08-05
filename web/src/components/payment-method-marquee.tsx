@@ -16,15 +16,13 @@ function shortMethodName(label: string): string {
 function MethodBadge({ method }: { method: MarqueeMethod }) {
   const name = shortMethodName(method.label);
   return (
-    <div className="flex h-12 w-28 shrink-0 items-center justify-center">
+    <div className="flex h-14 w-32 shrink-0 items-center justify-center rounded-2xl bg-white px-4 py-3 shadow-sm">
       {method.logoUrl ? (
         <span className="relative size-full">
-          <Image src={method.logoUrl} alt={name} fill sizes="112px" className="object-contain" unoptimized />
+          <Image src={method.logoUrl} alt={name} fill sizes="96px" className="object-contain" unoptimized />
         </span>
       ) : (
-        <span className="whitespace-nowrap rounded-full border bg-card px-4 py-2 text-sm font-medium text-muted-foreground">
-          {name}
-        </span>
+        <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">{name}</span>
       )}
     </div>
   );
