@@ -1,12 +1,21 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import type { ActionResult } from "@/app/actions/providers";
+
+// 32 byte acak (256-bit) di-encode hex - kekuatan yang wajar untuk kunci HMAC,
+// dibangkitkan langsung di browser pakai Web Crypto API (bukan Math.random,
+// yang tidak cryptographically secure).
+function generateWebhookSecret(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 type ServerAction = (formData: FormData) => Promise<ActionResult>;
 
@@ -64,6 +73,7 @@ function ActionMessage({ state }: { state: ActionResult }) {
 
 export interface ProviderCardProps {
   providerKey: string;
+  appUrl: string;
   displayName: string;
   isActive: boolean;
   hasCredentials: boolean;
@@ -82,6 +92,7 @@ export interface ProviderCardProps {
 
 export function ProviderCard({
   providerKey,
+  appUrl,
   displayName,
   isActive,
   hasCredentials,
@@ -117,8 +128,22 @@ export function ProviderCard({
     withPrevState(saveBalanceThreshold),
     INITIAL_STATE,
   );
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [copiedField, setCopiedField] = useState<"url" | "secret" | null>(null);
 
   const actionsDisabled = !hasCredentials;
+  const webhookUrl = `${appUrl}/api/webhooks/digiflazz`;
+
+  async function copyToClipboard(text: string, field: "url" | "secret") {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      // Clipboard API bisa ditolak browser (izin/context tidak aman) - tidak fatal,
+      // nilainya tetap kelihatan di layar untuk di-select+copy manual.
+    }
+  }
 
   return (
     <Card>
@@ -192,25 +217,83 @@ export function ProviderCard({
         )}
 
         {providerKey === "DIGIFLAZZ" && (
-          <form action={credAction} className="space-y-3 rounded-lg border p-3">
-            <p className="text-sm font-medium">Kredensial Digiflazz</p>
-            <div className="space-y-1.5">
-              <Label htmlFor="digiflazz-username">Username</Label>
-              <Input id="digiflazz-username" name="username" required autoComplete="off" />
+          <>
+            <div className="space-y-2 rounded-lg border border-dashed p-3">
+              <p className="text-sm font-medium">Webhook / Callback URL</p>
+              <p className="text-xs text-muted-foreground">
+                Daftarkan URL ini sebagai &quot;Payload URL&quot; di dashboard Digiflazz (Pengaturan Koneksi &gt; API
+                &gt; Webhook). Kalau domain situs berubah (mis. pindah ke domain sendiri), URL ini otomatis ikut
+                berubah di sini — tinggal salin ulang &amp; update juga di sisi Digiflazz.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded bg-muted px-2 py-1.5 text-xs">{webhookUrl}</code>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={() => copyToClipboard(webhookUrl, "url")}
+                >
+                  {copiedField === "url" ? "Tersalin!" : "Salin"}
+                </Button>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="digiflazz-apiKey">API Key</Label>
-              <Input id="digiflazz-apiKey" name="apiKey" type="password" required autoComplete="off" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="digiflazz-webhookSecret">Webhook Secret (opsional)</Label>
-              <Input id="digiflazz-webhookSecret" name="webhookSecret" type="password" autoComplete="off" />
-            </div>
-            <Button type="submit" size="sm" disabled={credPending}>
-              {credPending ? "Menyimpan..." : "Simpan kredensial"}
-            </Button>
-            <ActionMessage state={credState} />
-          </form>
+
+            <form action={credAction} className="space-y-3 rounded-lg border p-3">
+              <p className="text-sm font-medium">Kredensial Digiflazz</p>
+              <div className="space-y-1.5">
+                <Label htmlFor="digiflazz-username">Username</Label>
+                <Input id="digiflazz-username" name="username" required autoComplete="off" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="digiflazz-apiKey">API Key</Label>
+                <Input id="digiflazz-apiKey" name="apiKey" type="password" required autoComplete="off" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="digiflazz-webhookSecret">Webhook Secret (opsional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="digiflazz-webhookSecret"
+                    name="webhookSecret"
+                    type="text"
+                    autoComplete="off"
+                    value={webhookSecret}
+                    onChange={(e) => setWebhookSecret(e.target.value)}
+                    placeholder="Klik Generate, atau isi manual"
+                    className="font-mono"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setWebhookSecret(generateWebhookSecret())}
+                  >
+                    Generate
+                  </Button>
+                </div>
+                {webhookSecret && (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Simpan kredensial ini dulu, lalu salin nilai yang SAMA PERSIS ke field &quot;Secret&quot; di
+                      Digiflazz.
+                    </p>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => copyToClipboard(webhookSecret, "secret")}
+                    >
+                      {copiedField === "secret" ? "Tersalin!" : "Salin"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <Button type="submit" size="sm" disabled={credPending}>
+                {credPending ? "Menyimpan..." : "Simpan kredensial"}
+              </Button>
+              <ActionMessage state={credState} />
+            </form>
+          </>
         )}
       </CardContent>
 

@@ -31,6 +31,7 @@ function formatSync(log: {
 }
 
 export default async function AdminProvidersPage() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const providers = await db.providerConfig.findMany({ orderBy: { priority: "asc" } });
 
   const lastSyncs = await Promise.all(
@@ -56,6 +57,7 @@ export default async function AdminProvidersPage() {
           <ProviderCard
             key={provider.key}
             providerKey={provider.key}
+            appUrl={appUrl}
             displayName={provider.displayName}
             isActive={provider.isActive}
             hasCredentials={provider.credentials != null}

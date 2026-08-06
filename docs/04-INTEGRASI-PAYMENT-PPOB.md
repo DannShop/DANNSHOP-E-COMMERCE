@@ -122,6 +122,7 @@ Alur verifikasi & pemrosesan (baca kode aslinya untuk detail lengkap, ringkasan 
 | `web/src/lib/order/fulfillment.ts` | Logika inti "pilih SKU lalu kirim transaksi ke provider" + penanganan hasil sukses/gagal. |
 | `web/src/lib/jobs/runner.ts` (handler `recheck-fulfillment`) | Polling status transaksi yang masih pending. |
 | `web/src/app/api/webhooks/digiflazz/route.ts` | Endpoint callback Digiflazz — opsional, lihat §3.7. |
+| `web/src/app/admin/providers/provider-card.tsx` | UI kartu provider di `/admin/providers` — termasuk tombol Generate/Salin untuk webhook secret & URL (§3.7). |
 
 ### 3.2 Kredensial — terenkripsi di database, BUKAN env var
 
@@ -165,11 +166,14 @@ Job `sync-prices` (self-reschedule tiap 3 jam) memanggil `adapter.fetchPriceList
 
 `POST /api/webhooks/digiflazz` (`web/src/app/api/webhooks/digiflazz/route.ts`) — mempercepat update status jadi hampir instan begitu Digiflazz selesai memproses, alih-alih menunggu siklus poll berikutnya (bisa sampai puluhan detik). Pola kerjanya identik dengan webhook Midtrans (§2.6): verifikasi signature dulu sebelum sentuh database, idempotent lewat `WebhookEvent` (`source: "digiflazz"`), lalu memanggil `applyFulfillmentResult()` — **fungsi yang SAMA PERSIS** dipakai job polling, jadi hasil akhirnya selalu konsisten dari jalur mana pun datangnya.
 
-**Cara mengaktifkan (2 langkah di luar kode, harus dilakukan admin secara manual):**
-1. Isi field "Webhook Secret" di form kredensial Digiflazz (`/admin/providers`).
-2. Daftarkan URL `https://<domain-produksi>/api/webhooks/digiflazz` di dashboard/pengaturan akun Digiflazz, pakai **secret yang sama persis** dengan langkah 1.
+**Cara mengaktifkan — sekarang dibantu penuh dari UI admin (`/admin/providers`, kartu Digiflazz), tidak perlu ngetik/inget apa pun manual:**
+1. Kotak "Webhook / Callback URL" di kartu itu sudah otomatis menampilkan URL yang benar (dibangun dari env var `NEXT_PUBLIC_APP_URL`, lihat `web/src/app/admin/providers/page.tsx`) — tinggal klik **Salin**.
+2. Di form kredensial, field "Webhook Secret" punya tombol **Generate** — sekali klik menghasilkan string acak 256-bit (`crypto.getRandomValues`, `web/src/app/admin/providers/provider-card.tsx`), lalu tombol **Salin** di sebelahnya.
+3. Klik "Simpan kredensial" dulu (tersimpan terenkripsi di DannShop) → baru tempel URL + secret yang sama persis ke halaman "Pengaturan Koneksi > API > Webhook" di dashboard Digiflazz sendiri → aktifkan toggle di sana → simpan.
 
 **Kalau belum sempat/belum mau dikonfigurasi:** dibiarkan saja, tidak masalah — endpoint ini otomatis menolak (403) semua request selama `webhookSecret` masih kosong (`DigiflazzAdapter.parseCallback` selalu mengembalikan `verified: false` kalau tidak ada secret untuk dibandingkan), dan aplikasi tetap berfungsi normal sepenuhnya lewat polling saja (§3.5).
+
+**Verifikasi teknis:** format signature (`X-Hub-Signature: sha1=<hex HMAC-SHA1 dari raw body>`) dan struktur payload (`{"data": {"ref_id", "status", "message", "rc", ...}}`) sudah dicek ulang langsung ke dokumentasi resmi Digiflazz (developer.digiflazz.com/api/buyer/webhook/) dan cocok 100% dengan implementasi di `web/src/lib/providers/digiflazz-sign.ts` — bukan asumsi.
 
 ---
 
