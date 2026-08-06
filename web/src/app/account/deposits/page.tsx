@@ -1,15 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
+import { formatRupiah, formatTanggal } from "@/lib/format";
 import { DEPOSIT_STATUS_LABEL } from "@/lib/order/status-labels";
 
-function formatRupiah(amount: bigint): string {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
-    Number(amount),
-  );
-}
+export const metadata: Metadata = { title: "Riwayat Deposit" };
 
 export default async function AccountDepositsPage() {
   const session = await auth();
@@ -20,27 +18,37 @@ export default async function AccountDepositsPage() {
   });
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-4 px-4 py-10">
-      <Link href="/account" className="font-heading text-sm font-bold text-primary hover:underline">
-        ← Akun Saya
-      </Link>
-      <h1 className="font-heading text-2xl font-bold">Riwayat Deposit</h1>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
       {deposits.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Belum ada deposit.</p>
+        <p className="rounded-2xl border border-dashed border-border/70 px-4 py-10 text-center text-sm text-muted-foreground">
+          Belum pernah mengisi saldo.{" "}
+          <Link href="/account/deposit" className="text-primary hover:underline">
+            Isi saldo sekarang
+          </Link>
+          .
+        </p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2">
           {deposits.map((deposit) => (
-            <Link
-              key={deposit.id}
-              href={`/account/deposit/${deposit.id}`}
-              className="flex items-center justify-between rounded-md border bg-card px-4 py-3 text-sm hover:bg-muted"
-            >
-              <p className="font-medium">{formatRupiah(deposit.amount)}</p>
-              <Badge variant="muted">{DEPOSIT_STATUS_LABEL[deposit.status] ?? deposit.status}</Badge>
-            </Link>
+            <li key={deposit.id}>
+              <Link
+                href={`/account/deposit/${deposit.id}`}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/60 px-4 py-3.5 transition-colors duration-200 ease-out hover:bg-foreground/[0.04]"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{formatRupiah(deposit.amount)}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {formatTanggal(deposit.createdAt)}
+                  </span>
+                </span>
+                <Badge variant="muted">
+                  {DEPOSIT_STATUS_LABEL[deposit.status] ?? deposit.status}
+                </Badge>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-    </main>
+    </div>
   );
 }

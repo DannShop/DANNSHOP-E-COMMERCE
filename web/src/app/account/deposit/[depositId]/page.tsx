@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import QRCode from "qrcode";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -25,10 +24,7 @@ export default async function DepositStatusPage({
       : null;
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-10">
-      <Link href="/account" className="font-heading text-sm font-bold text-primary hover:underline">
-        ← Akun Saya
-      </Link>
+    <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       <DepositStatus
         depositId={deposit.id}
         qrDataUri={qrDataUri}

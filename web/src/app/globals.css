@@ -199,35 +199,93 @@
 
 /* ============================================================================
    TRANSISI TEMA (light <-> dark)
-   Kelas ini dipasang ke <html> HANYA selama ~0,5 detik saat tombol tema
+   Kelas ini dipasang ke <html> HANYA selama ~0,3 detik saat tombol tema
    diklik, lalu dilepas lagi (lihat lib/theme-transition.ts). Sengaja tidak
    permanen: kalau permanen, setiap hover yang mengubah warna (baris tabel,
-   tombol, menu) ikut melambat jadi 420ms dan seluruh UI terasa berat.
+   tombol, menu) ikut melambat dan seluruh UI terasa berat.
    !important dipakai supaya menang atas transition-* milik komponen, dan itu
    aman justru karena sifatnya sesaat.
+
+   CATATAN PERFORMA - jangan dikembalikan ke `:where(*, *::before, *::after)`.
+   Versi lama menganimasikan SETIAP node (bisa 1000+ di panel admin) untuk 6
+   properti sekaligus selama 420ms. Tiga hal yang bikin berat, dan ketiganya
+   sudah dibereskan di bawah:
+     1. box-shadow di daftar properti -> repaint penuh tiap frame, tidak bisa
+        dipercepat GPU. Dibuang.
+     2. fill/stroke -> cuma buat ikon Lucide; perubahan warna ikon dalam 220ms
+        praktis tak terlihat. Dibuang.
+     3. blur(24px) milik .glass-panel/.glass-card harus dihitung ulang tiap
+        frame selama ada yang berubah warna di belakangnya. Dibekukan, lihat
+        blok "membekukan blur" di bawah.
+   Elemen di luar daftar ini tetap ikut ter-crossfade: warnanya diwarisi dari
+   induk yang memang punya transisi, jadi tidak perlu transisi sendiri.
    ============================================================================ */
+.theme-transition {
+  /* Durasi dipegang satu custom property supaya prefers-reduced-motion di bawah
+     cukup menimpa SATU nilai, bukan menyalin ulang seluruh daftar selektor.
+     Custom property diwarisi ke anak, jadi aturan di bawah ikut terpengaruh. */
+  --theme-fade: 220ms;
+}
+
 .theme-transition,
-.theme-transition :where(*, *::before, *::after) {
-  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
-  transition-duration: 420ms !important;
+.theme-transition :is(
+  body,
+  .admin-shell,
+  .account-shell,
+  .glass-panel,
+  .glass-card,
+  .bg-background,
+  .bg-card,
+  .bg-popover,
+  .bg-muted,
+  .bg-secondary,
+  header,
+  aside,
+  main,
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td
+) {
+  transition-property: background-color, border-color, color !important;
+  transition-duration: var(--theme-fade) !important;
   /* Kurva khas macOS/iOS: mulai cepat, mendarat sangat halus. */
   transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1) !important;
 }
 
+/* Membekukan blur selama transisi.
+   blur(24px) di atas backdrop yang sedang berubah warna = kernel besar yang
+   dihitung ulang ~13 kali berturut-turut; inilah penyebab utama patah-patah di
+   perangkat ber-RAM kecil. saturate() dipertahankan karena harganya cuma satu
+   color-matrix per piksel (murah), dan justru saturate inilah yang bikin kaca
+   terasa "hidup". Hilangnya blur sendiri hampir tak kelihatan karena yang ada
+   di belakang panel memang gradient halus tanpa detail tajam - blur dari
+   gradient halus hasilnya ya gradient halus itu juga. */
+.theme-transition :is(.glass-panel, .glass-card) {
+  backdrop-filter: saturate(180%) !important;
+  -webkit-backdrop-filter: saturate(180%) !important;
+}
+
+/* Pengaman lapis kedua. Lapis pertama ada di lib/theme-transition.ts yang
+   memang tidak pernah memasang kelas ini kalau user minta gerak dikurangi. */
 @media (prefers-reduced-motion: reduce) {
-  .theme-transition,
-  .theme-transition :where(*, *::before, *::after) {
-    transition-duration: 1ms !important;
+  .theme-transition {
+    --theme-fade: 1ms;
   }
 }
 
 @layer components {
   /* ==========================================================================
-     PANEL ADMIN - material ala macOS
-     Semua diruangkupi .admin-shell supaya storefront TIDAK ikut berubah:
-     token warna global (:root/.dark) sengaja tidak disentuh sama sekali.
+     PANEL ADMIN & PANEL USER - material ala macOS
+     Semua diruangkupi .admin-shell/.account-shell supaya storefront TIDAK ikut
+     berubah: token warna global (:root/.dark) sengaja tidak disentuh sama
+     sekali. Kedua panel berbagi satu resep material yang sama persis - yang
+     membedakan keduanya cuma susunan navigasinya, bukan warnanya.
      ========================================================================== */
-  .admin-shell {
+  .admin-shell,
+  .account-shell {
     /* Latar putih bersih + tiga "blob" indigo/violet lembut. Blob ini yang
        jadi bahan blur di belakang panel kaca - tanpa sesuatu yang berwarna di
        belakangnya, backdrop-filter tidak menghasilkan efek apa pun. */
@@ -243,7 +301,8 @@
       radial-gradient(48rem 38rem at 72% 108%, rgba(79, 70, 229, 0.12), transparent 60%);
   }
 
-  .dark .admin-shell {
+  .dark .admin-shell,
+  .dark .account-shell {
     --glass-bg: rgba(22, 22, 34, 0.62);
     --glass-border: rgba(255, 255, 255, 0.09);
     --glass-specular: rgba(255, 255, 255, 0.16);
@@ -254,6 +313,30 @@
       radial-gradient(58rem 38rem at 10% -10%, rgba(99, 102, 241, 0.26), transparent 60%),
       radial-gradient(42rem 32rem at 96% 2%, rgba(124, 58, 237, 0.2), transparent 62%),
       radial-gradient(48rem 38rem at 72% 108%, rgba(67, 56, 202, 0.16), transparent 60%);
+  }
+
+  /* ==========================================================================
+     PANEL BRAND HALAMAN AUTH
+     Resep gradient-nya sengaja sama persis dengan .admin-shell supaya login,
+     panel user, dan panel admin terasa satu keluarga. Bedanya cuma basis warna
+     yang sedikit lebih bernada (bukan putih murni), karena panel ini berdiri
+     tepat di sebelah area form yang memakai --background polos - kalau dua-
+     duanya putih, batasnya tidak terbaca sebagai dua bidang berbeda.
+     ========================================================================== */
+  .auth-brand {
+    background-color: #fbfaff;
+    background-image:
+      radial-gradient(54rem 36rem at 8% -12%, rgba(99, 102, 241, 0.2), transparent 60%),
+      radial-gradient(40rem 30rem at 100% 8%, rgba(139, 92, 246, 0.16), transparent 62%),
+      radial-gradient(46rem 36rem at 60% 112%, rgba(79, 70, 229, 0.14), transparent 60%);
+  }
+
+  .dark .auth-brand {
+    background-color: #08080f;
+    background-image:
+      radial-gradient(54rem 36rem at 8% -12%, rgba(99, 102, 241, 0.26), transparent 60%),
+      radial-gradient(40rem 30rem at 100% 8%, rgba(124, 58, 237, 0.2), transparent 62%),
+      radial-gradient(46rem 36rem at 60% 112%, rgba(67, 56, 202, 0.18), transparent 60%);
   }
 
   /* Material untuk "chrome" aplikasi (sidebar & header) - blur paling kuat,

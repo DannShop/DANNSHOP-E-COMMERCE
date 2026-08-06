@@ -1,48 +1,34 @@
-"use client";
-
-import { useActionState } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
-import { loginAction } from "@/app/actions/auth";
+import { AuthLayout } from "@/components/auth/auth-layout";
+import { LoginForm } from "./login-form";
 
-export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(loginAction, undefined);
+export const metadata: Metadata = { title: "Masuk" };
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  // registerAction mengalihkan ke /login?registered=1 setelah pendaftaran
+  // berhasil. Sebelumnya penanda ini di-set tapi tidak pernah ditampilkan,
+  // jadi user selesai mendaftar tanpa konfirmasi apa pun.
+  const justRegistered = (await searchParams).registered === "1";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6">
-      <h1 className="text-2xl font-bold">Masuk ke DannShop</h1>
-      <form action={formAction} className="flex flex-col gap-3">
-        <input
-          name="email"
-          type="email"
-          required
-          placeholder="Email"
-          className="rounded border p-2"
-        />
-        <input
-          name="password"
-          type="password"
-          required
-          placeholder="Password"
-          className="rounded border p-2"
-        />
-        <Link href="/forgot-password" className="self-end text-sm underline">
-          Lupa password?
-        </Link>
-        {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-black p-2 text-white disabled:opacity-50"
-        >
-          {pending ? "Memproses..." : "Masuk"}
-        </button>
-      </form>
-      <p className="text-sm">
-        Belum punya akun?{" "}
-        <Link href="/register" className="underline">
-          Daftar
-        </Link>
-      </p>
-    </main>
+    <AuthLayout
+      title="Masuk"
+      description="Selamat datang kembali. Masuk untuk bayar pakai saldo dan melihat riwayat pesanan."
+      footer={
+        <>
+          Belum punya akun?{" "}
+          <Link href="/register" className="font-medium text-primary hover:underline">
+            Daftar sekarang
+          </Link>
+        </>
+      }
+    >
+      <LoginForm justRegistered={justRegistered} />
+    </AuthLayout>
   );
 }
