@@ -7,6 +7,11 @@ import { BannerCarousel } from "@/components/banner-carousel";
 import { TrendingSection } from "@/components/trending-section";
 import { getTrendingProducts } from "@/lib/catalog/trending";
 
+// Dinamis (bukan statis/ISR) supaya "mulai dari Rp X" di kartu katalog
+// selalu akurat terhadap jadwal flash sale (mulai/berakhir per item) tanpa
+// bergantung ke revalidatePath yang bisa lupa dipanggil dari titik lain.
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [categories, banners, settings] = await Promise.all([
     getCatalogHomeData(),

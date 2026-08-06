@@ -10,13 +10,19 @@ export default async function ProductDetailPage({
   params: Promise<{ categorySlug: string; productSlug: string }>;
 }) {
   const { categorySlug, productSlug } = await params;
+  // auth() dulu (murah, JWT, tidak hit DB) supaya status login sudah diketahui
+  // sebelum fetch produk — getProductForCheckout butuh isMember buat resolve
+  // harga efektif (flash/member/normal) per item di server, bukan dihitung
+  // belakangan di client.
+  const authSession = await auth();
+  const isMember = Boolean(authSession?.user?.id);
+
   const [product, paymentMethods] = await Promise.all([
-    getProductForCheckout(categorySlug, productSlug),
+    getProductForCheckout(categorySlug, productSlug, isMember),
     db.paymentMethodConfig.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
   ]);
   if (!product) notFound();
 
-  const authSession = await auth();
   let session: { email: string; walletBalance: bigint } | null = null;
   if (authSession?.user?.id) {
     const wallet = await db.wallet.findUnique({ where: { userId: authSession.user.id } });

@@ -173,6 +173,7 @@ model Product {
   inputFields      Json // contoh ML: [{"name":"user_id","label":"User ID"},{"name":"zone_id","label":"Zone ID"}]
   nicknameCheckKey String?
   items            ProductItem[]
+  itemGroups       ProductItemGroup[]
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 }
@@ -193,17 +194,46 @@ model SiteSetting {
 }
 
 model ProductItem {
-  id           String        @id @default(cuid())
+  id           String            @id @default(cuid())
   productId    String
-  product      Product       @relation(fields: [productId], references: [id])
+  product      Product           @relation(fields: [productId], references: [id])
   name         String
   sellingPrice BigInt
   memberPrice  BigInt
+  // Flash sale opsional per item. Aktif ditentukan dari waktu server saat
+  // request (flashStartAt <= now <= flashEndAt), bukan flag manual yang bisa
+  // lupa dimatikan. Lihat lib/pricing/effective-price.ts - satu-satunya
+  // tempat yang boleh membaca ketiga field ini buat menentukan harga final.
+  flashPrice    BigInt?
+  flashStartAt  DateTime?
+  flashEndAt    DateTime?
+  groupId       String?
+  group         ProductItemGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   isActive     Boolean       @default(true)
   sortOrder    Int           @default(0)
   providerSkus ProviderSku[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+
+  @@index([groupId])
+}
+
+// Pengelompokan bebas item dalam satu produk (mis. "Diamond" vs "Membership"
+// di produk Mobile Legends). Bentuk grup sepenuhnya ditentukan admin - nama
+// bebas, urutan bebas. Item tanpa grup tetap tampil (bagian tanpa judul di
+// bawah), dan hapus grup cuma melepas relasinya (onDelete: SetNull di atas),
+// tidak pernah menghapus item.
+model ProductItemGroup {
+  id        String        @id @default(cuid())
+  productId String
+  product   Product       @relation(fields: [productId], references: [id])
+  name      String
+  sortOrder Int           @default(0)
+  items     ProductItem[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([productId])
 }
 
 model ProviderSku {

@@ -10,6 +10,9 @@ import {
   mapProviderSku,
   unmapProviderSku,
   uploadProductBanner,
+  createProductItemGroup,
+  updateProductItemGroup,
+  deleteProductItemGroup,
 } from "@/app/actions/catalog";
 import { ProductForm } from "../product-form";
 import { ProductItemsManager } from "../product-items-manager";
@@ -23,6 +26,15 @@ function formatDateTime(d: Date | null | undefined): string {
   return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
 
+// Format buat defaultValue <input type="datetime-local"> — pakai komponen
+// waktu lokal (bukan toISOString, yang UTC) supaya jam yang tampil di form
+// sama persis dengan yang admin masukkan sebelumnya.
+function toDatetimeLocalValue(d: Date | null | undefined): string {
+  if (!d) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
@@ -34,6 +46,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           orderBy: { sortOrder: "asc" },
           include: { providerSkus: true },
         },
+        itemGroups: { orderBy: { sortOrder: "asc" } },
       },
     }),
     db.category.findMany({ orderBy: { sortOrder: "asc" } }),
@@ -102,6 +115,10 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             memberPrice: item.memberPrice.toString(),
             sortOrder: item.sortOrder,
             isActive: item.isActive,
+            flashPrice: item.flashPrice?.toString() ?? "",
+            flashStartAt: toDatetimeLocalValue(item.flashStartAt),
+            flashEndAt: toDatetimeLocalValue(item.flashEndAt),
+            groupId: item.groupId ?? "",
             providerSkus: item.providerSkus.map((sku) => ({
               id: sku.id,
               provider: sku.provider,
@@ -111,10 +128,14 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
               lastSyncedAtDisplay: formatDateTime(sku.lastSyncedAt),
             })),
           }))}
+          groups={product.itemGroups.map((g) => ({ id: g.id, name: g.name, sortOrder: g.sortOrder }))}
           createProductItem={createProductItem}
           updateProductItem={updateProductItem}
           mapProviderSku={mapProviderSku}
           unmapProviderSku={unmapProviderSku}
+          createProductItemGroup={createProductItemGroup}
+          updateProductItemGroup={updateProductItemGroup}
+          deleteProductItemGroup={deleteProductItemGroup}
         />
       </section>
     </div>

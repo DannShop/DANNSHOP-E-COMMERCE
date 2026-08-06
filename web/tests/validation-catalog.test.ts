@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { productSchema, productItemSchema } from "@/lib/validation/catalog";
+import { productSchema, productItemSchema, productItemGroupSchema } from "@/lib/validation/catalog";
 
 describe("productSchema", () => {
   const valid = {
@@ -38,5 +38,73 @@ describe("productItemSchema", () => {
     expect(
       productItemSchema.safeParse({ productId: "p1", name: "x", sellingPrice: "0", memberPrice: "1" }).success,
     ).toBe(false);
+  });
+
+  const base = { productId: "p1", name: "86 Diamonds", sellingPrice: "10000", memberPrice: "9000" };
+
+  it("flash sale kosong semua (tidak diisi) → diterima, null semua", () => {
+    const r = productItemSchema.parse(base);
+    expect(r.flashPrice).toBeNull();
+    expect(r.flashStartAt).toBeNull();
+    expect(r.flashEndAt).toBeNull();
+    expect(r.groupId).toBeNull();
+  });
+
+  it("flash sale diisi lengkap & valid → diterima", () => {
+    const r = productItemSchema.parse({
+      ...base,
+      flashPrice: "7000",
+      flashStartAt: "2026-08-06T09:00",
+      flashEndAt: "2026-08-06T11:00",
+    });
+    expect(r.flashPrice).toBe(7000n);
+    expect(r.flashStartAt).toBeInstanceOf(Date);
+    expect(r.flashEndAt).toBeInstanceOf(Date);
+  });
+
+  it("flash sale diisi sebagian (cuma harga, tanpa jadwal) → ditolak", () => {
+    expect(productItemSchema.safeParse({ ...base, flashPrice: "7000" }).success).toBe(false);
+  });
+
+  it("harga flash >= harga jual → ditolak", () => {
+    expect(
+      productItemSchema.safeParse({
+        ...base,
+        flashPrice: "10000",
+        flashStartAt: "2026-08-06T09:00",
+        flashEndAt: "2026-08-06T11:00",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("jadwal selesai sebelum/sama dengan jadwal mulai → ditolak", () => {
+    expect(
+      productItemSchema.safeParse({
+        ...base,
+        flashPrice: "7000",
+        flashStartAt: "2026-08-06T11:00",
+        flashEndAt: "2026-08-06T09:00",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("groupId kosong → null (tanpa grup)", () => {
+    expect(productItemSchema.parse({ ...base, groupId: "" }).groupId).toBeNull();
+  });
+
+  it("groupId diisi → dipertahankan", () => {
+    expect(productItemSchema.parse({ ...base, groupId: "group-1" }).groupId).toBe("group-1");
+  });
+});
+
+describe("productItemGroupSchema", () => {
+  it("input valid diterima", () => {
+    const r = productItemGroupSchema.parse({ productId: "p1", name: "Diamond", sortOrder: "1" });
+    expect(r.name).toBe("Diamond");
+    expect(r.sortOrder).toBe(1);
+  });
+
+  it("nama kosong ditolak", () => {
+    expect(productItemGroupSchema.safeParse({ productId: "p1", name: "" }).success).toBe(false);
   });
 });

@@ -13,6 +13,7 @@ import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 import { getActiveProviders } from "@/lib/providers/registry";
 import { sendOrderCreatedEmail } from "@/lib/notify/email";
+import { effectivePrice } from "@/lib/pricing/effective-price";
 
 const EXPIRY_MINUTES = 15;
 
@@ -80,7 +81,14 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     return { error: `${missingField.label} wajib diisi.` };
   }
 
-  const decision = selectFulfillmentSku({ sellingPrice: item.sellingPrice }, item.providerSkus, activeProviders);
+  const now = new Date();
+  // Satu-satunya titik baca sellingPrice/memberPrice/flashPrice mentah di
+  // seluruh alur checkout - sisanya di bawah cuma memakai `price` yang sudah
+  // final. Dihitung sebelum decision/order dibuat supaya cek ketersediaan &
+  // tagihan konsisten memakai angka yang sama.
+  const price = effectivePrice(item, { isMember: Boolean(userId), now });
+
+  const decision = selectFulfillmentSku({ sellingPrice: price }, item.providerSkus, activeProviders);
   if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
 
   if (parsed.data.paymentMethod !== "balance") {
@@ -88,7 +96,6 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     if (!method || !method.isActive) return { error: "Metode pembayaran tidak tersedia." };
   }
 
-  const now = new Date();
   const orderNumber = generateOrderNumber(now);
 
   if (parsed.data.paymentMethod === "balance") {
@@ -96,6 +103,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
       userId: userId!,
       orderNumber,
       item,
+      price,
       target: parsed.data.target,
       buyerEmail: parsed.data.buyerEmail,
       buyerPhone: parsed.data.buyerPhone,
@@ -106,6 +114,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     userId,
     orderNumber,
     item,
+    price,
     target: parsed.data.target,
     buyerEmail: parsed.data.buyerEmail,
     buyerPhone: parsed.data.buyerPhone,
@@ -117,7 +126,8 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
 async function createBalanceOrder(input: {
   userId: string;
   orderNumber: string;
-  item: { id: string; sellingPrice: bigint; product: { name: string }; name: string };
+  item: { id: string; product: { name: string }; name: string };
+  price: bigint;
   target: Record<string, string>;
   buyerEmail: string;
   buyerPhone?: string;
@@ -133,8 +143,8 @@ async function createBalanceOrder(input: {
     buyerEmail: input.buyerEmail,
     buyerPhone: input.buyerPhone,
     paidVia: "BALANCE",
-    sellingPrice: input.item.sellingPrice,
-    total: input.item.sellingPrice,
+    sellingPrice: input.price,
+    total: input.price,
     paymentMethod: "balance",
     payment: { create: { method: "balance", status: "PENDING" } },
   });
@@ -188,7 +198,8 @@ async function createBalanceOrder(input: {
 async function createMidtransOrder(input: {
   userId: string | null;
   orderNumber: string;
-  item: { id: string; sellingPrice: bigint; product: { name: string }; name: string };
+  item: { id: string; product: { name: string }; name: string };
+  price: bigint;
   target: Record<string, string>;
   buyerEmail: string;
   buyerPhone?: string;
@@ -200,9 +211,9 @@ async function createMidtransOrder(input: {
   const method = await db.paymentMethodConfig.findUnique({ where: { code: input.paymentMethodCode } });
   if (!method || !method.isActive) return { error: "Metode pembayaran tidak tersedia." };
 
-  const fee = calculateFee(input.item.sellingPrice, method.feeFlat, method.feePercent);
+  const fee = calculateFee(input.price, method.feeFlat, method.feePercent);
   const uniqueCode = generateUniqueCode();
-  const total = calculateTotal(input.item.sellingPrice, fee, uniqueCode);
+  const total = calculateTotal(input.price, fee, uniqueCode);
 
   const order = await createOrderWithRetry({
     orderNumber: input.orderNumber,
@@ -215,7 +226,7 @@ async function createMidtransOrder(input: {
     buyerEmail: input.buyerEmail,
     buyerPhone: input.buyerPhone,
     paidVia: "MIDTRANS",
-    sellingPrice: input.item.sellingPrice,
+    sellingPrice: input.price,
     fee,
     uniqueCode,
     total,

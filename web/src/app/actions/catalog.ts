@@ -3,7 +3,7 @@ import { ProviderKey } from "@prisma/client";
 import { put } from "@vercel/blob";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { productSchema, productItemSchema, bulkImportSchema } from "@/lib/validation/catalog";
+import { productSchema, productItemSchema, productItemGroupSchema, bulkImportSchema } from "@/lib/validation/catalog";
 import { applyMarkup } from "@/lib/catalog/bulk-import";
 
 const MAX_BANNER_BYTES = 5 * 1024 * 1024; // 5MB — cukup besar untuk logo/banner produk, cukup kecil untuk cegah abuse storage
@@ -202,6 +202,10 @@ export async function createProductItem(formData: FormData): Promise<ActionResul
     sellingPrice: formData.get("sellingPrice"),
     memberPrice: formData.get("memberPrice"),
     sortOrder: formData.get("sortOrder") ?? 0,
+    flashPrice: formData.get("flashPrice") ?? "",
+    flashStartAt: formData.get("flashStartAt") ?? "",
+    flashEndAt: formData.get("flashEndAt") ?? "",
+    groupId: formData.get("groupId") ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -213,6 +217,10 @@ export async function createProductItem(formData: FormData): Promise<ActionResul
       memberPrice: parsed.data.memberPrice,
       sortOrder: parsed.data.sortOrder,
       isActive: formData.get("isActive") === "on",
+      flashPrice: parsed.data.flashPrice,
+      flashStartAt: parsed.data.flashStartAt,
+      flashEndAt: parsed.data.flashEndAt,
+      groupId: parsed.data.groupId,
     },
   });
   await logAdmin(admin.adminId, "catalog.create_item", item.id, { productId: parsed.data.productId });
@@ -235,6 +243,10 @@ export async function updateProductItem(formData: FormData): Promise<ActionResul
     sellingPrice: formData.get("sellingPrice"),
     memberPrice: formData.get("memberPrice"),
     sortOrder: formData.get("sortOrder") ?? 0,
+    flashPrice: formData.get("flashPrice") ?? "",
+    flashStartAt: formData.get("flashStartAt") ?? "",
+    flashEndAt: formData.get("flashEndAt") ?? "",
+    groupId: formData.get("groupId") ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -246,12 +258,80 @@ export async function updateProductItem(formData: FormData): Promise<ActionResul
       memberPrice: parsed.data.memberPrice,
       sortOrder: parsed.data.sortOrder,
       isActive: formData.get("isActive") === "on",
+      flashPrice: parsed.data.flashPrice,
+      flashStartAt: parsed.data.flashStartAt,
+      flashEndAt: parsed.data.flashEndAt,
+      groupId: parsed.data.groupId,
     },
   });
   await logAdmin(admin.adminId, "catalog.update_item", id);
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${parsed.data.productId}`);
   return { ok: "Item tersimpan." };
+}
+
+export async function createProductItemGroup(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = productItemGroupSchema.safeParse({
+    productId: formData.get("productId"),
+    name: formData.get("name"),
+    sortOrder: formData.get("sortOrder") ?? 0,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const group = await db.productItemGroup.create({ data: parsed.data });
+  await logAdmin(admin.adminId, "catalog.create_item_group", group.id, { productId: parsed.data.productId });
+  revalidatePath(`/admin/products/${parsed.data.productId}`);
+  revalidatePath("/");
+  return { ok: "Grup dibuat." };
+}
+
+export async function updateProductItemGroup(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) return { error: "Grup tidak ditemukan." };
+
+  const parsed = productItemGroupSchema.safeParse({
+    productId: formData.get("productId"),
+    name: formData.get("name"),
+    sortOrder: formData.get("sortOrder") ?? 0,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  await db.productItemGroup.update({
+    where: { id },
+    data: { name: parsed.data.name, sortOrder: parsed.data.sortOrder },
+  });
+  await logAdmin(admin.adminId, "catalog.update_item_group", id);
+  revalidatePath(`/admin/products/${parsed.data.productId}`);
+  revalidatePath("/");
+  return { ok: "Grup tersimpan." };
+}
+
+// Hapus grup TIDAK menghapus item di dalamnya - relasi ProductItem.groupId
+// di-set SetNull di schema, jadi item otomatis balik jadi "tanpa grup" di
+// level database begitu grup induknya dihapus, tidak pernah ikut terhapus.
+export async function deleteProductItemGroup(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const id = formData.get("id");
+  const productId = formData.get("productId");
+  if (typeof id !== "string" || !id) return { error: "Grup tidak ditemukan." };
+  if (typeof productId !== "string" || !productId) return { error: "Produk tidak ditemukan." };
+
+  await db.productItemGroup.delete({ where: { id } });
+  await logAdmin(admin.adminId, "catalog.delete_item_group", id);
+  revalidatePath(`/admin/products/${productId}`);
+  revalidatePath("/");
+  return { ok: "Grup dihapus, item di dalamnya jadi tanpa grup." };
 }
 
 // Petakan satu ProductItem ke SKU sebuah provider. Upsert on

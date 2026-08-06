@@ -8,11 +8,14 @@ import { QrCode, Wallet, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { TrustBadges } from "@/components/trust-badges";
 import { createCheckoutOrder, type CheckoutResult } from "@/app/actions/checkout";
 import { hasSufficientBalance } from "@/lib/wallet/decisions";
 import type { ProductForCheckout } from "@/lib/catalog/public";
+
+type Item = ProductForCheckout["items"][number];
 
 const INITIAL_STATE: CheckoutResult = {};
 
@@ -37,6 +40,98 @@ function StepHeader({ n, title }: { n: number; title: string }) {
   );
 }
 
+interface NominalSection {
+  key: string;
+  title: string | null; // null = tanpa judul (ungrouped)
+  isFlash: boolean;
+  items: Item[];
+}
+
+// Flash sale ditarik keluar dari grup asalnya ke section paling atas (satu
+// item cuma tampil sekali). Sisanya dikelompokkan per grup sesuai urutan
+// admin (groupSortOrder); item tanpa grup jadi section terakhir tanpa judul,
+// bukan hilang dari daftar. Urutan item DI DALAM tiap section sudah
+// harga-termurah-dulu dari server, dipertahankan apa adanya di sini.
+function buildSections(items: Item[]): NominalSection[] {
+  const flashItems = items.filter((i) => i.isFlashActive);
+  const rest = items.filter((i) => !i.isFlashActive);
+
+  const groupOrder = new Map<string, number>();
+  const groupedItems = new Map<string, Item[]>();
+  const ungrouped: Item[] = [];
+  for (const item of rest) {
+    if (item.groupName === null) {
+      ungrouped.push(item);
+      continue;
+    }
+    if (!groupedItems.has(item.groupName)) {
+      groupedItems.set(item.groupName, []);
+      groupOrder.set(item.groupName, item.groupSortOrder ?? 0);
+    }
+    groupedItems.get(item.groupName)!.push(item);
+  }
+
+  const sections: NominalSection[] = [];
+  if (flashItems.length > 0) {
+    sections.push({ key: "__flash__", title: "Flash Sale", isFlash: true, items: flashItems });
+  }
+  const sortedGroupNames = Array.from(groupedItems.keys()).sort(
+    (a, b) => (groupOrder.get(a) ?? 0) - (groupOrder.get(b) ?? 0),
+  );
+  for (const name of sortedGroupNames) {
+    sections.push({ key: name, title: name, isFlash: false, items: groupedItems.get(name)! });
+  }
+  if (ungrouped.length > 0) {
+    sections.push({ key: "__ungrouped__", title: null, isFlash: false, items: ungrouped });
+  }
+  return sections;
+}
+
+function NominalButton({
+  item,
+  selected,
+  showOriginGroup,
+  onSelect,
+}: {
+  item: Item;
+  selected: boolean;
+  showOriginGroup: boolean;
+  onSelect: () => void;
+}) {
+  const hasDiscount = item.effectivePrice !== item.sellingPrice;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`relative flex flex-col gap-1 overflow-hidden rounded-[var(--radius)] border-2 p-3 text-left transition-colors ${
+        selected ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1 text-xs font-medium text-primary">
+          <Zap className="size-3" aria-hidden="true" />
+          Instan
+        </span>
+        {item.isFlashActive && (
+          <Badge variant="warning" className="text-[10px]">
+            Flash
+          </Badge>
+        )}
+      </div>
+      <span className="text-sm font-medium">{item.name}</span>
+      {showOriginGroup && item.groupName && (
+        <span className="text-[11px] text-muted-foreground">{item.groupName}</span>
+      )}
+      <div className="flex items-baseline gap-2">
+        <span className="font-heading text-base font-bold">{formatRupiah(item.effectivePrice)}</span>
+        {hasDiscount && (
+          <span className="text-xs text-muted-foreground line-through">{formatRupiah(item.sellingPrice)}</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
 export function ProductDetailClient({
   product,
   session,
@@ -50,6 +145,7 @@ export function ProductDetailClient({
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
   const [selectedMethod, setSelectedMethod] = useState(paymentMethods[0]?.code ?? "");
   const selectedItem = purchasableItems.find((i) => i.id === selectedItemId) ?? purchasableItems[0];
+  const sections = buildSections(purchasableItems);
 
   const router = useRouter();
   const [state, formAction, pending] = useActionState(withPrevState(createCheckoutOrder), INITIAL_STATE);
@@ -66,10 +162,10 @@ export function ProductDetailClient({
     );
   }
 
-  const canPayWithBalance = session ? hasSufficientBalance(session.walletBalance, selectedItem?.sellingPrice ?? 0n) : false;
+  const canPayWithBalance = session ? hasSufficientBalance(session.walletBalance, selectedItem?.effectivePrice ?? 0n) : false;
 
   // Preview "Total Bayar" harus ikut fee metode pembayaran yang lagi
-  // dipilih (bukan cuma sellingPrice) - fee final tetap dihitung ulang
+  // dipilih (bukan cuma effectivePrice) - fee final tetap dihitung ulang
   // otoritatif di server (createCheckoutOrder), ini murni tampilan supaya
   // tidak menyesatkan dibanding breakdown fee yang sudah ada di tiap baris
   // metode. Kode unik (Rp1-999) sengaja tidak diikutkan ke angka karena
@@ -78,9 +174,9 @@ export function ProductDetailClient({
   const selectedMethodConfig = paymentMethods.find((m) => m.code === selectedMethod);
   const previewFee =
     selectedItem && selectedMethodConfig && !isBalanceSelected
-      ? (selectedItem.sellingPrice * BigInt(selectedMethodConfig.feePercent)) / 10_000n + BigInt(selectedMethodConfig.feeFlat)
+      ? (selectedItem.effectivePrice * BigInt(selectedMethodConfig.feePercent)) / 10_000n + BigInt(selectedMethodConfig.feeFlat)
       : 0n;
-  const previewTotal = selectedItem ? selectedItem.sellingPrice + previewFee : 0n;
+  const previewTotal = selectedItem ? selectedItem.effectivePrice + previewFee : 0n;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -129,27 +225,31 @@ export function ProductDetailClient({
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 border-t pt-6">
+        <div className="flex flex-col gap-4 border-t pt-6">
           <StepHeader n={2} title="Pilih Nominal" />
-          <div className="grid gap-3 sm:grid-cols-2">
-            {purchasableItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setSelectedItemId(item.id)}
-                className={`relative flex flex-col gap-1 overflow-hidden rounded-[var(--radius)] border-2 p-3 text-left transition-colors ${
-                  item.id === selectedItemId ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
-                }`}
-              >
-                <span className="flex items-center gap-1 text-xs font-medium text-primary">
-                  <Zap className="size-3" aria-hidden="true" />
-                  Instan
-                </span>
-                <span className="text-sm font-medium">{item.name}</span>
-                <span className="font-heading text-base font-bold">{formatRupiah(item.sellingPrice)}</span>
-              </button>
-            ))}
-          </div>
+          {sections.map((section) => (
+            <div key={section.key} className="flex flex-col gap-2">
+              {section.title && (
+                <p
+                  className={`text-xs font-semibold uppercase tracking-wide ${section.isFlash ? "flex items-center gap-1 text-warning-foreground" : "text-muted-foreground"}`}
+                >
+                  {section.isFlash && <Zap className="size-3.5" aria-hidden="true" />}
+                  {section.title}
+                </p>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {section.items.map((item) => (
+                  <NominalButton
+                    key={item.id}
+                    item={item}
+                    selected={item.id === selectedItemId}
+                    showOriginGroup={section.isFlash}
+                    onSelect={() => setSelectedItemId(item.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
           {selectedItem && (
             <div className="flex flex-col gap-1 rounded-md bg-muted px-4 py-3">
               <div className="flex items-center justify-between">
@@ -178,7 +278,7 @@ export function ProductDetailClient({
             {paymentMethods.map((m) => {
               const feeBp = m.feePercent;
               const fee = selectedItem
-                ? (selectedItem.sellingPrice * BigInt(feeBp)) / 10_000n + BigInt(m.feeFlat)
+                ? (selectedItem.effectivePrice * BigInt(feeBp)) / 10_000n + BigInt(m.feeFlat)
                 : 0n;
               return (
                 <RadioGroupItem key={m.code} value={m.code}>

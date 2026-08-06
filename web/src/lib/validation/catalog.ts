@@ -26,11 +26,76 @@ export const productSchema = z.object({
   isTrending: z.string().optional(),
 });
 
-export const productItemSchema = z.object({
+// Kosong -> null (bukan undefined, biar Prisma benar-benar menghapus nilai
+// lama kalau flash sale item dinonaktifkan lagi - pola sama seperti
+// iconUrl/banner di productSchema).
+const nullableBigIntField = (message: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === "" || v == null ? null : v))
+    .transform((v, ctx) => {
+      if (v === null) return null;
+      try {
+        const n = BigInt(v);
+        if (n <= 0n) throw new Error();
+        return n;
+      } catch {
+        ctx.addIssue({ code: "custom", message });
+        return z.NEVER;
+      }
+    });
+
+const nullableDateField = z
+  .string()
+  .optional()
+  .transform((v) => (v === "" || v == null ? null : v))
+  .transform((v, ctx) => {
+    if (v === null) return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) {
+      ctx.addIssue({ code: "custom", message: "Format tanggal tidak valid" });
+      return z.NEVER;
+    }
+    return d;
+  });
+
+export const productItemSchema = z
+  .object({
+    productId: z.string().min(1),
+    name: z.string().min(1, "Nama item wajib diisi"),
+    sellingPrice: z.coerce.bigint().positive("Harga jual harus > 0"),
+    memberPrice: z.coerce.bigint().positive("Harga member harus > 0"),
+    sortOrder: z.coerce.number().int().default(0),
+    // Flash sale opsional per item - kosongkan ketiganya buat menonaktifkan.
+    flashPrice: nullableBigIntField("Harga flash harus > 0"),
+    flashStartAt: nullableDateField,
+    flashEndAt: nullableDateField,
+    groupId: z.string().optional().transform((v) => (v === "" || v == null ? null : v)),
+  })
+  .superRefine((data, ctx) => {
+    const flashFieldsFilled = [data.flashPrice, data.flashStartAt, data.flashEndAt];
+    const anyFilled = flashFieldsFilled.some((v) => v !== null);
+    const allFilled = flashFieldsFilled.every((v) => v !== null);
+    if (anyFilled && !allFilled) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["flashPrice"],
+        message: "Harga flash + jadwal mulai + jadwal selesai wajib diisi bersamaan (atau kosongkan semua).",
+      });
+      return;
+    }
+    if (data.flashPrice !== null && data.flashPrice >= data.sellingPrice) {
+      ctx.addIssue({ code: "custom", path: ["flashPrice"], message: "Harga flash harus lebih murah dari harga jual." });
+    }
+    if (data.flashStartAt !== null && data.flashEndAt !== null && data.flashStartAt >= data.flashEndAt) {
+      ctx.addIssue({ code: "custom", path: ["flashEndAt"], message: "Jadwal selesai flash sale harus setelah jadwal mulai." });
+    }
+  });
+
+export const productItemGroupSchema = z.object({
   productId: z.string().min(1),
-  name: z.string().min(1, "Nama item wajib diisi"),
-  sellingPrice: z.coerce.bigint().positive("Harga jual harus > 0"),
-  memberPrice: z.coerce.bigint().positive("Harga member harus > 0"),
+  name: z.string().min(1, "Nama grup wajib diisi"),
   sortOrder: z.coerce.number().int().default(0),
 });
 
