@@ -28,7 +28,7 @@ export function CatalogTabs({ categories }: { categories: CatalogCategory[] }) {
             key={c.id}
             variant={c.slug === selected.slug ? "default" : "outline"}
             size="sm"
-            className="shrink-0"
+            className="shrink-0 transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-highlight"
             onClick={() => setSelectedSlug(c.slug)}
           >
             {c.name}

@@ -29,6 +29,7 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-highlight: var(--highlight);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -69,6 +70,10 @@
   --muted-foreground: #6B6483;
   --accent: #EA580C;
   --accent-foreground: #FFFFFF;
+  /* Warna ring hover kartu produk & tab kategori - beda hue dari --primary
+     (bukan cuma beda shade) supaya kelihatan hidup di atas background terang,
+     dan sengaja bukan gold/amber biar tidak numpuk makna sama --warning-foreground. */
+  --highlight: #059669;
   --destructive: #DC2626;
   --border: #E4E0FA;
   --input: #E4E0FA;
@@ -110,6 +115,9 @@
   --muted-foreground: #A8A0C8;
   --accent: #F43F5E;
   --accent-foreground: #FFFFFF;
+  /* Tetap sama dengan --primary di mode gelap - identitas ungu/violet brand
+     dipertahankan, cuma mode terang yang dapat hue berbeda (lihat :root). */
+  --highlight: #7C3AED;
   --destructive: #F87171;
   --border: #2E2B5C;
   --input: #2E2B5C;

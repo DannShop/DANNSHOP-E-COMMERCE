@@ -13,7 +13,7 @@ export function TrendingSection({ products }: { products: TrendingProduct[] }) {
           <Link
             key={p.id}
             href={`/${p.categorySlug}/${p.slug}`}
-            className="flex items-center gap-3 rounded-[var(--radius)] border bg-card p-3 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-primary"
+            className="flex items-center gap-3 rounded-[var(--radius)] border bg-card p-3 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-highlight"
           >
             <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-primary to-accent">
               {p.iconUrl && <Image src={p.iconUrl} alt="" fill sizes="40px" className="object-cover" unoptimized />}
