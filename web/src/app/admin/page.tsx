@@ -1,21 +1,62 @@
 import Link from "next/link";
-import { TriangleAlert, ClipboardList, Wallet, Boxes, ReceiptText } from "lucide-react";
+import {
+  TriangleAlert,
+  ClipboardList,
+  Wallet,
+  Boxes,
+  ReceiptText,
+  Coins,
+  ShoppingBag,
+  Scale,
+  ArrowUpRight,
+} from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getSalesSummary, startOfDay, endOfDay } from "@/lib/reports/sales";
 
 function formatRupiah(amount: bigint): string {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(amount));
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(Number(amount));
 }
 
-function StatCard({ label, value, href }: { label: string; value: string; href?: string }) {
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  href,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href?: string;
+}) {
   const content = (
-    <div className="rounded-xl border p-4 transition-colors hover:bg-muted/40">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-heading text-2xl font-bold">{value}</p>
+    <div className="glass-card group/stat relative h-full overflow-hidden rounded-2xl p-5 transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10">
+      <div className="flex items-start justify-between gap-3">
+        <span className="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-500/15 text-indigo-600 ring-1 ring-indigo-500/20 dark:text-indigo-300">
+          <Icon className="size-[18px]" />
+        </span>
+        {href && (
+          <ArrowUpRight
+            className="size-4 shrink-0 text-muted-foreground/50 transition-[transform,color] duration-300 ease-out group-hover/stat:translate-x-0.5 group-hover/stat:-translate-y-0.5 group-hover/stat:text-foreground"
+            aria-hidden="true"
+          />
+        )}
+      </div>
+      <p className="mt-4 text-xs font-medium tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 font-heading text-2xl font-bold tracking-tight tabular-nums">{value}</p>
     </div>
   );
-  return href ? <Link href={href}>{content}</Link> : content;
+  return href ? (
+    <Link href={href} className="block h-full">
+      {content}
+    </Link>
+  ) : (
+    content
+  );
 }
 
 const QUICK_LINKS = [
@@ -33,42 +74,60 @@ export default async function AdminDashboardPage() {
     getSalesSummary(startOfDay(today), endOfDay(today)),
     db.order.count({ where: { status: "NEEDS_REVIEW" } }),
     db.order.count({ where: { status: "REFUND_PENDING" } }),
-    db.providerConfig.findMany({ where: { balanceAlertStatus: "LOW", isActive: true }, select: { displayName: true, balance: true } }),
+    db.providerConfig.findMany({
+      where: { balanceAlertStatus: "LOW", isActive: true },
+      select: { displayName: true, balance: true },
+    }),
   ]);
 
+  const hasAlerts = needsReviewCount > 0 || refundPendingCount > 0 || lowBalanceProviders.length > 0;
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto flex max-w-6xl flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-bold">Dashboard Admin</h1>
-        <p className="text-sm text-muted-foreground">
-          Login sebagai: {session?.user?.email} (role: {session?.user?.role})
+        <h2 className="font-heading text-2xl font-bold tracking-tight">Selamat datang kembali</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Masuk sebagai {session?.user?.email} · {session?.user?.role}
         </p>
       </div>
 
-      {(needsReviewCount > 0 || refundPendingCount > 0 || lowBalanceProviders.length > 0) && (
-        <div className="flex flex-col gap-2 rounded-lg border-2 border-destructive/40 bg-destructive/5 p-3">
-          <p className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
-            <TriangleAlert className="size-4" aria-hidden="true" />
+      {/* Panel peringatan hanya muncul kalau memang ada yang perlu ditangani -
+          bukan kartu kosong permanen yang lama-lama diabaikan. */}
+      {hasAlerts && (
+        <div className="glass-card overflow-hidden rounded-2xl border-destructive/25 p-5">
+          <p className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <span className="grid size-8 place-items-center rounded-lg bg-destructive/10 ring-1 ring-destructive/20">
+              <TriangleAlert className="size-4" aria-hidden="true" />
+            </span>
             Perlu perhatian
           </p>
-          <ul className="flex flex-col gap-1 text-sm">
+          <ul className="mt-3 flex flex-col gap-1.5 text-sm">
             {needsReviewCount > 0 && (
               <li>
-                <Link href="/admin/orders?tab=needs_review" className="underline hover:text-destructive">
+                <Link
+                  href="/admin/orders?tab=needs_review"
+                  className="inline-flex items-center gap-1.5 text-foreground/80 underline-offset-4 transition-colors duration-200 ease-out hover:text-destructive hover:underline"
+                >
                   {needsReviewCount} order butuh ditinjau manual
                 </Link>
               </li>
             )}
             {refundPendingCount > 0 && (
               <li>
-                <Link href="/admin/orders?tab=refund_pending" className="underline hover:text-destructive">
+                <Link
+                  href="/admin/orders?tab=refund_pending"
+                  className="inline-flex items-center gap-1.5 text-foreground/80 underline-offset-4 transition-colors duration-200 ease-out hover:text-destructive hover:underline"
+                >
                   {refundPendingCount} order menunggu refund
                 </Link>
               </li>
             )}
             {lowBalanceProviders.map((p) => (
               <li key={p.displayName}>
-                <Link href="/admin/providers" className="underline hover:text-destructive">
+                <Link
+                  href="/admin/providers"
+                  className="inline-flex items-center gap-1.5 text-foreground/80 underline-offset-4 transition-colors duration-200 ease-out hover:text-destructive hover:underline"
+                >
                   Saldo {p.displayName} rendah ({formatRupiah(p.balance)})
                 </Link>
               </li>
@@ -77,33 +136,62 @@ export default async function AdminDashboardPage() {
         </div>
       )}
 
-      <div>
-        <p className="mb-2 text-sm font-semibold text-muted-foreground">Hari ini</p>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <StatCard label="Omzet Hari Ini" value={formatRupiah(todaySummary.totalRevenue)} href="/admin/reports" />
-          <StatCard label="Order Hari Ini" value={String(todaySummary.orderCount)} href="/admin/orders" />
+      <section>
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-semibold tracking-wide">Hari ini</h3>
+          <Link
+            href="/admin/reports"
+            className="text-xs text-muted-foreground underline-offset-4 transition-colors duration-200 ease-out hover:text-foreground hover:underline"
+          >
+            Lihat laporan lengkap
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Omzet Hari Ini"
+            value={formatRupiah(todaySummary.totalRevenue)}
+            icon={Coins}
+            href="/admin/reports"
+          />
+          <StatCard
+            label="Order Hari Ini"
+            value={String(todaySummary.orderCount)}
+            icon={ShoppingBag}
+            href="/admin/orders"
+          />
           <StatCard
             label="Rata-rata per Order"
-            value={formatRupiah(todaySummary.orderCount > 0 ? todaySummary.totalRevenue / BigInt(todaySummary.orderCount) : 0n)}
+            value={formatRupiah(
+              todaySummary.orderCount > 0
+                ? todaySummary.totalRevenue / BigInt(todaySummary.orderCount)
+                : 0n,
+            )}
+            icon={Scale}
           />
         </div>
-      </div>
+      </section>
 
-      <div>
-        <p className="mb-2 text-sm font-semibold text-muted-foreground">Akses Cepat</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section>
+        <h3 className="mb-3 text-sm font-semibold tracking-wide">Akses Cepat</h3>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {QUICK_LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
-              className="flex items-center gap-2 rounded-xl border p-4 text-sm font-medium transition-colors hover:bg-muted/40"
+              className="glass-card group/quick flex items-center gap-3 rounded-2xl p-4 text-sm font-medium transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10"
             >
-              <l.icon className="size-4 text-primary" aria-hidden="true" />
-              {l.label}
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-500/15 text-indigo-600 ring-1 ring-indigo-500/20 dark:text-indigo-300">
+                <l.icon className="size-4" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{l.label}</span>
+              <ArrowUpRight
+                className="size-4 shrink-0 text-muted-foreground/50 transition-[transform,color] duration-300 ease-out group-hover/quick:translate-x-0.5 group-hover/quick:-translate-y-0.5 group-hover/quick:text-foreground"
+                aria-hidden="true"
+              />
             </Link>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -196,3 +196,105 @@
     animation: none;
   }
 }
+
+/* ============================================================================
+   TRANSISI TEMA (light <-> dark)
+   Kelas ini dipasang ke <html> HANYA selama ~0,5 detik saat tombol tema
+   diklik, lalu dilepas lagi (lihat lib/theme-transition.ts). Sengaja tidak
+   permanen: kalau permanen, setiap hover yang mengubah warna (baris tabel,
+   tombol, menu) ikut melambat jadi 420ms dan seluruh UI terasa berat.
+   !important dipakai supaya menang atas transition-* milik komponen, dan itu
+   aman justru karena sifatnya sesaat.
+   ============================================================================ */
+.theme-transition,
+.theme-transition :where(*, *::before, *::after) {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 420ms !important;
+  /* Kurva khas macOS/iOS: mulai cepat, mendarat sangat halus. */
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-transition,
+  .theme-transition :where(*, *::before, *::after) {
+    transition-duration: 1ms !important;
+  }
+}
+
+@layer components {
+  /* ==========================================================================
+     PANEL ADMIN - material ala macOS
+     Semua diruangkupi .admin-shell supaya storefront TIDAK ikut berubah:
+     token warna global (:root/.dark) sengaja tidak disentuh sama sekali.
+     ========================================================================== */
+  .admin-shell {
+    /* Latar putih bersih + tiga "blob" indigo/violet lembut. Blob ini yang
+       jadi bahan blur di belakang panel kaca - tanpa sesuatu yang berwarna di
+       belakangnya, backdrop-filter tidak menghasilkan efek apa pun. */
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.7);
+    --glass-specular: rgba(255, 255, 255, 0.95);
+    --glass-shadow: 0 1px 2px rgba(16, 12, 45, 0.04), 0 12px 32px -12px rgba(49, 46, 129, 0.18);
+
+    background-color: #ffffff;
+    background-image:
+      radial-gradient(58rem 38rem at 10% -10%, rgba(99, 102, 241, 0.18), transparent 60%),
+      radial-gradient(42rem 32rem at 96% 2%, rgba(139, 92, 246, 0.14), transparent 62%),
+      radial-gradient(48rem 38rem at 72% 108%, rgba(79, 70, 229, 0.12), transparent 60%);
+  }
+
+  .dark .admin-shell {
+    --glass-bg: rgba(22, 22, 34, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.09);
+    --glass-specular: rgba(255, 255, 255, 0.16);
+    --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px -16px rgba(0, 0, 0, 0.75);
+
+    background-color: #07070d;
+    background-image:
+      radial-gradient(58rem 38rem at 10% -10%, rgba(99, 102, 241, 0.26), transparent 60%),
+      radial-gradient(42rem 32rem at 96% 2%, rgba(124, 58, 237, 0.2), transparent 62%),
+      radial-gradient(48rem 38rem at 72% 108%, rgba(67, 56, 202, 0.16), transparent 60%);
+  }
+
+  /* Material untuk "chrome" aplikasi (sidebar & header) - blur paling kuat,
+     meniru NSVisualEffectView di macOS. */
+  .glass-panel {
+    background-color: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--glass-border);
+  }
+
+  /* Material untuk kartu konten - blur sedikit lebih ringan supaya teks di
+     dalamnya tetap tajam dan tidak "berenang" di atas latar. */
+  .glass-card {
+    position: relative;
+    background-color: var(--glass-bg);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  /* Garis cahaya setipis 1px di tepi atas kartu. Inilah detail yang membuat
+     panel terasa seperti material fisik yang menangkap cahaya (khas macOS),
+     bukan sekadar kotak semi-transparan. Trik: gradient di area padding lalu
+     bagian dalamnya "dilubangi" dengan mask-composite. */
+  .glass-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(180deg, var(--glass-specular), transparent 45%);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+}
