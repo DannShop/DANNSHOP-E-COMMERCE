@@ -10,7 +10,6 @@ import {
   Scale,
   ArrowUpRight,
 } from "lucide-react";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getSalesSummary, startOfDay, endOfDay } from "@/lib/reports/sales";
 
@@ -67,7 +66,6 @@ const QUICK_LINKS = [
 ];
 
 export default async function AdminDashboardPage() {
-  const session = await auth();
   const today = new Date();
 
   const [todaySummary, needsReviewCount, refundPendingCount, lowBalanceProviders] = await Promise.all([
@@ -87,7 +85,7 @@ export default async function AdminDashboardPage() {
       <div>
         <h2 className="font-heading text-2xl font-bold tracking-tight">Selamat datang kembali</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Masuk sebagai {session?.user?.email} · {session?.user?.role}
+          Ringkasan performa toko hari ini.
         </p>
       </div>
 
