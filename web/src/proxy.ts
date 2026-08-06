@@ -15,6 +15,7 @@ const RATE_LIMITS: { match: (pathname: string) => boolean; method?: string; key:
   { match: (p) => p === "/login", method: "POST", key: "login", limit: 5, windowMs: 60_000 },
   { match: (p) => p === "/register", method: "POST", key: "register", limit: 3, windowMs: 60_000 },
   { match: (p) => p === "/api/webhooks/midtrans", key: "webhook", limit: 60, windowMs: 60_000 },
+  { match: (p) => p === "/api/webhooks/digiflazz", key: "webhook-digiflazz", limit: 60, windowMs: 60_000 },
   { match: (p) => p === "/api/cron/tick", key: "cron-tick", limit: 10, windowMs: 60_000 },
   // limit 120 (bukan 30) - halaman invoice polling tiap 3000ms (~20 req/menit per tab), dua tab/dua
   // customer di NAT yang sama sebelumnya cukup untuk trip limit 30/menit dan merusak layar tunggu bayar.

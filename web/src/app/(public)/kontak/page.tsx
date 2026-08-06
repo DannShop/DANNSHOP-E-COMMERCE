@@ -6,7 +6,7 @@ import { getSiteSettings } from "@/lib/site-settings";
 export const metadata: Metadata = { title: "Kontak" };
 
 export default async function ContactPage() {
-  const { whatsappCs, telegramCs } = await getSiteSettings();
+  const { whatsappCs, telegramCs, csHours } = await getSiteSettings();
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-6">
@@ -49,7 +49,7 @@ export default async function ContactPage() {
         <Clock className="size-4 shrink-0 translate-y-0.5 text-muted-foreground" aria-hidden="true" />
         <div>
           <p className="font-medium">Jam Operasional CS</p>
-          <p className="mt-0.5 text-muted-foreground">Setiap hari, 08.00 – 22.00 WIB</p>
+          <p className="mt-0.5 text-muted-foreground">{csHours}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Sistem topup berjalan otomatis 24 jam — di luar jam operasional, respons CS mungkin lebih lambat.
           </p>

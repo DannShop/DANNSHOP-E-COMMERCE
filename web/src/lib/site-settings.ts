@@ -18,6 +18,7 @@ export interface SiteSettings {
   maintenanceMessage: string;
   whatsappCs: string;
   telegramCs: string;
+  csHours: string;
 }
 
 // Default sebelum admin pernah menyimpan apa pun - konten asli yang dulu
@@ -143,6 +144,7 @@ DannShop berhak memperbarui Kebijakan Privasi ini sewaktu-waktu. Perubahan berla
 Pertanyaan atau permintaan terkait data pribadi bisa disampaikan lewat halaman Kontak.`;
 
 const DEFAULT_MAINTENANCE_MESSAGE = "Situs sedang dalam pemeliharaan. Kami akan segera kembali.";
+const DEFAULT_CS_HOURS = "Setiap hari, 08.00 – 22.00 WIB";
 
 const SETTINGS_KEYS = [
   "logo_url",
@@ -156,6 +158,7 @@ const SETTINGS_KEYS = [
   "maintenance_message",
   "whatsapp_cs",
   "telegram_cs",
+  "cs_hours",
 ] as const;
 
 // cache() dari React: beberapa titik di satu request yang sama (root layout
@@ -191,6 +194,7 @@ export const getSiteSettings = cache(async (): Promise<SiteSettings> => {
     // di deploy pertama sebelum admin sempat buka halaman pengaturan.
     whatsappCs: map.get("whatsapp_cs") ?? process.env.NEXT_PUBLIC_WHATSAPP_CS ?? "",
     telegramCs: map.get("telegram_cs") ?? process.env.NEXT_PUBLIC_TELEGRAM_CS ?? "",
+    csHours: map.get("cs_hours") || DEFAULT_CS_HOURS,
   };
 });
 

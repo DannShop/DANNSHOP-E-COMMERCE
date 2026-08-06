@@ -199,6 +199,7 @@ const contactSettingsSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v ?? "").replace(/^@/, "").trim()),
+  csHours: z.string().optional().transform((v) => (v ?? "").trim()),
 });
 
 export async function saveContactSettings(formData: FormData): Promise<ActionResult> {
@@ -209,6 +210,7 @@ export async function saveContactSettings(formData: FormData): Promise<ActionRes
   const parsed = contactSettingsSchema.safeParse({
     whatsappCs: formData.get("whatsappCs"),
     telegramCs: formData.get("telegramCs"),
+    csHours: formData.get("csHours"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -222,6 +224,11 @@ export async function saveContactSettings(formData: FormData): Promise<ActionRes
       where: { key: "telegram_cs" },
       update: { value: parsed.data.telegramCs },
       create: { key: "telegram_cs", value: parsed.data.telegramCs },
+    }),
+    db.siteSetting.upsert({
+      where: { key: "cs_hours" },
+      update: { value: parsed.data.csHours },
+      create: { key: "cs_hours", value: parsed.data.csHours },
     }),
   ]);
   await logAdmin(admin.adminId, "site_setting.save_contact");

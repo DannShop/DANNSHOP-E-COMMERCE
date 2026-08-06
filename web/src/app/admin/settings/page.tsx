@@ -65,7 +65,10 @@ export default async function SiteSettingsPage() {
 
       <div className="rounded-lg border p-4">
         <h2 className="mb-3 text-sm font-semibold">Kontak CS</h2>
-        <ContactForm initial={{ whatsappCs: settings.whatsappCs, telegramCs: settings.telegramCs }} action={saveContactSettings} />
+        <ContactForm
+          initial={{ whatsappCs: settings.whatsappCs, telegramCs: settings.telegramCs, csHours: settings.csHours }}
+          action={saveContactSettings}
+        />
       </div>
 
       <div className="rounded-lg border p-4">
