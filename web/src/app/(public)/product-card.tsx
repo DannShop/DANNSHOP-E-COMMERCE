@@ -12,7 +12,7 @@ export function ProductCard({
 }) {
   return (
     <Link href={`/${categorySlug}/${product.slug}`} className="group/tile block">
-      <Card className="gap-0 p-0 shadow-sm transition duration-200 ease-out group-hover/tile:-translate-y-1 group-hover/tile:shadow-lg group-hover/tile:ring-2 group-hover/tile:ring-highlight">
+      <Card className="gap-0 p-0 shadow-sm transition duration-200 ease-out group-hover/tile:-translate-y-1 group-hover/tile:shadow-lg group-hover/tile:ring-2 group-hover/tile:ring-primary">
         <div className="relative aspect-4/3 w-full bg-gradient-to-br from-primary to-accent">
           {(product.iconUrl ?? product.banner) && (
             <Image

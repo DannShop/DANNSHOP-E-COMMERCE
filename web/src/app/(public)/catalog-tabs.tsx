@@ -22,13 +22,13 @@ export function CatalogTabs({ categories }: { categories: CatalogCategory[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto py-1">
         {categories.map((c) => (
           <Button
             key={c.id}
             variant={c.slug === selected.slug ? "default" : "outline"}
             size="sm"
-            className="shrink-0 transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-highlight"
+            className="shrink-0 transition duration-200 ease-out hover:shadow-md hover:ring-2 hover:ring-primary"
             onClick={() => setSelectedSlug(c.slug)}
           >
             {c.name}
