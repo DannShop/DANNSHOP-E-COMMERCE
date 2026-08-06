@@ -21,15 +21,16 @@ import { logoutAction } from "@/app/actions/auth";
 import type { Session } from "next-auth";
 import type { CatalogCategory } from "@/lib/catalog/public";
 
-const WHATSAPP_CS = process.env.NEXT_PUBLIC_WHATSAPP_CS ?? "";
-const TELEGRAM_CS = process.env.NEXT_PUBLIC_TELEGRAM_CS ?? "";
-
 export function CategoryDrawer({
   categories,
   session,
+  whatsappCs,
+  telegramCs,
 }: {
   categories: CatalogCategory[];
   session: Session | null;
+  whatsappCs: string;
+  telegramCs: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -140,9 +141,9 @@ export function CategoryDrawer({
             </div>
 
             <div className="mt-auto flex flex-col gap-1 border-t pt-3">
-              {WHATSAPP_CS && (
+              {whatsappCs && (
                 <a
-                  href={`https://wa.me/${WHATSAPP_CS}`}
+                  href={`https://wa.me/${whatsappCs}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted"
@@ -151,9 +152,9 @@ export function CategoryDrawer({
                   Bantuan WhatsApp
                 </a>
               )}
-              {TELEGRAM_CS && (
+              {telegramCs && (
                 <a
-                  href={`https://t.me/${TELEGRAM_CS}`}
+                  href={`https://t.me/${telegramCs}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted"

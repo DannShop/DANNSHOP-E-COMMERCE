@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { MessageCircle, Send, Clock } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { getSiteSettings } from "@/lib/site-settings";
 
 export const metadata: Metadata = { title: "Kontak" };
 
-const WHATSAPP_CS = process.env.NEXT_PUBLIC_WHATSAPP_CS ?? "";
-const TELEGRAM_CS = process.env.NEXT_PUBLIC_TELEGRAM_CS ?? "";
+export default async function ContactPage() {
+  const { whatsappCs, telegramCs } = await getSiteSettings();
 
-export default function ContactPage() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-6">
       <div>
@@ -18,9 +18,9 @@ export default function ContactPage() {
       </div>
 
       <div className="flex flex-col gap-3">
-        {WHATSAPP_CS && (
+        {whatsappCs && (
           <a
-            href={`https://wa.me/${WHATSAPP_CS}`}
+            href={`https://wa.me/${whatsappCs}`}
             target="_blank"
             rel="noopener noreferrer"
             className={buttonVariants({ variant: "outline", className: "h-12 justify-start gap-3 text-base" })}
@@ -29,9 +29,9 @@ export default function ContactPage() {
             Chat via WhatsApp
           </a>
         )}
-        {TELEGRAM_CS && (
+        {telegramCs && (
           <a
-            href={`https://t.me/${TELEGRAM_CS}`}
+            href={`https://t.me/${telegramCs}`}
             target="_blank"
             rel="noopener noreferrer"
             className={buttonVariants({ variant: "outline", className: "h-12 justify-start gap-3 text-base" })}
@@ -40,7 +40,7 @@ export default function ContactPage() {
             Chat via Telegram
           </a>
         )}
-        {!WHATSAPP_CS && !TELEGRAM_CS && (
+        {!whatsappCs && !telegramCs && (
           <p className="text-sm text-muted-foreground">Channel CS belum dikonfigurasi.</p>
         )}
       </div>

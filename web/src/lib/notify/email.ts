@@ -1,5 +1,7 @@
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import type { PaymentActions } from "@/lib/midtrans/client";
+import { getEmailProviderConfig } from "@/lib/notify/email-config";
 
 // Pola sama persis dengan sendTelegramAlert (lib/notify/telegram.ts): tidak pernah
 // throw, guard clause kalau env kosong, return boolean supaya caller bisa tahu
@@ -9,16 +11,6 @@ import type { PaymentActions } from "@/lib/midtrans/client";
 // Beda dengan sendTelegramAlert Fase 7b (yang deliverable-nya notifikasi itu
 // sendiri, jadi status DB baru ditulis setelah kirim sukses): di sini email cuma
 // salinan, sumber kebenarannya tetap halaman invoice - fire-and-forget sudah tepat.
-
-function resendClient(): Resend | null {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return null;
-  return new Resend(apiKey);
-}
-
-function fromAddress(): string {
-  return process.env.RESEND_FROM_EMAIL ?? "DannShop <onboarding@resend.dev>";
-}
 
 function invoiceUrl(publicToken: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -46,16 +38,31 @@ export interface OrderEmailData {
 
 async function send(to: string, subject: string, html: string): Promise<boolean> {
   try {
-    const client = resendClient();
-    if (!client) {
-      console.error("Email: RESEND_API_KEY belum di-set, pengiriman dilewati");
+    const config = await getEmailProviderConfig();
+    if (!config) {
+      console.error("Email: provider belum dikonfigurasi (Admin > Pengaturan Situs), pengiriman dilewati");
       return false;
     }
-    const { error } = await client.emails.send({ from: fromAddress(), to, subject, html });
-    if (error) {
-      console.error("Email: gagal kirim", { to, subject, error });
-      return false;
+
+    if (config.kind === "resend") {
+      const client = new Resend(config.apiKey);
+      const { error } = await client.emails.send({ from: config.fromEmail, to, subject, html });
+      if (error) {
+        console.error("Email: gagal kirim (resend)", { to, subject, error });
+        return false;
+      }
+      return true;
     }
+
+    // SMTP - transporter baru per pengiriman (fire-and-forget, volume rendah,
+    // tidak perlu connection pooling jangka panjang untuk pola pemakaian ini).
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: { user: config.user, pass: config.password },
+    });
+    await transporter.sendMail({ from: config.fromEmail, to, subject, html });
     return true;
   } catch (e) {
     console.error("Email: gagal kirim", { to, subject, error: e instanceof Error ? e.message : String(e) });

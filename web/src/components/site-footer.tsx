@@ -2,9 +2,7 @@ import Link from "next/link";
 import { MessageCircle, Send } from "lucide-react";
 import { db } from "@/lib/db";
 import { PaymentMethodMarquee } from "@/components/payment-method-marquee";
-
-const WHATSAPP_CS = process.env.NEXT_PUBLIC_WHATSAPP_CS ?? "";
-const TELEGRAM_CS = process.env.NEXT_PUBLIC_TELEGRAM_CS ?? "";
+import { getSiteSettings } from "@/lib/site-settings";
 
 const SUPPORT_LINKS = [
   { href: "/cek-transaksi", label: "Cek Transaksi" },
@@ -15,13 +13,14 @@ const SUPPORT_LINKS = [
 ];
 
 export async function SiteFooter() {
-  const [categories, paymentMethods] = await Promise.all([
+  const [categories, paymentMethods, { whatsappCs, telegramCs }] = await Promise.all([
     db.category.findMany({ orderBy: { sortOrder: "asc" }, select: { slug: true, name: true } }),
     db.paymentMethodConfig.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
       select: { id: true, label: true, logoUrl: true },
     }),
+    getSiteSettings(),
   ]);
 
   return (
@@ -64,11 +63,11 @@ export async function SiteFooter() {
 
         <div>
           <p className="text-sm font-semibold">Hubungi Kami</p>
-          {(WHATSAPP_CS || TELEGRAM_CS) && (
+          {(whatsappCs || telegramCs) && (
             <div className="mt-2 flex flex-col gap-1.5 text-sm text-muted-foreground">
-              {WHATSAPP_CS && (
+              {whatsappCs && (
                 <a
-                  href={`https://wa.me/${WHATSAPP_CS}`}
+                  href={`https://wa.me/${whatsappCs}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 hover:text-foreground"
@@ -77,9 +76,9 @@ export async function SiteFooter() {
                   WhatsApp
                 </a>
               )}
-              {TELEGRAM_CS && (
+              {telegramCs && (
                 <a
-                  href={`https://t.me/${TELEGRAM_CS}`}
+                  href={`https://t.me/${telegramCs}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 hover:text-foreground"

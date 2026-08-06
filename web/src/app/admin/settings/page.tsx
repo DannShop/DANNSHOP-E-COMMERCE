@@ -1,4 +1,5 @@
 import { getSiteSettings } from "@/lib/site-settings";
+import { getEmailProviderStatus } from "@/lib/notify/email-config";
 import {
   saveLogo,
   saveTrendingMode,
@@ -9,6 +10,8 @@ import {
   saveTosContent,
   savePrivacyContent,
   saveMaintenanceMode,
+  saveContactSettings,
+  saveEmailConfig,
 } from "@/app/actions/settings";
 import { LogoForm } from "./logo-form";
 import { TrendingModeForm } from "./trending-mode-form";
@@ -16,9 +19,11 @@ import { FaviconForm } from "./favicon-form";
 import { FaqForm } from "./faq-form";
 import { ContentPageForm } from "./content-page-form";
 import { MaintenanceModeForm } from "./maintenance-mode-form";
+import { ContactForm } from "./contact-form";
+import { EmailConfigForm } from "./email-config-form";
 
 export default async function SiteSettingsPage() {
-  const settings = await getSiteSettings();
+  const [settings, emailStatus] = await Promise.all([getSiteSettings(), getEmailProviderStatus()]);
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -48,6 +53,19 @@ export default async function SiteSettingsPage() {
           order sukses terbanyak 7 hari terakhir (fallback ke manual kalau kurang dari 4).
         </p>
         <TrendingModeForm initial={settings.trendingMode} action={saveTrendingMode} />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Pengiriman Email (Resend/SMTP)</h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Dipakai untuk email invoice pesanan, notifikasi pesanan berhasil/gagal, dsb.
+        </p>
+        <EmailConfigForm status={emailStatus} action={saveEmailConfig} />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Kontak CS</h2>
+        <ContactForm initial={{ whatsappCs: settings.whatsappCs, telegramCs: settings.telegramCs }} action={saveContactSettings} />
       </div>
 
       <div className="rounded-lg border p-4">

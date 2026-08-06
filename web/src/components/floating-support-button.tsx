@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { Headset, MessageCircle, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const WHATSAPP_CS = process.env.NEXT_PUBLIC_WHATSAPP_CS ?? "";
-const TELEGRAM_CS = process.env.NEXT_PUBLIC_TELEGRAM_CS ?? "";
-
-export function FloatingSupportButton() {
+export function FloatingSupportButton({
+  whatsappCs,
+  telegramCs,
+}: {
+  whatsappCs: string;
+  telegramCs: string;
+}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -19,15 +22,15 @@ export function FloatingSupportButton() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  if (!WHATSAPP_CS && !TELEGRAM_CS) return null;
+  if (!whatsappCs && !telegramCs) return null;
 
   return (
     <div className="fixed right-4 bottom-4 z-40 flex flex-col items-end gap-2">
       {open && (
         <div className="flex flex-col gap-1 rounded-lg border bg-card p-2 shadow-lg">
-          {WHATSAPP_CS && (
+          {whatsappCs && (
             <a
-              href={`https://wa.me/${WHATSAPP_CS}`}
+              href={`https://wa.me/${whatsappCs}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"
@@ -36,9 +39,9 @@ export function FloatingSupportButton() {
               WhatsApp
             </a>
           )}
-          {TELEGRAM_CS && (
+          {telegramCs && (
             <a
-              href={`https://t.me/${TELEGRAM_CS}`}
+              href={`https://t.me/${telegramCs}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted"

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadToBlob } from "@/lib/blob-upload";
+import { saveEmailProviderConfig } from "@/lib/notify/email-config";
 import { z } from "zod";
 
 export type ActionResult = { ok?: string; error?: string };
@@ -187,6 +188,96 @@ export async function savePrivacyContent(formData: FormData): Promise<ActionResu
   revalidatePath("/admin/settings");
   revalidatePath("/kebijakan-privasi");
   return { ok: "Kebijakan Privasi tersimpan." };
+}
+
+const contactSettingsSchema = z.object({
+  whatsappCs: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "").replace(/[^0-9]/g, "")),
+  telegramCs: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "").replace(/^@/, "").trim()),
+});
+
+export async function saveContactSettings(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = contactSettingsSchema.safeParse({
+    whatsappCs: formData.get("whatsappCs"),
+    telegramCs: formData.get("telegramCs"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  await db.$transaction([
+    db.siteSetting.upsert({
+      where: { key: "whatsapp_cs" },
+      update: { value: parsed.data.whatsappCs },
+      create: { key: "whatsapp_cs", value: parsed.data.whatsappCs },
+    }),
+    db.siteSetting.upsert({
+      where: { key: "telegram_cs" },
+      update: { value: parsed.data.telegramCs },
+      create: { key: "telegram_cs", value: parsed.data.telegramCs },
+    }),
+  ]);
+  await logAdmin(admin.adminId, "site_setting.save_contact");
+  revalidatePath("/admin/settings");
+  revalidatePath("/kontak");
+  return { ok: "Kontak CS tersimpan." };
+}
+
+const emailConfigSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("resend"),
+    apiKey: z.string().min(1, "API key Resend wajib diisi"),
+    fromEmail: z.string().min(1, "Alamat pengirim wajib diisi"),
+  }),
+  z.object({
+    kind: z.literal("smtp"),
+    host: z.string().min(1, "Host SMTP wajib diisi"),
+    port: z.coerce.number().int().min(1).max(65535),
+    secure: z.string().optional().transform((v) => v === "on"),
+    user: z.string().min(1, "User SMTP wajib diisi"),
+    password: z.string().min(1, "Password SMTP wajib diisi"),
+    fromEmail: z.string().min(1, "Alamat pengirim wajib diisi"),
+  }),
+]);
+
+// Kredensial (apiKey/password) tidak pernah masuk log admin - cuma "kind"
+// yang dicatat, sama pola seperti saveDigiflazzCredentials.
+export async function saveEmailConfig(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const kind = formData.get("kind") === "smtp" ? "smtp" : "resend";
+  const parsed = emailConfigSchema.safeParse(
+    kind === "smtp"
+      ? {
+          kind: "smtp",
+          host: formData.get("host"),
+          port: formData.get("port"),
+          secure: formData.get("secure"),
+          user: formData.get("user"),
+          password: formData.get("password"),
+          fromEmail: formData.get("fromEmail"),
+        }
+      : {
+          kind: "resend",
+          apiKey: formData.get("apiKey"),
+          fromEmail: formData.get("fromEmail"),
+        },
+  );
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  await saveEmailProviderConfig(parsed.data);
+  await logAdmin(admin.adminId, "site_setting.save_email_config", { kind: parsed.data.kind });
+  revalidatePath("/admin/settings");
+  return { ok: "Konfigurasi email tersimpan." };
 }
 
 const maintenanceModeSchema = z.object({

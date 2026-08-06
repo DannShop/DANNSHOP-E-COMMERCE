@@ -35,7 +35,12 @@ export async function SiteHeader() {
         <nav className="ml-auto flex shrink-0 items-center gap-2">
           <SearchOverlay />
           <ThemeToggle />
-          <CategoryDrawer categories={categories} session={session} />
+          <CategoryDrawer
+            categories={categories}
+            session={session}
+            whatsappCs={settings.whatsappCs}
+            telegramCs={settings.telegramCs}
+          />
         </nav>
       </div>
     </header>
