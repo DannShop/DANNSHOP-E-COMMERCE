@@ -1,7 +1,21 @@
 import { getSiteSettings } from "@/lib/site-settings";
-import { saveLogo, saveTrendingMode, uploadLogoFile } from "@/app/actions/settings";
+import {
+  saveLogo,
+  saveTrendingMode,
+  uploadLogoFile,
+  saveFavicon,
+  uploadFaviconFile,
+  saveFaqItems,
+  saveTosContent,
+  savePrivacyContent,
+  saveMaintenanceMode,
+} from "@/app/actions/settings";
 import { LogoForm } from "./logo-form";
 import { TrendingModeForm } from "./trending-mode-form";
+import { FaviconForm } from "./favicon-form";
+import { FaqForm } from "./faq-form";
+import { ContentPageForm } from "./content-page-form";
+import { MaintenanceModeForm } from "./maintenance-mode-form";
 
 export default async function SiteSettingsPage() {
   const settings = await getSiteSettings();
@@ -10,7 +24,7 @@ export default async function SiteSettingsPage() {
     <div className="max-w-2xl space-y-8">
       <div>
         <h1 className="text-xl font-semibold">Pengaturan Situs</h1>
-        <p className="text-sm text-muted-foreground">Logo header dan sumber section Trending di halaman utama.</p>
+        <p className="text-sm text-muted-foreground">Identitas, konten statis, dan mode maintenance situs.</p>
       </div>
 
       <div className="rounded-lg border p-4">
@@ -23,12 +37,40 @@ export default async function SiteSettingsPage() {
       </div>
 
       <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Favicon</h2>
+        <FaviconForm initial={{ faviconUrl: settings.faviconUrl }} action={saveFavicon} uploadFaviconFile={uploadFaviconFile} />
+      </div>
+
+      <div className="rounded-lg border p-4">
         <h2 className="mb-3 text-sm font-semibold">Section Trending</h2>
         <p className="mb-3 text-xs text-muted-foreground">
           Manual: pilih produk trending lewat centang &quot;Trending&quot; di form produk. Otomatis: 4 produk dengan
           order sukses terbanyak 7 hari terakhir (fallback ke manual kalau kurang dari 4).
         </p>
         <TrendingModeForm initial={settings.trendingMode} action={saveTrendingMode} />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">FAQ</h2>
+        <FaqForm initial={settings.faqItems} action={saveFaqItems} />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Syarat &amp; Ketentuan</h2>
+        <ContentPageForm initial={settings.tosContent} action={saveTosContent} submitLabel="Simpan Syarat & Ketentuan" />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Kebijakan Privasi</h2>
+        <ContentPageForm initial={settings.privacyContent} action={savePrivacyContent} submitLabel="Simpan Kebijakan Privasi" />
+      </div>
+
+      <div className="rounded-lg border-2 border-destructive/40 p-4">
+        <h2 className="mb-3 text-sm font-semibold">Maintenance Mode</h2>
+        <MaintenanceModeForm
+          initial={{ maintenanceMode: settings.maintenanceMode, maintenanceMessage: settings.maintenanceMessage }}
+          action={saveMaintenanceMode}
+        />
       </div>
     </div>
   );

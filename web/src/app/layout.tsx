@@ -3,6 +3,7 @@ import { Baloo_2, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
+import { getSiteSettings } from "@/lib/site-settings";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,11 +21,23 @@ const baloo2 = Baloo_2({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
+const STATIC_METADATA: Metadata = {
   title: { default: "DannShop — Topup Game & PPOB", template: "%s | DannShop" },
   description:
     "Topup game, pulsa, e-money, dan PLN — murah, cepat, otomatis 24 jam.",
 };
+
+// generateMetadata (bukan `export const metadata` statis) supaya favicon
+// yang admin upload lewat /admin/settings ikut kepakai - kalau belum pernah
+// diisi, `icons` dibiarkan undefined sehingga Next.js jatuh balik ke
+// app/favicon.ico bawaan.
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSiteSettings();
+  return {
+    ...STATIC_METADATA,
+    ...(settings.faviconUrl ? { icons: { icon: settings.faviconUrl } } : {}),
+  };
+}
 
 export default function RootLayout({
   children,

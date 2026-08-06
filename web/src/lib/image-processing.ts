@@ -119,4 +119,6 @@ export const MAX_DIMENSION = {
   siteLogo: 512,
   /** Logo metode pembayaran di strip footer & picker checkout. */
   paymentLogo: 256,
+  /** Favicon - browser tab icon, kecil tapi disimpan cukup besar untuk retina. */
+  favicon: 256,
 } as const;

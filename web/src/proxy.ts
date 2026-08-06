@@ -4,6 +4,7 @@ import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 import { safeCompare } from "@/lib/crypto";
+import { isMaintenanceModeOn } from "@/lib/site-settings";
 
 const { auth } = NextAuth(authConfig);
 
@@ -66,8 +67,25 @@ export default auth(async (req) => {
       return Response.redirect(new URL("/login", nextUrl));
     }
   }
+
+  // Maintenance mode: tutup storefront publik, tapi /admin tetap harus bisa
+  // diakses (buat matiin lagi) dan /login tetap harus bisa diakses (kalau
+  // sesi admin kadaluwarsa persis pas maintenance nyala, jangan sampai
+  // admin ikut terkunci keluar). Rewrite (bukan redirect) supaya URL asli
+  // di address bar tidak berubah begitu maintenance dimatikan lagi.
+  const isExemptFromMaintenance =
+    nextUrl.pathname === "/maintenance" ||
+    nextUrl.pathname.startsWith("/admin") ||
+    nextUrl.pathname.startsWith("/api") ||
+    nextUrl.pathname === "/login";
+  if (!isExemptFromMaintenance && (await isMaintenanceModeOn())) {
+    return NextResponse.rewrite(new URL("/maintenance", nextUrl));
+  }
 });
 
 export const config = {
-  matcher: ["/admin/:path*", "/account/:path*", "/login", "/register", "/api/:path*"],
+  matcher: [
+    "/admin/:path*", "/account/:path*", "/login", "/register", "/api/:path*",
+    "/((?!api|admin|_next/static|_next/image|favicon.ico).*)",
+  ],
 };

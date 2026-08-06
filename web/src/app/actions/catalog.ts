@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { productSchema, productItemSchema, productItemGroupSchema, bulkImportSchema } from "@/lib/validation/catalog";
 import { applyMarkup } from "@/lib/catalog/bulk-import";
+import { computeBulkMarkup } from "@/lib/catalog/bulk-markup";
+import { z } from "zod";
 
 const MAX_BANNER_BYTES = 5 * 1024 * 1024; // 5MB — cukup besar untuk logo/banner produk, cukup kecil untuk cegah abuse storage
 const ALLOWED_BANNER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
@@ -332,6 +334,107 @@ export async function deleteProductItemGroup(formData: FormData): Promise<Action
   revalidatePath(`/admin/products/${productId}`);
   revalidatePath("/");
   return { ok: "Grup dihapus, item di dalamnya jadi tanpa grup." };
+}
+
+const bulkMarkupInputSchema = z.object({
+  categoryId: z.string().optional().transform((v) => (v ? v : null)),
+  sellingMarkupPercent: z.coerce.number().min(0, "Markup harga jual harus >= 0"),
+  memberMarkupPercent: z.coerce.number().min(0, "Markup harga member harus >= 0"),
+});
+
+export interface MarkupPreviewRowSerialized {
+  itemId: string;
+  productName: string;
+  itemName: string;
+  costPrice: string;
+  oldSellingPrice: string;
+  newSellingPrice: string;
+  oldMemberPrice: string;
+  newMemberPrice: string;
+  skipped: boolean;
+  skipReason?: string;
+}
+
+export async function previewBulkMarkup(
+  formData: FormData,
+): Promise<{ rows?: MarkupPreviewRowSerialized[]; error?: string }> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = bulkMarkupInputSchema.safeParse({
+    categoryId: formData.get("categoryId"),
+    sellingMarkupPercent: formData.get("sellingMarkupPercent"),
+    memberMarkupPercent: formData.get("memberMarkupPercent"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const rows = await computeBulkMarkup(
+    parsed.data.categoryId,
+    parsed.data.sellingMarkupPercent,
+    parsed.data.memberMarkupPercent,
+  );
+  // bigint diserialisasi jadi string sebelum melewati batas server
+  // action -> client component, pola yang sama dipakai di seluruh admin/.
+  return {
+    rows: rows.map((r) => ({
+      ...r,
+      costPrice: r.costPrice.toString(),
+      oldSellingPrice: r.oldSellingPrice.toString(),
+      newSellingPrice: r.newSellingPrice.toString(),
+      oldMemberPrice: r.oldMemberPrice.toString(),
+      newMemberPrice: r.newMemberPrice.toString(),
+    })),
+  };
+}
+
+// Menghitung ULANG dari DB fresh (tidak pernah percaya angka preview yang
+// dikirim balik dari client) - kalau ada perubahan data di antara preview
+// dan klik "Terapkan", yang benar-benar diterapkan adalah angka saat ini,
+// bukan angka basi dari preview sebelumnya.
+export async function applyBulkMarkup(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = bulkMarkupInputSchema.safeParse({
+    categoryId: formData.get("categoryId"),
+    sellingMarkupPercent: formData.get("sellingMarkupPercent"),
+    memberMarkupPercent: formData.get("memberMarkupPercent"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const rows = await computeBulkMarkup(
+    parsed.data.categoryId,
+    parsed.data.sellingMarkupPercent,
+    parsed.data.memberMarkupPercent,
+  );
+  const toApply = rows.filter((r) => !r.skipped);
+  if (toApply.length === 0) {
+    return { error: "Tidak ada item yang bisa diterapkan (semua dilewati atau tidak ada item cocok)." };
+  }
+
+  await db.$transaction(
+    toApply.map((r) =>
+      db.productItem.update({
+        where: { id: r.itemId },
+        data: { sellingPrice: r.newSellingPrice, memberPrice: r.newMemberPrice },
+      }),
+    ),
+  );
+  await logAdmin(admin.adminId, "catalog.apply_bulk_markup", parsed.data.categoryId ?? "all", {
+    sellingMarkupPercent: parsed.data.sellingMarkupPercent,
+    memberMarkupPercent: parsed.data.memberMarkupPercent,
+    itemCount: toApply.length,
+    skippedCount: rows.length - toApply.length,
+  });
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/markup");
+  revalidatePath("/");
+  const skippedCount = rows.length - toApply.length;
+  return {
+    ok: `${toApply.length} item diperbarui.${skippedCount > 0 ? ` ${skippedCount} item dilewati karena bentrok flash sale.` : ""}`,
+  };
 }
 
 // Petakan satu ProductItem ke SKU sebuah provider. Upsert on
