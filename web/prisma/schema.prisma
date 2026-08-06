@@ -103,8 +103,24 @@ model User {
   orders          Order[]
   deposits        Deposit[]
   adminActionLogs AdminActionLog[]
+  passwordResetTokens PasswordResetToken[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+// Token reset password (lupa password). Yang disimpan HANYA hash SHA-256 dari token
+// mentah — token mentahnya cuma ada di link email, jadi bocornya isi tabel ini tidak
+// bisa dipakai untuk mengambil alih akun. Sekali pakai (usedAt) + kedaluwarsa 30 menit.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Wallet {

@@ -127,6 +127,19 @@ export async function sendOrderCreatedEmail(order: OrderEmailData, actions: Paym
   return send(order.buyerEmail, `Pesanan ${order.orderNumber} Diterima - DannShop`, html);
 }
 
+export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<boolean> {
+  const html = wrapEmail(
+    "Reset Password DannShop",
+    `
+      <p>Kami menerima permintaan reset password untuk akun ini. Klik tombol di bawah untuk membuat password baru.</p>
+      <p><a href="${resetUrl}" style="display:inline-block;margin-top:12px;padding:10px 20px;background:#7C3AED;color:#fff;text-decoration:none;border-radius:8px;">Reset Password</a></p>
+      <p style="margin-top:16px;font-size:13px;color:#666;">Link ini hanya berlaku <strong>30 menit</strong> dan cuma bisa dipakai sekali.</p>
+      <p style="font-size:13px;color:#666;">Kalau Anda tidak meminta reset password, abaikan saja email ini — password Anda tidak berubah.</p>
+    `,
+  );
+  return send(to, "Reset Password - DannShop", html);
+}
+
 export async function sendOrderCompletedEmail(order: OrderEmailData, sn: string | null): Promise<boolean> {
   if (!order.buyerEmail) return false;
   const url = invoiceUrl(order.publicToken);

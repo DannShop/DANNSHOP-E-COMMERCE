@@ -12,7 +12,9 @@ import {
   saveMaintenanceMode,
   saveContactSettings,
   saveEmailConfig,
+  changeAdminPassword,
 } from "@/app/actions/settings";
+import { ChangePasswordForm } from "@/components/change-password-form";
 import { LogoForm } from "./logo-form";
 import { TrendingModeForm } from "./trending-mode-form";
 import { FaviconForm } from "./favicon-form";
@@ -84,6 +86,14 @@ export default async function SiteSettingsPage() {
       <div className="rounded-lg border p-4">
         <h2 className="mb-3 text-sm font-semibold">Kebijakan Privasi</h2>
         <ContentPageForm initial={settings.privacyContent} action={savePrivacyContent} submitLabel="Simpan Kebijakan Privasi" />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Ganti Password</h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Password akun admin ini. Setelah berhasil diganti, kamu otomatis dilogout dan harus login ulang.
+        </p>
+        <ChangePasswordForm action={changeAdminPassword} idPrefix="admin" />
       </div>
 
       <div className="rounded-lg border-2 border-destructive/40 p-4">

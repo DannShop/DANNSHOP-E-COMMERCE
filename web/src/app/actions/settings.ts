@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadToBlob } from "@/lib/blob-upload";
 import { saveEmailProviderConfig } from "@/lib/notify/email-config";
+import { changeUserPassword } from "@/lib/account/change-password";
 import { z } from "zod";
 
 export type ActionResult = { ok?: string; error?: string };
@@ -285,6 +286,23 @@ export async function saveEmailConfig(formData: FormData): Promise<ActionResult>
   await logAdmin(admin.adminId, "site_setting.save_email_config", { kind: parsed.data.kind });
   revalidatePath("/admin/settings");
   return { ok: "Konfigurasi email tersimpan." };
+}
+
+// Gate requireAdmin sengaja dijalankan SEBELUM password diubah - sesudahnya
+// User.updatedAt sudah naik, jadi sesi yang sama pasti dianggap basi. Form di
+// client yang melogout admin setelah sukses.
+export async function changeAdminPassword(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const result = await changeUserPassword(admin.adminId, formData);
+  if (!result.ok) return result;
+
+  // Nilai password TIDAK pernah masuk log - cuma jejak "siapa & kapan".
+  await logAdmin(admin.adminId, "change_password", {});
+  revalidatePath("/admin/settings");
+  return result;
 }
 
 const maintenanceModeSchema = z.object({

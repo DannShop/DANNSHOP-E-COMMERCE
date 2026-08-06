@@ -1,12 +1,15 @@
 "use server";
 
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import type { ResetPasswordResult } from "@/lib/account/reset-password";
+import { requestPasswordReset, resetPasswordWithToken } from "@/lib/account/reset-password";
 import { signIn, signOut } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { registerSchema } from "@/lib/validation/auth";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 
 // Password dummy dipakai HANYA untuk membuang waktu (samakan cost bcrypt),
 // tidak pernah dibandingkan/disimpan - mencegah timing side-channel di registerAction
@@ -85,6 +88,21 @@ export async function registerAction(
   }
 
   redirect("/login?registered=1");
+}
+
+export async function forgotPasswordAction(
+  _prev: ResetPasswordResult | undefined,
+  formData: FormData
+): Promise<ResetPasswordResult> {
+  const ip = extractIp(await headers());
+  return requestPasswordReset(formData, ip);
+}
+
+export async function resetPasswordAction(
+  _prev: ResetPasswordResult | undefined,
+  formData: FormData
+): Promise<ResetPasswordResult> {
+  return resetPasswordWithToken(formData);
 }
 
 export async function logoutAction() {

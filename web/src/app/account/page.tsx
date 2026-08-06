@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ORDER_STATUS_LABEL, DEPOSIT_STATUS_LABEL } from "@/lib/order/status-labels";
+import { ChangePasswordForm } from "@/components/change-password-form";
+import { changePassword } from "@/app/actions/account";
 
 function formatRupiah(amount: bigint): string {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
@@ -96,6 +98,16 @@ export default async function AccountPage() {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-[var(--radius)] border bg-card p-5">
+        <div>
+          <h2 className="font-heading text-lg font-bold">Ganti Password</h2>
+          <p className="text-sm text-muted-foreground">
+            Setelah password berhasil diganti, kamu otomatis dilogout dan harus login ulang.
+          </p>
+        </div>
+        <ChangePasswordForm action={changePassword} idPrefix="akun" />
       </div>
     </main>
   );
