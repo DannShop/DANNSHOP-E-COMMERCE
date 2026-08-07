@@ -8,7 +8,7 @@ export default async function MaintenancePage() {
   const { maintenanceMessage } = await getSiteSettings();
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-4 text-center">
       <div className="flex size-16 items-center justify-center rounded-full bg-primary/10">
         <Wrench className="size-8 text-primary" aria-hidden="true" />
       </div>

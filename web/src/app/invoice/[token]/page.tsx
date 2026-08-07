@@ -27,7 +27,7 @@ export default async function InvoicePage({
       : null;
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-10">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 py-10">
       <Link href="/" className="font-heading text-sm font-bold text-primary hover:underline">
         ← DannShop
       </Link>

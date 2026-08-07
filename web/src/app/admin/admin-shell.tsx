@@ -98,13 +98,25 @@ export function AdminShell({
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
-    const prevHtmlOverflow = html.style.overflow;
-    const prevBodyOverflow = body.style.overflow;
+    const prev = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      htmlOverscroll: html.style.overscrollBehavior,
+    };
     html.style.overflow = "hidden";
     body.style.overflow = "hidden";
+    // overscroll-behavior: none mematikan efek "mental" (rubber-band) di level
+    // dokumen. overflow:hidden saja tidak cukup: sebagian browser tetap
+    // memantulkan seluruh dokumen saat di-scroll melewati batas, dan pantulan
+    // itulah yang menyingkap <body> putih polos di balik .admin-shell (shell
+    // punya gradient sendiri, body tidak - makanya kelihatan sebagai "layar
+    // naik jadi putih"). Sengaja dipasang lewat JS di sini, BUKAN di
+    // globals.css: kalau global, pull-to-refresh di storefront ikut mati.
+    html.style.overscrollBehavior = "none";
     return () => {
-      html.style.overflow = prevHtmlOverflow;
-      body.style.overflow = prevBodyOverflow;
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      html.style.overscrollBehavior = prev.htmlOverscroll;
     };
   }, []);
 

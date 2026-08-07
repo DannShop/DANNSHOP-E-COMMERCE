@@ -17,6 +17,19 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      // Default Next.js untuk body Server Action cuma 1MB - berlaku di level
+      // framework, SEBELUM kode action manapun sempat jalan (try/catch di
+      // lib/blob-upload.ts tidak pernah kebagian giliran menangani ini,
+      // makanya yang muncul cuma "server error" generik tanpa pesan jelas).
+      // Video logo situs (lib/blob-upload.ts, MAX_VIDEO_UPLOAD_BYTES) boleh
+      // sampai 20MB - limit di sini dinaikkan melewati itu, dengan sedikit
+      // ruang ekstra untuk overhead multipart/form-data (boundary, header
+      // tiap field), bukan cuma pas 20MB.
+      bodySizeLimit: "25mb",
+    },
+  },
   async headers() {
     return [
       {

@@ -62,11 +62,20 @@ export function PaymentMethodForm({
           onChange={setLogoUrl}
           upload={uploadLogo}
           uploadFields={uploadFields}
-          // Sengaja tanpa crop dan tanpa maxDimension: logo bank diunggah utuh
-          // apa adanya. Ketajaman logo justru daya tarik strip pembayaran, dan
-          // encode ulang ke WebP hanya akan menurunkannya.
+          // Crop dengan rasio yang sama persis dengan kotak tampilnya (h-10
+          // w-16 = 16:10), supaya admin bisa memangkas ruang kosong/elemen lain
+          // di sekitar logo dari file sumber.
+          //
+          // Tetap TANPA maxDimension: dengan begitu processImage cuma memotong,
+          // TIDAK mengecilkan (skala tetap 1:1), jadi resolusi asli logo utuh -
+          // ketajaman di strip pembayaran tetap terjaga. Yang berubah cuma
+          // encode ulang ke WebP, dan itu memang tak terhindarkan begitu gambar
+          // dipotong. Logo SVG otomatis melewati dialog crop ini sepenuhnya
+          // (isProcessableImage menolak SVG) sehingga tetap vektor & tajam
+          // tanpa encode ulang sama sekali - jalur yang paling umum untuk logo bank.
+          aspect={16 / 10}
           accept="image/png,image/jpeg,image/webp,image/svg+xml"
-          helpText="Diunggah apa adanya tanpa dikompresi, biar tetap tajam. Disarankan sekitar 256×96px (persegi panjang, latar transparan). Maks 5MB."
+          helpText="Disarankan sekitar 256×160px (rasio 16:10, latar transparan). Ukuran asli dipertahankan (tidak dikecilkan) biar tetap tajam; SVG diunggah apa adanya tanpa crop. Maks 5MB."
           previewClassName="h-10 w-16 rounded border bg-muted/50"
           previewFit="contain"
           onUploadingChange={setUploading}
