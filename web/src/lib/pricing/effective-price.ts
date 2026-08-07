@@ -24,9 +24,26 @@ export function isFlashActive(item: PricedItem, now: Date): boolean {
   );
 }
 
-// Prioritas kalau beberapa berlaku sekaligus: flash > member > normal.
-export function effectivePrice(item: PricedItem, { isMember, now }: { isMember: boolean; now: Date }): bigint {
+// PERUBAHAN PERILAKU (Fase B): login SENDIRI tidak lagi otomatis memberi
+// diskon. Diskon sekarang HANYA datang dari tier member aktif (dibeli lewat
+// /membership) - lihat lib/membership/tier.ts. `memberPrice` yang dulu jadi
+// "harga otomatis untuk siapa pun yang login" sekarang berperan sebagai LANTAI
+// harga: diskon tier setinggi apa pun tidak akan pernah membuat harga jatuh
+// di bawah angka itu, supaya admin tidak perlu menghitung ulang floor per
+// tier per item satu-satu.
+//
+// Prioritas kalau beberapa berlaku sekaligus: flash > diskon tier (dilantai
+// memberPrice) > normal. Flash tetap menang di atas tier karena flash adalah
+// promosi bertenggat waktu yang sengaja mengalahkan semua diskon lain
+// (perilaku ini sudah ada sebelum Fase B, dipertahankan apa adanya).
+export function effectivePrice(
+  item: PricedItem,
+  { discountBp, now }: { discountBp: number; now: Date },
+): bigint {
   if (isFlashActive(item, now)) return item.flashPrice!;
-  if (isMember) return item.memberPrice;
+  if (discountBp > 0) {
+    const discounted = item.sellingPrice - (item.sellingPrice * BigInt(discountBp)) / 10_000n;
+    return discounted < item.memberPrice ? item.memberPrice : discounted;
+  }
   return item.sellingPrice;
 }

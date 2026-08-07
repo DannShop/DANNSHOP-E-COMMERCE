@@ -45,12 +45,29 @@ describe("isFlashActive", () => {
 });
 
 describe("effectivePrice", () => {
-  it("guest, tanpa flash → sellingPrice", () => {
-    expect(effectivePrice(item(), { isMember: false, now })).toBe(10_000n);
+  it("tanpa tier (discountBp 0), tanpa flash → sellingPrice", () => {
+    expect(effectivePrice(item(), { discountBp: 0, now })).toBe(10_000n);
   });
 
-  it("member, tanpa flash → memberPrice", () => {
-    expect(effectivePrice(item(), { isMember: true, now })).toBe(9_000n);
+  it("login tanpa tier aktif TETAP sellingPrice (Fase B: login saja tidak lagi diskon otomatis)", () => {
+    // Item dengan memberPrice jauh lebih murah dari sellingPrice - kalau ini
+    // balik ke 9_000n, berarti perilaku lama "login = otomatis murah" diam-diam
+    // hidup lagi meski discountBp 0.
+    expect(effectivePrice(item({ memberPrice: 1_000n }), { discountBp: 0, now })).toBe(10_000n);
+  });
+
+  it("tier dengan diskon 10% (1000bp) → sellingPrice dipotong 10%", () => {
+    expect(effectivePrice(item(), { discountBp: 1000, now })).toBe(9_000n);
+  });
+
+  it("diskon tier dilantai memberPrice - tidak pernah lebih murah dari itu", () => {
+    // Diskon 50% dari 10_000 = 5_000, tapi memberPrice (lantai) 9_000 -> harus 9_000
+    expect(effectivePrice(item(), { discountBp: 5000, now })).toBe(9_000n);
+  });
+
+  it("diskon tier yang hasilnya masih di atas memberPrice tidak kena lantai", () => {
+    // Diskon 5% dari 10_000 = 9_500, masih di atas memberPrice 9_000
+    expect(effectivePrice(item(), { discountBp: 500, now })).toBe(9_500n);
   });
 
   it("guest, flash aktif → flashPrice", () => {
@@ -59,24 +76,24 @@ describe("effectivePrice", () => {
       flashStartAt: new Date("2026-08-06T09:00:00Z"),
       flashEndAt: new Date("2026-08-06T11:00:00Z"),
     });
-    expect(effectivePrice(flashItem, { isMember: false, now })).toBe(7_000n);
+    expect(effectivePrice(flashItem, { discountBp: 0, now })).toBe(7_000n);
   });
 
-  it("member, flash aktif → flashPrice menang atas memberPrice", () => {
+  it("tier aktif, flash aktif → flashPrice menang atas diskon tier", () => {
     const flashItem = item({
       flashPrice: 7_000n,
       flashStartAt: new Date("2026-08-06T09:00:00Z"),
       flashEndAt: new Date("2026-08-06T11:00:00Z"),
     });
-    expect(effectivePrice(flashItem, { isMember: true, now })).toBe(7_000n);
+    expect(effectivePrice(flashItem, { discountBp: 1000, now })).toBe(7_000n);
   });
 
-  it("member, flash sudah lewat → balik ke memberPrice, bukan sellingPrice", () => {
+  it("tier aktif, flash sudah lewat → balik ke diskon tier, bukan sellingPrice", () => {
     const expiredFlash = item({
       flashPrice: 7_000n,
       flashStartAt: new Date("2026-08-06T08:00:00Z"),
       flashEndAt: new Date("2026-08-06T09:00:00Z"),
     });
-    expect(effectivePrice(expiredFlash, { isMember: true, now })).toBe(9_000n);
+    expect(effectivePrice(expiredFlash, { discountBp: 1000, now })).toBe(9_000n);
   });
 });

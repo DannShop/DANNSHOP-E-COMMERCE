@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, CheckCircle2, XCircle, Copy, Check } from "lucide-react";
+import { Clock, CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { PaymentInstructions } from "@/components/payment/payment-instructions";
+import type { PaymentActions } from "@/lib/midtrans/client";
 
 const FINAL_STATUSES = ["PAID", "FAILED", "EXPIRED"];
 
@@ -19,14 +19,11 @@ interface DepositStatusResponse {
   depositId: string;
   status: string;
   amount: string;
+  bonusAmount: string;
   fee: string;
   uniqueCode: number;
   totalPaid: string;
-  payment:
-    | { kind: "qris"; qrString: string }
-    | { kind: "va"; bank: string; vaNumber: string }
-    | { kind: "echannel"; billerCode: string; billKey: string }
-    | null;
+  payment: PaymentActions | null;
   expiredAt: string | null;
 }
 
@@ -71,21 +68,9 @@ export function DepositStatus({
     refetchInterval: (query) => (FINAL_STATUSES.includes(query.state.data?.status ?? "") ? false : 3000),
   });
 
-  const [copied, setCopied] = useState(false);
   const deposit = data ?? initial;
   const isFinal = FINAL_STATUSES.includes(deposit.status);
   const StatusIcon = STATUS_ICON[deposit.status] ?? Clock;
-
-  async function handleCopyVa() {
-    if (deposit.payment?.kind !== "va") return;
-    try {
-      await navigator.clipboard.writeText(deposit.payment.vaNumber);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard API bisa tidak tersedia (mis. http tanpa TLS) — abaikan diam-diam
-    }
-  }
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
@@ -103,6 +88,12 @@ export function DepositStatus({
           <span className="text-muted-foreground">Nominal isi saldo</span>
           <span>{formatRupiah(deposit.amount)}</span>
         </div>
+        {Number(deposit.bonusAmount) > 0 && (
+          <div className="flex justify-between text-primary">
+            <span>Bonus tier member</span>
+            <span>+{formatRupiah(deposit.bonusAmount)}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className="text-muted-foreground">Biaya admin</span>
           <span>{formatRupiah(deposit.fee)}</span>
@@ -127,47 +118,8 @@ export function DepositStatus({
         </div>
       )}
 
-      {deposit.status === "PENDING" && deposit.payment?.kind === "qris" && qrDataUri && (
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
-          <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
-        </div>
-      )}
-
-      {deposit.status === "PENDING" && deposit.payment?.kind === "va" && (
-        <div className="flex flex-col gap-2 rounded-md border p-4">
-          <p className="text-sm text-muted-foreground">
-            Transfer ke Virtual Account {deposit.payment.bank.toUpperCase()}
-          </p>
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-xl font-bold tracking-wide">{deposit.payment.vaNumber}</span>
-            <Button type="button" size="xs" variant="outline" onClick={handleCopyVa}>
-              {copied ? (
-                <>
-                  <Check className="size-3.5" /> Tersalin
-                </>
-              ) : (
-                <>
-                  <Copy className="size-3.5" /> Salin
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {deposit.status === "PENDING" && deposit.payment?.kind === "echannel" && (
-        <div className="flex flex-col gap-2 rounded-md border p-4">
-          <p className="text-sm text-muted-foreground">Bayar lewat Mandiri Bill Payment (ATM/Livin&apos;)</p>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Kode Perusahaan</span>
-            <span className="font-mono font-bold">{deposit.payment.billerCode}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Kode Bayar</span>
-            <span className="font-mono font-bold">{deposit.payment.billKey}</span>
-          </div>
-        </div>
+      {deposit.status === "PENDING" && (
+        <PaymentInstructions payment={deposit.payment} qrDataUri={qrDataUri} />
       )}
 
       {deposit.status === "PAID" && (

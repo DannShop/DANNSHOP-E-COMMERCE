@@ -7,6 +7,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ORDER_STATUS_LABEL } from "@/lib/order/status-labels";
+import { parseBenefits, hasBenefit } from "@/lib/membership/benefits";
 import type { OrderStatus } from "@prisma/client";
 
 const TABS = [
@@ -45,6 +46,33 @@ export default async function AdminOrdersPage({
     orderBy: { createdAt: "desc" },
     take: 50,
   });
+
+  // Lencana prioritas (benefit "priority_badge") - batch query, bukan N+1 per
+  // baris. Guest (userId null) tidak mungkin punya tier, jadi difilter dulu.
+  const buyerIds = [...new Set(orders.map((o) => o.userId).filter((id): id is string => id !== null))];
+  const activeMemberships =
+    buyerIds.length > 0
+      ? await db.userMembership.findMany({
+          where: { userId: { in: buyerIds }, expiresAt: { gt: new Date() } },
+          orderBy: { expiresAt: "desc" },
+          include: { tier: { select: { name: true, badgeColor: true, benefits: true } } },
+        })
+      : [];
+  // expiresAt desc + "ambil kemunculan pertama per user" = tier AKTIF user itu
+  // (expiresAt terbesar), konsisten dengan aturan yang sama di
+  // lib/membership/tier.ts getMembershipContext - kalau tier aktifnya sendiri
+  // tidak punya priority_badge, tier lain yang overlap (kasus langka) tidak
+  // ikut dipertimbangkan.
+  const currentMembershipByUser = new Map<string, (typeof activeMemberships)[number]>();
+  for (const m of activeMemberships) {
+    if (!currentMembershipByUser.has(m.userId)) currentMembershipByUser.set(m.userId, m);
+  }
+  const priorityBadgeByUser = new Map<string, { name: string; color: string }>();
+  for (const [uid, m] of currentMembershipByUser) {
+    if (hasBenefit(parseBenefits(m.tier.benefits), "priority_badge")) {
+      priorityBadgeByUser.set(uid, { name: m.tier.name, color: m.tier.badgeColor });
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -99,7 +127,20 @@ export default async function AdminOrdersPage({
                     </Link>
                   </TableCell>
                   <TableCell className="whitespace-normal">{order.productName} · {order.itemName}</TableCell>
-                  <TableCell>{order.buyerEmail ?? order.buyerPhone ?? "-"}</TableCell>
+                  <TableCell>
+                    <span className="flex items-center gap-1.5">
+                      {order.buyerEmail ?? order.buyerPhone ?? "-"}
+                      {order.userId && priorityBadgeByUser.has(order.userId) && (
+                        <span
+                          className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                          style={{ backgroundColor: priorityBadgeByUser.get(order.userId)!.color }}
+                          title="Member tier prioritas - dahulukan penanganan"
+                        >
+                          {priorityBadgeByUser.get(order.userId)!.name}
+                        </span>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell className="tabular-nums">{formatRupiah(order.total)}</TableCell>
                   <TableCell>
                     <Badge variant="muted">{ORDER_STATUS_LABEL[order.status] ?? order.status}</Badge>

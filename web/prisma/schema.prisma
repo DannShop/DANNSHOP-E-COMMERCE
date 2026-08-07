@@ -62,6 +62,7 @@ enum LedgerType {
   ORDER_PAYMENT
   REFUND
   ADJUSTMENT
+  MEMBERSHIP // pembelian paket tier pakai saldo
 }
 
 enum DepositStatus {
@@ -104,6 +105,7 @@ model User {
   deposits        Deposit[]
   adminActionLogs AdminActionLog[]
   passwordResetTokens PasswordResetToken[]
+  memberships     UserMembership[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -138,7 +140,7 @@ model WalletLedger {
   type           LedgerType
   amount         BigInt // signed: +masuk / -keluar
   balanceAfter   BigInt
-  referenceType  String // "order" | "deposit" | "manual"
+  referenceType  String // "order" | "deposit" | "manual" | "membership"
   referenceId    String
   idempotencyKey String     @unique
   note           String?
@@ -155,6 +157,14 @@ model Deposit {
   fee           BigInt        @default(0)
   uniqueCode    Int           @default(0)
   totalPaid     BigInt        @default(0)
+  // Bonus saldo dari benefit tier "deposit_bonus" (lib/membership/benefits.ts).
+  // DIHITUNG & DISNAPSHOT saat deposit dibuat (bukan dibaca ulang saat
+  // settlement) - kalau tier user berubah atau benefit dimatikan admin di
+  // antara deposit dibuat dan dibayar, jumlah yang dijanjikan ke customer saat
+  // itu tetap yang dikreditkan. Dikreditkan BERSAMA `amount` dalam satu baris
+  // WalletLedger saat settlement (lihat lib/payment/settlement.ts) - bukan
+  // ledger terpisah, supaya balance tetap gampang direkonsiliasi.
+  bonusAmount   BigInt        @default(0)
   paymentMethod String?
   status        DepositStatus @default(PENDING)
   paymentRef    String?
@@ -162,6 +172,83 @@ model Deposit {
   expiredAt     DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+}
+
+// Paket tier member (bronze/silver/gold/platinum secara default, tapi nama,
+// harga, durasi, diskon, dan benefit SEPENUHNYA bebas diedit admin - tidak ada
+// yang hardcode di kode). Menggantikan konsep lama "login = otomatis dapat
+// memberPrice": diskon sekarang HANYA didapat lewat tier aktif yang dibeli.
+// ProductItem.memberPrice yang lama dipertahankan bukan sebagai harga member
+// otomatis lagi, melainkan LANTAI harga (floor) - diskon tier setinggi apa pun
+// tidak akan pernah membuat harga jatuh di bawah angka itu, jadi margin selalu
+// terlindungi biar admin tidak perlu menghitung ulang floor per tier per item.
+model MembershipTier {
+  id       String @id @default(cuid())
+  name     String
+  // Referensi stabil untuk badge/warna/kode - TIDAK berubah walau admin ganti
+  // `name` tampilan (mis. "Gold" -> "Gold Member" tidak memutus badge lama).
+  slug     String @unique
+  // Harga beli/perpanjang paket tier ini.
+  price        BigInt
+  durationDays Int
+  // Basis point (100 = 1.00%), pola sama dengan PaymentMethodConfig.feePercent
+  // - potongan harga produk untuk pemegang tier ini, diterapkan di atas
+  // sellingPrice lalu dilantai memberPrice (lihat lib/pricing/effective-price.ts).
+  discountPercent Int @default(0)
+  // Basis point bonus saldo tambahan tiap deposit - HANYA berlaku kalau
+  // benefit "deposit_bonus" ada di `benefits` (dua kontrol terpisah sengaja:
+  // admin bisa set angkanya dulu, baru menyalakan/mematikan tanpa reset angka).
+  depositBonusPercent Int @default(0)
+  // Daftar key benefit yang dicentang admin - lihat katalog lengkap & artinya
+  // masing-masing di lib/membership/benefits.ts. Disimpan sebagai JSON array
+  // string (pola sama dengan Product.inputFields), BUKAN tabel/enum terpisah,
+  // karena katalog benefit didefinisikan di kode (bukan admin-defined) dan
+  // jumlahnya kecil - satu tabel join di sini cuma menambah kerumitan tanpa
+  // manfaat nyata.
+  benefits Json
+  // Warna badge tier di UI publik & panel admin (hex). Kosmetik, tapi
+  // membedakan tier secara visual sekilas pandang tanpa baca teks.
+  badgeColor String  @default("#a3a3a3")
+  isActive   Boolean @default(true)
+  sortOrder  Int     @default(0)
+  memberships UserMembership[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Satu baris = satu periode kepemilikan tier yang berkelanjutan. Riwayat
+// (bukan cuma "tier aktif sekarang") sengaja dipertahankan - kalau nanti
+// dibutuhkan laporan "berapa lama user X jadi Gold member", datanya sudah ada
+// tanpa perlu migrasi ulang.
+//
+// Tier aktif seorang user = baris dengan expiresAt > now() yang paling baru
+// (lihat lib/membership/tier.ts, getMembershipContext). Beli tier YANG SAMA
+// selagi masih aktif memperpanjang expiresAt baris ini (bukan bikin baris
+// baru), supaya histori tidak terfragmentasi jadi banyak baris pendek untuk
+// satu langganan yang sama. Beli tier BEDA membuat baris baru mulai sekarang -
+// sisa waktu tier lama tidak dikembalikan/dikonversi (perilaku "upgrade
+// mengganti", bukan akumulasi, supaya tidak perlu logika proration).
+model UserMembership {
+  id     String         @id @default(cuid())
+  userId String
+  user   User           @relation(fields: [userId], references: [id])
+  tierId String
+  tier   MembershipTier @relation(fields: [tierId], references: [id])
+  startedAt DateTime @default(now())
+  expiresAt DateTime
+  // Snapshot nominal yang dibayar (0 untuk grant manual admin) - AdminActionLog
+  // sudah mencatat siapa admin yang melakukan grant, jadi tidak perlu FK
+  // terpisah ke admin di sini.
+  pricePaid BigInt
+  // Snapshot durationDays milik tier SAAT dibeli - kalau admin mengubah
+  // durationDays tier belakangan, member yang sudah beli tidak ikut
+  // berubah retroaktif (pola sama dengan Order menyimpan snapshot
+  // sellingPrice/productName, bukan membaca ulang harga produk saat ini).
+  durationDaysSnapshot Int
+  source String // "purchase" | "manual_grant"
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
 }
 
 // ===== Blok 1: Katalog =====
@@ -320,11 +407,18 @@ model Order {
 
 model PaymentMethodConfig {
   id         String   @id @default(cuid())
-  code       String   @unique // "qris" | "va_bca" | "va_bni" | "va_bri" | "va_mandiri" | "va_permata" | "va_cimb"
+  code       String   @unique // "qris" | "va_bca" | "va_bni" | "va_bri" | "va_mandiri" | "va_permata" | "va_cimb" | "ewallet_gopay" | "ewallet_shopeepay"
   label      String
   logoUrl    String?
   feeFlat    BigInt   @default(0)
   feePercent Int      @default(0) // basis point: 100 = 1.00%
+  // Batas waktu bayar per metode, diatur admin. Angka ini mengalir ke TIGA
+  // tempat sekaligus dan harus tetap satu nilai: expiredAt lokal order/deposit,
+  // custom_expiry yang dikirim ke Midtrans, dan runAt job expire-order/
+  // expire-deposit. Kalau ketiganya sampai berbeda, akan ada jendela waktu di
+  // mana customer masih bisa membayar sesuatu yang di sistem kita sudah mati.
+  // Divalidasi MIN_EXPIRY_MINUTES..MAX_EXPIRY_MINUTES di lib/payment/rules.ts.
+  expiryMinutes Int    @default(15)
   isActive   Boolean  @default(true)
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())

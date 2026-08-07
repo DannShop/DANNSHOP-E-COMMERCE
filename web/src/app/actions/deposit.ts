@@ -5,8 +5,10 @@ import { db } from "@/lib/db";
 import { depositSchema } from "@/lib/validation/deposit";
 import { chargeByMethodCode } from "@/lib/midtrans/client";
 import { calculateFee, calculateTotal, generateUniqueCode } from "@/lib/payment/fee";
-
-const EXPIRY_MINUTES = 15;
+import { getPaymentRules } from "@/lib/payment/rules";
+import { getMidtransCreds } from "@/lib/payment/gateway-config";
+import { getMembershipContext } from "@/lib/membership/tier";
+import { hasBenefit } from "@/lib/membership/benefits";
 
 export interface DepositResult {
   error?: string;
@@ -24,18 +26,40 @@ export async function createDeposit(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const methodCode = String(formData.get("paymentMethod") ?? "");
-  const method = await db.paymentMethodConfig.findUnique({ where: { code: methodCode } });
+  const [method, rules, membership] = await Promise.all([
+    db.paymentMethodConfig.findUnique({ where: { code: methodCode } }),
+    getPaymentRules(),
+    getMembershipContext(session.user.id),
+  ]);
   if (!method || !method.isActive) return { error: "Metode pembayaran tidak tersedia." };
 
-  const fee = calculateFee(parsed.data.amount, method.feeFlat, method.feePercent);
-  const uniqueCode = generateUniqueCode();
+  // Fee/kode unik bisa dimatikan admin (aturan global) ATAU benefit tier
+  // member (per user) - lihat alasan dua sumber di actions/checkout.ts.
+  // Kalau mati nilainya 0 tapi tetap lewat calculateTotal() yang sama, supaya
+  // totalPaid yang dicocokkan webhook saat settlement selalu dihitung lewat
+  // satu jalur.
+  const freeFeeBenefit = hasBenefit(membership.benefits, "free_deposit_fee");
+  const noUniqueCodeBenefit = hasBenefit(membership.benefits, "no_unique_code_deposit");
+  const fee = rules.feeDeposit && !freeFeeBenefit ? calculateFee(parsed.data.amount, method.feeFlat, method.feePercent) : 0n;
+  const uniqueCode =
+    rules.uniqueCodeDeposit && !noUniqueCodeBenefit ? generateUniqueCode(rules.uniqueCodeMin, rules.uniqueCodeMax) : 0;
   const totalPaid = calculateTotal(parsed.data.amount, fee, uniqueCode);
 
-  const expiredAt = new Date(Date.now() + EXPIRY_MINUTES * 60_000);
+  // Bonus saldo dari benefit tier "deposit_bonus" - dihitung & DISNAPSHOT di
+  // sini (bukan dibaca ulang saat settlement), lihat catatan lengkap di
+  // Deposit.bonusAmount pada schema.prisma. depositBonusBp sudah 0 kalau
+  // benefit tidak dicentang (lihat getMembershipContext), jadi tidak perlu
+  // cek hasBenefit terpisah di sini.
+  const bonusAmount = calculateFee(parsed.data.amount, 0n, membership.depositBonusBp);
+
+  // Expiry per metode, diatur admin (lihat PaymentMethodConfig.expiryMinutes).
+  const expiryMinutes = method.expiryMinutes;
+  const expiredAt = new Date(Date.now() + expiryMinutes * 60_000);
   const deposit = await db.deposit.create({
     data: {
       userId: session.user.id,
       amount: parsed.data.amount, // TETAP nominal murni yang akan dikreditkan - JANGAN diisi totalPaid
+      bonusAmount,
       fee,
       uniqueCode,
       totalPaid,
@@ -48,7 +72,8 @@ export async function createDeposit(
   try {
     // deposit.id (cuid) dipakai langsung sebagai Midtrans order_id - Deposit
     // tidak punya nomor publik terpisah seperti Order.orderNumber.
-    const { actions } = await chargeByMethodCode(method.code, deposit.id, Number(totalPaid), EXPIRY_MINUTES);
+    const creds = await getMidtransCreds();
+    const { actions } = await chargeByMethodCode(method.code, deposit.id, Number(totalPaid), expiryMinutes, creds);
     await db.deposit.update({ where: { id: deposit.id }, data: { rawResponse: actions as object } });
   } catch (e) {
     console.error("Deposit: charge Midtrans gagal", { depositId: deposit.id, method: method.code, error: e });

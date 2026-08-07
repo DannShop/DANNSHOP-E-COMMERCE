@@ -14,8 +14,9 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { PaymentInstructions } from "@/components/payment/payment-instructions";
+import type { PaymentActions } from "@/lib/midtrans/client";
 
 const FINAL_STATUSES = ["COMPLETED", "FAILED", "EXPIRED", "REFUNDED", "REFUND_PENDING", "NEEDS_REVIEW"];
 
@@ -34,11 +35,7 @@ interface OrderStatusResponse {
   fee: string;
   uniqueCode: number;
   total: string;
-  payment:
-    | { kind: "qris"; qrString: string }
-    | { kind: "va"; bank: string; vaNumber: string }
-    | { kind: "echannel"; billerCode: string; billKey: string }
-    | null;
+  payment: PaymentActions | null;
   expiredAt: string | null;
   sn: string | null;
 }
@@ -119,17 +116,6 @@ export function InvoiceStatus({
     }
   }
 
-  async function handleCopyVa() {
-    if (order.payment?.kind !== "va") return;
-    try {
-      await navigator.clipboard.writeText(order.payment.vaNumber);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard API bisa tidak tersedia (mis. http tanpa TLS) — abaikan diam-diam
-    }
-  }
-
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius)] border bg-card p-6">
       <div className="flex items-center justify-between gap-2">
@@ -177,47 +163,8 @@ export function InvoiceStatus({
         </div>
       )}
 
-      {order.status === "PENDING_PAYMENT" && order.payment?.kind === "qris" && qrDataUri && (
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-sm text-muted-foreground">Scan QRIS untuk membayar</p>
-          <img alt="QRIS pembayaran" src={qrDataUri} width={240} height={240} />
-        </div>
-      )}
-
-      {order.status === "PENDING_PAYMENT" && order.payment?.kind === "va" && (
-        <div className="flex flex-col gap-2 rounded-md border p-4">
-          <p className="text-sm text-muted-foreground">
-            Transfer ke Virtual Account {order.payment.bank.toUpperCase()}
-          </p>
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-xl font-bold tracking-wide">{order.payment.vaNumber}</span>
-            <Button type="button" size="xs" variant="outline" onClick={handleCopyVa}>
-              {copied ? (
-                <>
-                  <Check className="size-3.5" /> Tersalin
-                </>
-              ) : (
-                <>
-                  <Copy className="size-3.5" /> Salin
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {order.status === "PENDING_PAYMENT" && order.payment?.kind === "echannel" && (
-        <div className="flex flex-col gap-2 rounded-md border p-4">
-          <p className="text-sm text-muted-foreground">Bayar lewat Mandiri Bill Payment (ATM/Livin&apos;)</p>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Kode Perusahaan</span>
-            <span className="font-mono font-bold">{order.payment.billerCode}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Kode Bayar</span>
-            <span className="font-mono font-bold">{order.payment.billKey}</span>
-          </div>
-        </div>
+      {order.status === "PENDING_PAYMENT" && (
+        <PaymentInstructions payment={order.payment} qrDataUri={qrDataUri} />
       )}
 
       {order.status === "COMPLETED" && order.sn && (

@@ -24,6 +24,7 @@ export default async function PaymentMethodsPage() {
               logoUrl: m.logoUrl,
               feeFlat: m.feeFlat.toString(),
               feePercent: m.feePercent,
+              expiryMinutes: m.expiryMinutes,
               sortOrder: m.sortOrder,
               isActive: m.isActive,
             }}

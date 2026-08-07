@@ -99,7 +99,11 @@ function paymentInstructionsHtml(actions: PaymentActions | null): string {
   if (actions.kind === "va") {
     return `<p>Transfer ke <strong>Virtual Account ${actions.bank.toUpperCase()}</strong>:</p><p style="font-size:20px;font-weight:bold;letter-spacing:1px;">${actions.vaNumber}</p>`;
   }
-  return `<p>Bayar lewat <strong>Mandiri Bill Payment</strong> (ATM/Livin&apos;):</p><p>Kode Perusahaan: <strong>${actions.billerCode}</strong><br/>Kode Bayar: <strong>${actions.billKey}</strong></p>`;
+  if (actions.kind === "echannel") {
+    return `<p>Bayar lewat <strong>Mandiri Bill Payment</strong> (ATM/Livin&apos;):</p><p>Kode Perusahaan: <strong>${actions.billerCode}</strong><br/>Kode Bayar: <strong>${actions.billKey}</strong></p>`;
+  }
+  const label = actions.provider === "gopay" ? "GoPay" : "ShopeePay";
+  return `<p>Bayar dengan <strong>${label}</strong> — buka link invoice di bawah untuk tombol pembayarannya.</p>`;
 }
 
 function wrapEmail(title: string, bodyHtml: string): string {

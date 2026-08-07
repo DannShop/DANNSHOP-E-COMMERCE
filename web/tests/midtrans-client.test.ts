@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chargeQris, getTransactionStatus, chargeBankTransfer, chargePermataVA, chargeEchannel } from "@/lib/midtrans/client";
+import {
+  chargeQris,
+  getTransactionStatus,
+  chargeBankTransfer,
+  chargePermataVA,
+  chargeEchannel,
+  chargeEwallet,
+  chargeByMethodCode,
+} from "@/lib/midtrans/client";
 
 const creds = { serverKey: "SB-server-key", isProduction: false };
 
@@ -150,5 +158,81 @@ describe("chargeEchannel", () => {
 
     expect(result.billKey).toBe("778347787706");
     expect(result.billerCode).toBe("70012");
+  });
+});
+
+describe("chargeEwallet", () => {
+  it("GoPay: mencari action berdasarkan name, bukan indeks array", async () => {
+    // Urutan action SENGAJA dibalik dari urutan "wajar" (deeplink duluan,
+    // baru QR) - kalau parser mengandalkan actions[0]/actions[1], test ini gagal.
+    mockFetchOnce({
+      status_code: "201", transaction_id: "trx-gopay", order_id: "INV-5",
+      transaction_status: "pending",
+      actions: [
+        { name: "get-status", method: "GET", url: "https://x/status" },
+        { name: "deeplink-redirect", method: "GET", url: "https://gojek/pay/x" },
+        { name: "generate-qr-code", method: "GET", url: "https://x/qr.png" },
+        { name: "cancel", method: "POST", url: "https://x/cancel" },
+      ],
+    });
+
+    const result = await chargeEwallet({ orderId: "INV-5", grossAmount: 22000, provider: "gopay", expiryMinutes: 15 }, creds);
+
+    expect(result.deeplink).toBe("https://gojek/pay/x");
+    expect(result.qrUrl).toBe("https://x/qr.png");
+  });
+
+  it("ShopeePay: tanpa generate-qr-code, qrUrl null (bukan error)", async () => {
+    mockFetchOnce({
+      status_code: "201", transaction_id: "trx-shopee", order_id: "INV-6",
+      transaction_status: "pending",
+      actions: [{ name: "deeplink-redirect", method: "GET", url: "https://shopee/pay/y" }],
+    });
+
+    const result = await chargeEwallet({ orderId: "INV-6", grossAmount: 22000, provider: "shopeepay", expiryMinutes: 15 }, creds);
+
+    expect(result.deeplink).toBe("https://shopee/pay/y");
+    expect(result.qrUrl).toBeNull();
+  });
+
+  it("melempar error kalau deeplink-redirect tidak ada di response", async () => {
+    mockFetchOnce({
+      status_code: "201", transaction_id: "trx-x", order_id: "INV-7",
+      transaction_status: "pending",
+      actions: [{ name: "generate-qr-code", method: "GET", url: "https://x/qr.png" }],
+    });
+
+    await expect(
+      chargeEwallet({ orderId: "INV-7", grossAmount: 22000, provider: "gopay", expiryMinutes: 15 }, creds),
+    ).rejects.toThrow(/deeplink-redirect/);
+  });
+
+  it("body request memakai payment_type sesuai provider", async () => {
+    const fn = mockFetchOnce({
+      status_code: "201", transaction_id: "trx-x", order_id: "INV-8",
+      transaction_status: "pending",
+      actions: [{ name: "deeplink-redirect", method: "GET", url: "https://x" }],
+    });
+    await chargeEwallet({ orderId: "INV-8", grossAmount: 22000, provider: "shopeepay", expiryMinutes: 15 }, creds);
+    const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.payment_type).toBe("shopeepay");
+  });
+});
+
+describe("chargeByMethodCode", () => {
+  it("ewallet_gopay dan ewallet_shopeepay dipetakan ke chargeEwallet dengan provider yang benar", async () => {
+    mockFetchOnce({
+      status_code: "201", transaction_id: "trx-x", order_id: "INV-9",
+      transaction_status: "pending",
+      actions: [{ name: "deeplink-redirect", method: "GET", url: "https://gojek/x" }],
+    });
+    const { actions } = await chargeByMethodCode("ewallet_gopay", "INV-9", 22000, 15, creds);
+    expect(actions).toEqual({ kind: "ewallet", provider: "gopay", deeplink: "https://gojek/x", qrUrl: null });
+  });
+
+  it("method tidak dikenal melempar error", async () => {
+    await expect(chargeByMethodCode("dompet-misterius", "INV-10", 22000, 15, creds)).rejects.toThrow(
+      /tidak dikenali/,
+    );
   });
 });

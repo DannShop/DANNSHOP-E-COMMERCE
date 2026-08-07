@@ -32,18 +32,42 @@ describe("calculateFee", () => {
 });
 
 describe("generateUniqueCode", () => {
-  it("selalu antara 1 dan 999 inklusif", () => {
+  it("selalu di dalam range yang diberikan (inklusif)", () => {
     for (let i = 0; i < 200; i++) {
-      const code = generateUniqueCode();
+      const code = generateUniqueCode(1, 999);
       expect(code).toBeGreaterThanOrEqual(1);
       expect(code).toBeLessThanOrEqual(999);
     }
   });
 
-  it("pakai crypto.randomInt, bukan Math.random", async () => {
+  it("range custom dari admin (mis. 100-500) tetap dihormati", () => {
+    for (let i = 0; i < 200; i++) {
+      const code = generateUniqueCode(100, 500);
+      expect(code).toBeGreaterThanOrEqual(100);
+      expect(code).toBeLessThanOrEqual(500);
+    }
+  });
+
+  it("min === max menghasilkan nilai tetap", () => {
+    expect(generateUniqueCode(50, 50)).toBe(50);
+  });
+
+  it("pakai crypto.randomInt dengan upper bound eksklusif (max+1)", async () => {
     const crypto = await import("node:crypto");
-    generateUniqueCode();
+    generateUniqueCode(1, 999);
     expect(crypto.randomInt).toHaveBeenCalledWith(1, 1000);
+  });
+
+  it("menolak range terbalik (min > max)", () => {
+    expect(() => generateUniqueCode(500, 100)).toThrow();
+  });
+
+  it("menolak min di bawah 1", () => {
+    expect(() => generateUniqueCode(0, 100)).toThrow();
+  });
+
+  it("menolak max di atas MAX_UNIQUE_CODE", () => {
+    expect(() => generateUniqueCode(1, 100_000)).toThrow();
   });
 });
 
@@ -52,7 +76,7 @@ describe("calculateTotal", () => {
     expect(calculateTotal(22000n, 4000n, 237)).toBe(26237n);
   });
 
-  it("kode unik 0 (mis. bayar saldo) tidak menambah apa-apa", () => {
+  it("kode unik 0 (mis. bayar saldo, atau toggle kode unik dimatikan) tidak menambah apa-apa", () => {
     expect(calculateTotal(22000n, 0n, 0)).toBe(22000n);
   });
 });

@@ -9,7 +9,7 @@ export default function RegisterPage() {
   return (
     <AuthLayout
       title="Buat akun"
-      description="Gratis. Dapat harga member, saldo, dan riwayat pesanan yang tersimpan rapi."
+      description="Gratis. Punya saldo, riwayat pesanan tersimpan rapi, dan bisa upgrade ke tier member untuk diskon & benefit tambahan."
       footer={
         <>
           Sudah punya akun?{" "}

@@ -57,15 +57,14 @@ export async function getCatalogHomeData(): Promise<CatalogCategory[]> {
   });
 
   // "Mulai dari Rp X" ikut harga flash kalau sedang aktif, tapi tidak ikut
-  // harga member (kartu katalog belum tentu tahu status login viewer) -
-  // selalu tampilkan harga yang berlaku untuk pengunjung belum login, biar
-  // tidak pernah menjanjikan angka yang lebih murah dari yang sebenarnya
-  // ditagih ke tamu.
+  // diskon tier (kartu katalog belum tentu tahu tier viewer) - selalu
+  // tampilkan harga yang berlaku untuk pengunjung tanpa tier, biar tidak
+  // pernah menjanjikan angka yang lebih murah dari yang sebenarnya ditagih.
   const startingPriceOf = (items: PricedItem[]) =>
     items.reduce((min, i) => {
-      const price = effectivePrice(i, { isMember: false, now });
+      const price = effectivePrice(i, { discountBp: 0, now });
       return price < min ? price : min;
-    }, effectivePrice(items[0], { isMember: false, now }));
+    }, effectivePrice(items[0], { discountBp: 0, now }));
 
   return categories.map((c) => ({
     id: c.id,
@@ -133,15 +132,15 @@ export interface ProductForCheckout {
   }[];
 }
 
-// isMember dipakai buat resolve harga efektif per item (lihat
-// lib/pricing/effective-price.ts) - caller wajib sudah tahu status login
-// viewer sebelum manggil ini, supaya harga yang dikirim ke client sudah
-// final, bukan raw sellingPrice/memberPrice yang bisa salah dibaca titik
-// lain (persis bug yang pernah terjadi di checkout.ts).
+// discountBp dipakai buat resolve harga efektif per item (lihat
+// lib/pricing/effective-price.ts) - caller wajib sudah tahu diskon tier
+// viewer (lib/membership/tier.ts) sebelum manggil ini, supaya harga yang
+// dikirim ke client sudah final, bukan raw sellingPrice/memberPrice yang bisa
+// salah dibaca titik lain (persis bug yang pernah terjadi di checkout.ts).
 export async function getProductForCheckout(
   categorySlug: string,
   productSlug: string,
-  isMember: boolean,
+  discountBp: number,
 ): Promise<ProductForCheckout | null> {
   const now = new Date();
   const [product, activeProviders] = await Promise.all([
@@ -164,8 +163,8 @@ export async function getProductForCheckout(
   // Termurah (harga efektif yang beneran dibayar) duluan; sortOrder cuma
   // pemecah seri kalau ada dua nominal dengan harga efektif sama persis.
   const sortedItems = [...product.items].sort((a, b) => {
-    const priceA = effectivePrice(a, { isMember, now });
-    const priceB = effectivePrice(b, { isMember, now });
+    const priceA = effectivePrice(a, { discountBp, now });
+    const priceB = effectivePrice(b, { discountBp, now });
     if (priceA !== priceB) return priceA < priceB ? -1 : 1;
     return a.sortOrder - b.sortOrder;
   });
@@ -173,7 +172,7 @@ export async function getProductForCheckout(
     id: item.id,
     name: item.name,
     sellingPrice: item.sellingPrice,
-    effectivePrice: effectivePrice(item, { isMember, now }),
+    effectivePrice: effectivePrice(item, { discountBp, now }),
     isFlashActive: isFlashActive(item, now),
     groupName: item.group?.name ?? null,
     groupSortOrder: item.group?.sortOrder ?? null,

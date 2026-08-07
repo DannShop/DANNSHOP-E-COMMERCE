@@ -22,6 +22,7 @@ export function PaymentMethodForm({
     logoUrl: string | null;
     feeFlat: string;
     feePercent: number;
+    expiryMinutes: number;
     sortOrder: number;
     isActive: boolean;
   };
@@ -37,7 +38,7 @@ export function PaymentMethodForm({
   const uploadFields = useMemo(() => ({ code: method.code }), [method.code]);
 
   return (
-    <form action={formAction} className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-7 sm:items-end">
+    <form action={formAction} className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-8 sm:items-end">
       <input type="hidden" name="id" value={method.id} />
       <div className="col-span-2 sm:col-span-1">
         <Label className="text-xs text-muted-foreground">{method.code}</Label>
@@ -78,6 +79,20 @@ export function PaymentMethodForm({
       <div>
         <Label htmlFor={`feePercent-${method.id}`} className="text-xs">Fee (basis point)</Label>
         <Input id={`feePercent-${method.id}`} name="feePercent" type="number" min={0} defaultValue={method.feePercent} />
+      </div>
+      <div>
+        <Label htmlFor={`expiryMinutes-${method.id}`} className="text-xs">Batas bayar (menit)</Label>
+        {/* Minimum 15 bukan angka pilihan sendiri: scheduler expiry Midtrans
+            hanya andal untuk durasi >= 15 menit. Di bawah itu transaksi bisa
+            tetap hidup di Midtrans padahal di sistem kita sudah kadaluarsa. */}
+        <Input
+          id={`expiryMinutes-${method.id}`}
+          name="expiryMinutes"
+          type="number"
+          min={15}
+          max={1440}
+          defaultValue={method.expiryMinutes}
+        />
       </div>
       <div>
         <Label htmlFor={`sortOrder-${method.id}`} className="text-xs">Urutan</Label>

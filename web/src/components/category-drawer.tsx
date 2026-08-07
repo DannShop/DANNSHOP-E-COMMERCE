@@ -14,6 +14,7 @@ import {
   Shield,
   LogOut,
   Receipt,
+  Crown,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -84,6 +85,14 @@ export function CategoryDrawer({
               >
                 <Receipt className="size-4 text-muted-foreground" aria-hidden="true" />
                 Cek Transaksi
+              </Link>
+              <Link
+                href="/membership"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted"
+              >
+                <Crown className="size-4 text-muted-foreground" aria-hidden="true" />
+                Membership
               </Link>
             </div>
 

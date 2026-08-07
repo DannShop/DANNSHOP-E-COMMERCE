@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, Plus, Crown } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { ORDER_STATUS_LABEL, DEPOSIT_STATUS_LABEL } from "@/lib/order/status-labels";
+import { getMembershipContext } from "@/lib/membership/tier";
 
 export const metadata: Metadata = { title: "Akun Saya" };
 
@@ -46,10 +47,11 @@ export default async function AccountPage() {
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const [wallet, recentOrders, recentDeposits] = await Promise.all([
+  const [wallet, recentOrders, recentDeposits, membership] = await Promise.all([
     db.wallet.findUnique({ where: { userId } }),
     db.order.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 5 }),
     db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 3 }),
+    getMembershipContext(userId),
   ]);
 
   return (
@@ -74,6 +76,39 @@ export default async function AccountPage() {
           Isi Saldo
         </Link>
       </section>
+
+      {/* ===== Kartu status tier ===== */}
+      <Link
+        href="/membership"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/60 px-5 py-4 transition-colors duration-200 ease-out hover:bg-foreground/[0.04]"
+      >
+        <span className="flex items-center gap-3">
+          <span
+            className="flex size-10 shrink-0 items-center justify-center rounded-full text-white"
+            style={{ backgroundColor: membership.tier?.badgeColor ?? "var(--muted-foreground)" }}
+          >
+            <Crown className="size-5" aria-hidden="true" />
+          </span>
+          <span>
+            {membership.tier ? (
+              <>
+                <span className="block text-sm font-semibold">Tier {membership.tier.name}</span>
+                <span className="block text-xs text-muted-foreground">
+                  Berlaku sampai {membership.expiresAt ? formatTanggal(membership.expiresAt) : "-"}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="block text-sm font-semibold">Belum punya tier member</span>
+                <span className="block text-xs text-muted-foreground">
+                  Upgrade untuk diskon harga produk & benefit tambahan
+                </span>
+              </>
+            )}
+          </span>
+        </span>
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </Link>
 
       {/* ===== Transaksi terakhir ===== */}
       <section className="flex flex-col gap-3">

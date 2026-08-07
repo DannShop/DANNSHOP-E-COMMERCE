@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getProductForCheckout } from "@/lib/catalog/public";
+import { getMembershipContext } from "@/lib/membership/tier";
 import { ProductDetailClient } from "./product-detail-client";
 
 export default async function ProductDetailPage({
@@ -10,15 +11,15 @@ export default async function ProductDetailPage({
   params: Promise<{ categorySlug: string; productSlug: string }>;
 }) {
   const { categorySlug, productSlug } = await params;
-  // auth() dulu (murah, JWT, tidak hit DB) supaya status login sudah diketahui
-  // sebelum fetch produk — getProductForCheckout butuh isMember buat resolve
-  // harga efektif (flash/member/normal) per item di server, bukan dihitung
-  // belakangan di client.
+  // auth() dulu (murah, JWT, tidak hit DB) supaya userId sudah diketahui
+  // sebelum fetch produk — getProductForCheckout butuh discountBp (dari tier
+  // aktif, bukan lagi sekadar status login) buat resolve harga efektif
+  // (flash/tier/normal) per item di server, bukan dihitung belakangan di client.
   const authSession = await auth();
-  const isMember = Boolean(authSession?.user?.id);
+  const membership = await getMembershipContext(authSession?.user?.id ?? null);
 
   const [product, paymentMethods] = await Promise.all([
-    getProductForCheckout(categorySlug, productSlug, isMember),
+    getProductForCheckout(categorySlug, productSlug, membership.discountBp),
     db.paymentMethodConfig.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
   ]);
   if (!product) notFound();

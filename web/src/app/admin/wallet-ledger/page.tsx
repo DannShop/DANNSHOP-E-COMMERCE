@@ -10,6 +10,7 @@ const TYPE_LABEL: Record<LedgerType, string> = {
   ORDER_PAYMENT: "Bayar Order",
   REFUND: "Refund",
   ADJUSTMENT: "Penyesuaian",
+  MEMBERSHIP: "Beli Tier",
 };
 
 const TYPE_BADGE_VARIANT: Record<LedgerType, "success" | "muted" | "warning"> = {
@@ -17,12 +18,14 @@ const TYPE_BADGE_VARIANT: Record<LedgerType, "success" | "muted" | "warning"> = 
   ORDER_PAYMENT: "muted",
   REFUND: "warning",
   ADJUSTMENT: "warning",
+  MEMBERSHIP: "muted",
 };
 
 const TABS = [
   { key: "all", label: "Semua", type: null },
   { key: "deposit", label: "Deposit", type: "DEPOSIT" as LedgerType },
   { key: "order_payment", label: "Bayar Order", type: "ORDER_PAYMENT" as LedgerType },
+  { key: "membership", label: "Beli Tier", type: "MEMBERSHIP" as LedgerType },
   { key: "refund", label: "Refund", type: "REFUND" as LedgerType },
   { key: "adjustment", label: "Penyesuaian", type: "ADJUSTMENT" as LedgerType },
 ] as const;

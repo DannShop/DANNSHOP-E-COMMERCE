@@ -31,6 +31,11 @@ const PAYMENT_METHODS = [
   { code: "va_mandiri", label: "Mandiri Bill Payment", logoUrl: "/payment-logos/mandiri.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 5 },
   { code: "va_permata", label: "Permata Virtual Account", logoUrl: "/payment-logos/permata.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 6 },
   { code: "va_cimb", label: "CIMB Niaga Virtual Account", logoUrl: "/payment-logos/cimb-niaga.svg", feeFlat: 4000n, feePercent: 0, sortOrder: 7 },
+  // E-wallet sengaja nonaktif secara default - channel-nya harus diaktifkan
+  // dulu di dashboard Midtrans, kalau tidak charge-nya ditolak. Lihat catatan
+  // di migration 20260807000000_add_payment_expiry_and_ewallet.
+  { code: "ewallet_gopay", label: "GoPay", logoUrl: null, feeFlat: 0n, feePercent: 200, sortOrder: 8, isActive: false },
+  { code: "ewallet_shopeepay", label: "ShopeePay", logoUrl: null, feeFlat: 0n, feePercent: 200, sortOrder: 9, isActive: false },
 ];
 
 const SAMPLE_PRODUCTS = [

@@ -32,6 +32,7 @@ export default async function DepositStatusPage({
           depositId: deposit.id,
           status: deposit.status,
           amount: deposit.amount.toString(),
+          bonusAmount: deposit.bonusAmount.toString(),
           fee: deposit.fee.toString(),
           uniqueCode: deposit.uniqueCode,
           totalPaid: deposit.totalPaid.toString(),

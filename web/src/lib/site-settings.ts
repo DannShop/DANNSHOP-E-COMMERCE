@@ -47,15 +47,15 @@ const DEFAULT_FAQ_ITEMS: FaqItem[] = [
   },
   {
     q: "Apakah harus punya akun untuk berbelanja?",
-    a: "Tidak wajib — checkout sebagai tamu (guest) tetap bisa dilakukan. Tapi dengan akun, kamu bisa isi saldo, bayar lebih cepat pakai saldo, dapat harga member yang lebih murah di beberapa produk, dan melihat riwayat pesanan lengkap.",
+    a: "Tidak wajib — checkout sebagai tamu (guest) tetap bisa dilakukan. Tapi dengan akun, kamu bisa isi saldo, bayar lebih cepat pakai saldo, upgrade ke tier member untuk diskon & benefit tambahan, dan melihat riwayat pesanan lengkap.",
   },
   {
     q: "Bagaimana cara mengisi saldo akun?",
     a: "Login, buka halaman Isi Saldo di Akun Saya, masukkan nominal, lalu bayar lewat metode yang sama seperti checkout biasa (QRIS/VA/Mandiri). Saldo otomatis bertambah begitu pembayaran dikonfirmasi sistem — tidak perlu konfirmasi manual ke admin.",
   },
   {
-    q: "Apa itu harga member, kenapa harganya beda kalau saya login?",
-    a: "Beberapa produk punya harga khusus untuk member (akun yang sudah login) yang lebih murah dari harga umum. Ini otomatis berlaku begitu kamu checkout dalam keadaan login — tidak perlu kode/kupon apa pun.",
+    q: "Apa itu tier member, gimana cara dapat diskon?",
+    a: "Tier member (mis. Bronze/Silver/Gold/Platinum) adalah paket berlangganan yang bisa dibeli lewat halaman Membership — tiap tier punya diskon harga produk dan benefit lain (bebas biaya admin, tanpa kode unik, bonus saldo isi ulang, dsb.) sesuai yang diatur. Login saja tidak otomatis memberi diskon — harus punya tier aktif.",
   },
   {
     q: "Apa itu Flash Sale?",
@@ -75,7 +75,7 @@ Pembuatan akun bersifat opsional — transaksi tanpa akun (checkout sebagai tamu
 Pastikan data yang dimasukkan saat checkout (User ID, Zone ID, nomor tujuan, dan sejenisnya) sudah benar sebelum menyelesaikan pembayaran. DannShop tidak bertanggung jawab atas kesalahan input data yang menyebabkan produk terkirim ke akun/nomor yang salah, karena proses pengiriman berjalan otomatis berdasarkan data yang dimasukkan pengguna sendiri.
 
 ## 4. Harga, Pembayaran & Kode Unik
-Harga yang berlaku adalah harga yang tampil di halaman produk pada saat pesanan dibuat — termasuk harga member (untuk pengguna yang login) atau harga flash sale (untuk periode waktu terbatas) bila berlaku. Pembayaran non-saldo dapat disertai kode unik (Rp1–999) untuk mempermudah pencocokan otomatis dan wajib dibayar sesuai nominal total yang tertera sebelum batas waktu yang ditentukan. Pesanan yang tidak dibayar sampai batas waktu akan otomatis kedaluwarsa dan perlu dibuat ulang.
+Harga yang berlaku adalah harga yang tampil di halaman produk pada saat pesanan dibuat — termasuk diskon tier member (untuk pengguna dengan langganan tier aktif) atau harga flash sale (untuk periode waktu terbatas) bila berlaku. Pembayaran non-saldo dapat disertai kode unik (Rp1–999) untuk mempermudah pencocokan otomatis dan wajib dibayar sesuai nominal total yang tertera sebelum batas waktu yang ditentukan. Pesanan yang tidak dibayar sampai batas waktu akan otomatis kedaluwarsa dan perlu dibuat ulang.
 
 ## 5. Pengiriman Produk & Kegagalan Sistem
 Produk dikirim otomatis oleh sistem setelah pembayaran terkonfirmasi. Jika terjadi kegagalan pengiriman di luar kendali kami (gangguan sistem provider, perubahan harga modal mendadak, dsb.), sistem akan mencoba ulang secara otomatis; jika tetap gagal, dana dikembalikan sesuai ketentuan Kebijakan Refund pada Pasal 6.

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadToBlob } from "@/lib/blob-upload";
+import { MIN_EXPIRY_MINUTES, MAX_EXPIRY_MINUTES } from "@/lib/payment/rules";
 import { z } from "zod";
 
 export type ActionResult = { ok?: string; error?: string };
@@ -53,6 +54,15 @@ const updateSchema = z.object({
     .transform((v) => (v ? v : null)),
   feeFlat: z.coerce.bigint().min(0n, "Fee flat tidak boleh negatif"),
   feePercent: z.coerce.number().int().min(0, "Fee persen tidak boleh negatif"),
+  // Batas bawah 15 menit bukan angka pilihan sendiri: scheduler expiry Midtrans
+  // hanya andal untuk custom_expiry >= 15 menit (lihat MIN_EXPIRY_MINUTES di
+  // lib/payment/rules.ts). Di bawah itu transaksi bisa tetap hidup di Midtrans
+  // padahal sistem kita sudah menganggapnya kadaluarsa.
+  expiryMinutes: z.coerce
+    .number()
+    .int()
+    .min(MIN_EXPIRY_MINUTES, `Batas bayar minimal ${MIN_EXPIRY_MINUTES} menit (batas andal scheduler Midtrans)`)
+    .max(MAX_EXPIRY_MINUTES, `Batas bayar maksimal ${MAX_EXPIRY_MINUTES} menit (24 jam)`),
   sortOrder: z.coerce.number().int().default(0),
   isActive: z.string().optional(),
 });
@@ -68,6 +78,7 @@ export async function updatePaymentMethod(formData: FormData): Promise<ActionRes
     logoUrl: formData.get("logoUrl"),
     feeFlat: formData.get("feeFlat"),
     feePercent: formData.get("feePercent"),
+    expiryMinutes: formData.get("expiryMinutes"),
     sortOrder: formData.get("sortOrder") ?? 0,
     isActive: formData.get("isActive"),
   });
@@ -80,6 +91,7 @@ export async function updatePaymentMethod(formData: FormData): Promise<ActionRes
       logoUrl: parsed.data.logoUrl,
       feeFlat: parsed.data.feeFlat,
       feePercent: parsed.data.feePercent,
+      expiryMinutes: parsed.data.expiryMinutes,
       sortOrder: parsed.data.sortOrder,
       isActive: parsed.data.isActive === "on",
     },
@@ -87,6 +99,7 @@ export async function updatePaymentMethod(formData: FormData): Promise<ActionRes
   await logAdmin(admin.adminId, "payment_method.update", parsed.data.id, {
     feeFlat: parsed.data.feeFlat.toString(),
     feePercent: parsed.data.feePercent,
+    expiryMinutes: parsed.data.expiryMinutes,
     isActive: parsed.data.isActive === "on",
   });
   revalidatePath("/admin/payment-methods");

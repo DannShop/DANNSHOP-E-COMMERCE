@@ -9,9 +9,11 @@ import {
   GalleryHorizontalEnd,
   Settings,
   CreditCard,
+  KeyRound,
   Server,
   Webhook,
   Activity,
+  Crown,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
@@ -56,6 +58,10 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Membership",
+    items: [{ href: "/admin/membership-tiers", label: "Tier Member", icon: Crown }],
+  },
+  {
     label: "Storefront",
     items: [
       { href: "/admin/banners", label: "Banner", icon: GalleryHorizontalEnd },
@@ -65,6 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Pembayaran & Provider",
     items: [
+      { href: "/admin/payment-config", label: "Konfigurasi Payment", icon: KeyRound },
       { href: "/admin/payment-methods", label: "Metode Pembayaran", icon: CreditCard },
       { href: "/admin/providers", label: "Providers", icon: Server },
       { href: "/admin/webhooks", label: "Log Callback", icon: Webhook },

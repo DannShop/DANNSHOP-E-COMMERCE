@@ -2,14 +2,22 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { PaymentActions } from "@/lib/midtrans/client";
+import { maybeReconcileDeposit } from "@/lib/payment/reconcile";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ depositId: string }> }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Harus login untuk mengakses deposit" }, { status: 401 });
 
   const { depositId } = await params;
-  const deposit = await db.deposit.findUnique({ where: { id: depositId } });
+  let deposit = await db.deposit.findUnique({ where: { id: depositId } });
   if (!deposit || deposit.userId !== session.user.id) return NextResponse.json({ error: "Deposit tidak ditemukan" }, { status: 404 });
+
+  // Jaring pengaman kalau webhook Midtrans tidak sampai (throttle 20 detik di
+  // dalam). Dicek SETELAH kepemilikan diverifikasi supaya orang lain tidak bisa
+  // memicu panggilan Midtrans atas deposit yang bukan miliknya.
+  if (await maybeReconcileDeposit(deposit)) {
+    deposit = (await db.deposit.findUnique({ where: { id: depositId } })) ?? deposit;
+  }
 
   const payment = deposit.rawResponse as PaymentActions | null;
 
@@ -18,6 +26,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dep
       depositId: deposit.id,
       status: deposit.status,
       amount: deposit.amount.toString(),
+      bonusAmount: deposit.bonusAmount.toString(),
       fee: deposit.fee.toString(),
       uniqueCode: deposit.uniqueCode,
       totalPaid: deposit.totalPaid.toString(),
