@@ -7,6 +7,7 @@ import {
   retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction,
 } from "@/app/actions/orders";
 import { OrderActions } from "./order-actions";
+import type { PaymentActions } from "@/lib/midtrans/client";
 
 function formatRupiah(amount: bigint): string {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(amount));
@@ -61,6 +62,37 @@ export default async function AdminOrderDetailPage({
               <dt className="text-muted-foreground">Target</dt>
               <dd>{JSON.stringify(order.target)}</dd>
             </dl>
+
+            {/* Data pembayaran mentah dari Midtrans. Untuk QRIS, `qrUrl` adalah
+                URL gambar QR yang di-host Midtrans - itulah yang diminta
+                simulator sandbox (simulator TIDAK menerima data URI hasil
+                render sendiri di halaman invoice). Ditaruh di panel admin,
+                bukan halaman invoice publik, karena murni alat uji internal. */}
+            {(() => {
+              const actions = order.payment?.actions as PaymentActions | null;
+              if (!actions) return null;
+              const qrUrl = actions.kind === "qris" ? (actions.qrUrl ?? null) : null;
+              const deeplink = actions.kind === "ewallet" ? actions.deeplink : null;
+              if (!qrUrl && !deeplink) return null;
+              return (
+                <div className="mt-3 border-t pt-3">
+                  <p className="mb-1 text-xs font-medium">Link uji pembayaran</p>
+                  <a
+                    href={qrUrl ?? deeplink ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-xs break-all text-primary hover:underline"
+                  >
+                    {qrUrl ?? deeplink}
+                  </a>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {qrUrl
+                      ? "Salin URL ini ke simulator QRIS sandbox Midtrans untuk menandai transaksi sebagai terbayar."
+                      : "Deeplink aplikasi e-wallet."}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="rounded-xl ring-1 ring-foreground/10 p-4">

@@ -47,7 +47,10 @@ const chargeSchema = z.object({
   order_id: z.string(),
   transaction_status: z.string(),
   qr_string: z.string().nullable().optional(),
-  actions: z.array(z.unknown()).optional(),
+  // Dulu `z.array(z.unknown())` - isinya ditangkap lalu dibuang. Padahal di
+  // sinilah URL gambar QR resmi Midtrans berada, dan URL itu yang diminta
+  // simulator sandbox (simulator tidak menerima data URI hasil render sendiri).
+  actions: z.array(z.object({ name: z.string(), method: z.string().optional(), url: z.string() })).optional(),
   expiry_time: z.string().nullable().optional(),
 });
 
@@ -56,6 +59,8 @@ export interface MidtransChargeResult {
   orderId: string;
   transactionStatus: string;
   qrString: string | null;
+  /** URL gambar QR yang di-host Midtrans. Dipakai untuk simulator sandbox & cadangan. */
+  qrUrl: string | null;
   expiryTime: string | null;
   raw: unknown;
 }
@@ -97,6 +102,7 @@ export async function chargeQris(
     orderId: d.order_id,
     transactionStatus: d.transaction_status,
     qrString: d.qr_string ?? null,
+    qrUrl: findAction(d.actions ?? [], "generate-qr-code"),
     expiryTime: d.expiry_time ?? null,
     raw,
   };
@@ -345,7 +351,7 @@ export async function getTransactionStatus(
 }
 
 export type PaymentActions =
-  | { kind: "qris"; qrString: string }
+  | { kind: "qris"; qrString: string; qrUrl?: string | null }
   | { kind: "va"; bank: string; vaNumber: string }
   | { kind: "echannel"; billerCode: string; billKey: string }
   | { kind: "ewallet"; provider: EwalletProvider; deeplink: string; qrUrl: string | null };
@@ -359,7 +365,7 @@ export async function chargeByMethodCode(
 ): Promise<{ actions: PaymentActions }> {
   if (method === "qris") {
     const r = await chargeQris({ orderId, grossAmount, expiryMinutes }, creds);
-    return { actions: { kind: "qris", qrString: r.qrString ?? "" } };
+    return { actions: { kind: "qris", qrString: r.qrString ?? "", qrUrl: r.qrUrl } };
   }
   if (method === "ewallet_gopay" || method === "ewallet_shopeepay") {
     const provider: EwalletProvider = method === "ewallet_gopay" ? "gopay" : "shopeepay";

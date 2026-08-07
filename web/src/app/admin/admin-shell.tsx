@@ -197,7 +197,20 @@ export function AdminShell({
             mencegah scroll "merambat" ke dokumen begitu mentok - lapisan kedua di
             samping scroll-lock html/body di atas, buat mekanisme trackpad/mobile
             rubber-band yang beda dari kasus focus-scroll yang dikunci useEffect. */}
-        <main className="no-scrollbar flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">{children}</main>
+        {/* `relative` di sini BUKAN kosmetik - ini yang benar-benar memperbaiki
+            "browser keangkat pas centang checkbox".
+            Checkbox Base UI merender <input> tersembunyi ber-`position:absolute`
+            tanpa top/left. Tanpa satu pun leluhur ber-`position`, containing
+            block input itu jadi initial containing block (dokumen), BUKAN
+            <main> ini - artinya dia lolos dari overflow <main>. Saat diklik,
+            browser men-scroll-into-view input tsb dan yang tergeser jadi
+            DOKUMEN-nya. `overflow:hidden` tidak menahan ini: dia cuma memblok
+            scroll oleh USER, bukan scroll-into-view otomatis dari fokus.
+            Dengan `relative`, <main> jadi containing block-nya, sehingga yang
+            tergeser <main> (memang boleh scroll) bukan seluruh shell. */}
+        <main className="no-scrollbar relative flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );
