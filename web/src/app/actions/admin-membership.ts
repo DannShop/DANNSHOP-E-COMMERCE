@@ -49,7 +49,9 @@ const tierFieldsSchema = z.object({
   depositBonusPercent: z.coerce.number().int().min(0, "Bonus deposit tidak boleh negatif").max(10_000, "Bonus deposit maksimal 100%"),
   badgeColor: hexColorSchema,
   sortOrder: z.coerce.number().int().default(0),
-  isActive: z.string().optional(),
+  // .nullish(): checkbox tak tercentang mengirim `null`, dan .optional() Zod
+  // cuma menerima `undefined` - lihat catatan lengkap di actions/payment-config.ts.
+  isActive: z.string().nullish(),
 });
 
 const createSchema = tierFieldsSchema.extend({ slug: slugSchema });

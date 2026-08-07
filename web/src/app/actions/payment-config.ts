@@ -34,7 +34,13 @@ const midtransSchema = z.object({
   // supaya admin bisa memindahkan sandbox<->production tanpa mengetik ulang key.
   serverKey: z.string().trim().max(200),
   merchantId: z.string().trim().max(100),
-  isProduction: z.string().optional(),
+  // .nullish() (= optional + nullable), BUKAN .optional(): checkbox yang TIDAK
+  // dicentang bikin formData.get() mengembalikan `null` (bukan absen), dan
+  // .optional() Zod cuma menerima `undefined` - null selalu ditolak dengan
+  // pesan membingungkan "expected string, received null" padahal field ini
+  // memang boleh kosong. Diperbaiki di level SKEMA supaya call site baru tidak
+  // bisa menghidupkan ulang bug ini karena lupa menormalkan null.
+  isProduction: z.string().nullish(),
 });
 
 export async function saveMidtransCredentials(formData: FormData): Promise<ActionResult> {
@@ -45,12 +51,7 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
   const parsed = midtransSchema.safeParse({
     serverKey: formData.get("serverKey") ?? "",
     merchantId: formData.get("merchantId") ?? "",
-    // Checkbox tidak dicentang -> formData.get() balikin null (bukan absen dari
-    // FormData, tapi literal null), sementara z.string().optional() Zod cuma
-    // menerima undefined, BUKAN null - lolos "null" ke sana selalu gagal
-    // parse ("expected string, received null") walau field ini memang boleh
-    // kosong. ?? undefined menyamakan null ke bentuk yang diterima .optional().
-    isProduction: formData.get("isProduction") ?? undefined,
+    isProduction: formData.get("isProduction"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -86,10 +87,11 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
 
 const rulesSchema = z
   .object({
-    uniqueCodeOrder: z.string().optional(),
-    uniqueCodeDeposit: z.string().optional(),
-    feeOrder: z.string().optional(),
-    feeDeposit: z.string().optional(),
+    // .nullish() bukan .optional() - lihat penjelasan di midtransSchema di atas.
+    uniqueCodeOrder: z.string().nullish(),
+    uniqueCodeDeposit: z.string().nullish(),
+    feeOrder: z.string().nullish(),
+    feeDeposit: z.string().nullish(),
     uniqueCodeMin: z.coerce.number().int().min(1, "Kode unik minimum minimal 1"),
     uniqueCodeMax: z.coerce.number().int().max(MAX_UNIQUE_CODE, `Kode unik maksimum maksimal ${MAX_UNIQUE_CODE}`),
   })

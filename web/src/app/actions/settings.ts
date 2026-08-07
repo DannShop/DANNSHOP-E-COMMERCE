@@ -253,7 +253,9 @@ const emailConfigSchema = z.discriminatedUnion("kind", [
     kind: z.literal("smtp"),
     host: z.string().min(1, "Host SMTP wajib diisi"),
     port: z.coerce.number().int().min(1).max(65535),
-    secure: z.string().optional().transform((v) => v === "on"),
+    // .nullish(): checkbox tak tercentang mengirim `null`, dan .optional() Zod
+    // cuma menerima `undefined` - lihat catatan lengkap di actions/payment-config.ts.
+    secure: z.string().nullish().transform((v) => v === "on"),
     user: z.string().min(1, "User SMTP wajib diisi"),
     password: z.string().min(1, "Password SMTP wajib diisi"),
     fromEmail: z.string().min(1, "Alamat pengirim wajib diisi"),

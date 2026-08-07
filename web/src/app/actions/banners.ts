@@ -86,7 +86,9 @@ const updateSchema = z.object({
   imageUrlDesktop: desktopImageSchema,
   linkUrl: z.string().url("URL tujuan tidak valid").optional().or(z.literal("")),
   sortOrder: z.coerce.number().int().default(0),
-  isActive: z.string().optional(),
+  // .nullish(): checkbox tak tercentang mengirim `null`, dan .optional() Zod
+  // cuma menerima `undefined` - lihat catatan lengkap di actions/payment-config.ts.
+  isActive: z.string().nullish(),
 });
 
 export async function updateBanner(formData: FormData): Promise<ActionResult> {

@@ -23,7 +23,10 @@ export const productSchema = z.object({
     }
   }),
   nicknameCheckKey: z.string().optional().transform((v) => (v === "" ? undefined : v)),
-  isTrending: z.string().optional(),
+  // .nullish(): checkbox tak tercentang mengirim `null` lewat formData.get(),
+  // dan .optional() Zod cuma menerima `undefined` - lihat catatan lengkap di
+  // actions/payment-config.ts.
+  isTrending: z.string().nullish(),
 });
 
 // Kosong -> null (bukan undefined, biar Prisma benar-benar menghapus nilai

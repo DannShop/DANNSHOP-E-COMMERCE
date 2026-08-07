@@ -64,7 +64,9 @@ const updateSchema = z.object({
     .min(MIN_EXPIRY_MINUTES, `Batas bayar minimal ${MIN_EXPIRY_MINUTES} menit (batas andal scheduler Midtrans)`)
     .max(MAX_EXPIRY_MINUTES, `Batas bayar maksimal ${MAX_EXPIRY_MINUTES} menit (24 jam)`),
   sortOrder: z.coerce.number().int().default(0),
-  isActive: z.string().optional(),
+  // .nullish(): checkbox tak tercentang mengirim `null`, dan .optional() Zod
+  // cuma menerima `undefined` - lihat catatan lengkap di actions/payment-config.ts.
+  isActive: z.string().nullish(),
 });
 
 export async function updatePaymentMethod(formData: FormData): Promise<ActionResult> {
