@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,7 +9,10 @@ const SLIDE_INTERVAL_MS = 5000;
 
 export interface BannerItem {
   id: string;
+  /** Versi mobile (21:9). Juga dipakai desktop sebagai fallback. */
   imageUrl: string;
+  /** Versi desktop (32:9). null = pakai imageUrl (akan dipotong atas-bawah). */
+  imageUrlDesktop: string | null;
   linkUrl: string | null;
 }
 
@@ -66,9 +68,22 @@ export function BannerCarousel({ banners }: { banners: BannerItem[] }) {
         className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto scroll-smooth"
       >
         {banners.map((b) => {
+          // <picture> + <source media>, BUKAN dua <Image> yang disembunyikan
+          // bergantian pakai class: dengan cara ini browser cuma MENGUNDUH satu
+          // gambar yang cocok dengan lebar layarnya. Kalau dua-duanya dirender
+          // lalu salah satunya di-`hidden`, keduanya tetap terunduh - boros
+          // kuota di HP, dan banner ini `priority` (dimuat paling awal).
+          //
+          // Breakpoint 640px WAJIB sama persis dengan `sm:` Tailwind di bawah;
+          // kalau meleset, ada rentang lebar di mana rasio kotak dan gambar
+          // yang terpilih tidak cocok, dan object-cover mulai memotong lagi.
           const content = (
             <div className="relative aspect-21/9 w-full shrink-0 snap-start sm:aspect-32/9">
-              <Image src={b.imageUrl} alt="" fill sizes="100vw" priority className="object-cover" unoptimized />
+              <picture>
+                {b.imageUrlDesktop && <source media="(min-width: 640px)" srcSet={b.imageUrlDesktop} />}
+                {/* <img> polos, bukan next/image: next/image tidak mendukung srcSet per media query (art direction). Gambarnya juga sudah `unoptimized` sejak awal, jadi tidak ada optimasi yang hilang. */}
+                <img src={b.imageUrl} alt="" className="absolute inset-0 size-full object-cover" />
+              </picture>
             </div>
           );
           return b.linkUrl ? (

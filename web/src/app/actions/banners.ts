@@ -34,8 +34,17 @@ export async function uploadBannerImage(formData: FormData): Promise<{ url?: str
   return uploadToBlob("banners", `new-${Date.now()}`, file, ALLOWED_IMAGE_TYPES);
 }
 
+// Gambar desktop opsional - dibiarkan kosong berarti carousel memakai gambar
+// mobile juga untuk desktop (dipotong atas-bawah, perilaku lama).
+const desktopImageSchema = z
+  .string()
+  .url("URL gambar desktop tidak valid")
+  .optional()
+  .or(z.literal(""));
+
 const createSchema = z.object({
   imageUrl: z.string().url("URL gambar tidak valid"),
+  imageUrlDesktop: desktopImageSchema,
   linkUrl: z.string().url("URL tujuan tidak valid").optional().or(z.literal("")),
   sortOrder: z.coerce.number().int().default(0),
 });
@@ -47,6 +56,7 @@ export async function createBanner(formData: FormData): Promise<ActionResult> {
 
   const parsed = createSchema.safeParse({
     imageUrl: formData.get("imageUrl"),
+    imageUrlDesktop: formData.get("imageUrlDesktop") || "",
     linkUrl: formData.get("linkUrl") || "",
     sortOrder: formData.get("sortOrder") ?? 0,
   });
@@ -55,6 +65,7 @@ export async function createBanner(formData: FormData): Promise<ActionResult> {
   const banner = await db.banner.create({
     data: {
       imageUrl: parsed.data.imageUrl,
+      imageUrlDesktop: parsed.data.imageUrlDesktop || null,
       linkUrl: parsed.data.linkUrl || null,
       sortOrder: parsed.data.sortOrder,
     },
@@ -67,6 +78,12 @@ export async function createBanner(formData: FormData): Promise<ActionResult> {
 
 const updateSchema = z.object({
   id: z.string().min(1),
+  // Gambar ikut bisa diubah dari form edit - sebelumnya tidak bisa sama sekali,
+  // satu-satunya cara mengganti gambar banner adalah hapus lalu buat ulang.
+  // Itu jadi penghalang nyata sekarang: banner yang sudah ada perlu ditambahi
+  // versi desktop TANPA harus dibuat ulang dari nol.
+  imageUrl: z.string().url("URL gambar tidak valid"),
+  imageUrlDesktop: desktopImageSchema,
   linkUrl: z.string().url("URL tujuan tidak valid").optional().or(z.literal("")),
   sortOrder: z.coerce.number().int().default(0),
   isActive: z.string().optional(),
@@ -79,6 +96,8 @@ export async function updateBanner(formData: FormData): Promise<ActionResult> {
 
   const parsed = updateSchema.safeParse({
     id: formData.get("id"),
+    imageUrl: formData.get("imageUrl"),
+    imageUrlDesktop: formData.get("imageUrlDesktop") || "",
     linkUrl: formData.get("linkUrl") || "",
     sortOrder: formData.get("sortOrder") ?? 0,
     isActive: formData.get("isActive"),
@@ -88,6 +107,8 @@ export async function updateBanner(formData: FormData): Promise<ActionResult> {
   await db.banner.update({
     where: { id: parsed.data.id },
     data: {
+      imageUrl: parsed.data.imageUrl,
+      imageUrlDesktop: parsed.data.imageUrlDesktop || null,
       linkUrl: parsed.data.linkUrl || null,
       sortOrder: parsed.data.sortOrder,
       isActive: parsed.data.isActive === "on",

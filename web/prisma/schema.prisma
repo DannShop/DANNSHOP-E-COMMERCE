@@ -283,7 +283,17 @@ model Product {
 
 model Banner {
   id        String   @id @default(cuid())
+  // Gambar versi MOBILE (21:9). Tetap bernama `imageUrl` (bukan diganti jadi
+  // imageUrlMobile) supaya banner lama tidak perlu dimigrasi datanya sama
+  // sekali - kolom ini artinya tidak berubah, cuma dapat pasangan baru.
   imageUrl  String
+  // Gambar versi DESKTOP (32:9). Nullable & opsional: kalau kosong, carousel
+  // jatuh balik memakai `imageUrl` (perilaku lama - gambar 21:9 dipotong
+  // atas-bawah oleh object-cover). Dua gambar terpisah dipakai karena satu
+  // gambar tidak bisa tampil utuh di dua rasio yang beda jauh: 21:9 dipaksa
+  // ke 32:9 kehilangan 34% tingginya. Pola ini standarnya disebut
+  // "art direction" pada responsive images.
+  imageUrlDesktop String?
   linkUrl   String?
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)

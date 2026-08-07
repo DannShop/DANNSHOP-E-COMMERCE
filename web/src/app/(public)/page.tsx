@@ -23,7 +23,14 @@ export default async function HomePage() {
   return (
     <div className="flex flex-col gap-6">
       {banners.length > 0 && (
-        <BannerCarousel banners={banners.map((b) => ({ id: b.id, imageUrl: b.imageUrl, linkUrl: b.linkUrl }))} />
+        <BannerCarousel
+          banners={banners.map((b) => ({
+            id: b.id,
+            imageUrl: b.imageUrl,
+            imageUrlDesktop: b.imageUrlDesktop,
+            linkUrl: b.linkUrl,
+          }))}
+        />
       )}
       {trending.length > 0 && <TrendingSection products={trending} />}
       <Suspense>

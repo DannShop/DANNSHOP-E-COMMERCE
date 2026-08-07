@@ -24,9 +24,17 @@ export default async function BannersPage() {
         {banners.map((b) => (
           <BannerForm
             key={b.id}
-            banner={{ id: b.id, imageUrl: b.imageUrl, linkUrl: b.linkUrl, sortOrder: b.sortOrder, isActive: b.isActive }}
+            banner={{
+              id: b.id,
+              imageUrl: b.imageUrl,
+              imageUrlDesktop: b.imageUrlDesktop,
+              linkUrl: b.linkUrl,
+              sortOrder: b.sortOrder,
+              isActive: b.isActive,
+            }}
             updateAction={updateBanner}
             deleteAction={deleteBanner}
+            uploadBannerImage={uploadBannerImage}
           />
         ))}
         {banners.length === 0 && <p className="text-sm text-muted-foreground">Belum ada banner.</p>}
