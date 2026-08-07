@@ -83,6 +83,31 @@ export function AdminShell({
 
   const pageTitle = resolvePageTitle(pathname);
 
+  // Kunci scroll DOKUMEN (html/body), bukan cuma elemen React di bawah.
+  // Tanpa ini, h-dvh + overflow-hidden pada .admin-shell di bawah hanya
+  // mengunci elemennya sendiri - html/body tetap technically bisa scroll
+  // (globals.css cuma menyembunyikan scrollbar-nya lewat scrollbar-width:none,
+  // bukan mematikan overflow-nya, karena storefront & /account SENGAJA
+  // memakai scroll dokumen natural, bukan bug). Kalau html/body punya sisa
+  // tinggi scroll walau 1px (pembulatan dvh, atau browser menggeser dokumen
+  // supaya elemen yang baru fokus "terlihat" - persis yang terjadi saat
+  // checkbox di-toggle), seluruh shell h-dvh ini ikut terangkat dan
+  // menyingkap background polos di baliknya. Efeknya kentara pas di-scroll
+  // sampai mentok karena di situ tidak ada lagi ruang scroll di dalam <main>
+  // yang bisa "menyerap" gesernya - geseran itu lolos ke dokumen.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   return (
     // h-dvh + overflow-hidden di pembungkus = tinggi layar dikunci; yang
     // benar-benar scroll cuma <main> di dalamnya. Inilah yang bikin sidebar
@@ -156,8 +181,11 @@ export function AdminShell({
           </div>
         </header>
 
-        {/* Satu-satunya elemen yang scroll di seluruh panel admin. */}
-        <main className="no-scrollbar flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
+        {/* Satu-satunya elemen yang scroll di seluruh panel admin. overscroll-contain
+            mencegah scroll "merambat" ke dokumen begitu mentok - lapisan kedua di
+            samping scroll-lock html/body di atas, buat mekanisme trackpad/mobile
+            rubber-band yang beda dari kasus focus-scroll yang dikunci useEffect. */}
+        <main className="no-scrollbar flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );
