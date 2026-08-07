@@ -45,7 +45,12 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
   const parsed = midtransSchema.safeParse({
     serverKey: formData.get("serverKey") ?? "",
     merchantId: formData.get("merchantId") ?? "",
-    isProduction: formData.get("isProduction"),
+    // Checkbox tidak dicentang -> formData.get() balikin null (bukan absen dari
+    // FormData, tapi literal null), sementara z.string().optional() Zod cuma
+    // menerima undefined, BUKAN null - lolos "null" ke sana selalu gagal
+    // parse ("expected string, received null") walau field ini memang boleh
+    // kosong. ?? undefined menyamakan null ke bentuk yang diterima .optional().
+    isProduction: formData.get("isProduction") ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -57,18 +62,6 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
 
   const isProduction = parsed.data.isProduction === "on";
 
-  // Server key production selalu diawali "Mid-server-", sandbox "SB-Mid-server-".
-  // Salah pasang di antara keduanya adalah kesalahan yang gejalanya persis
-  // seperti "pembayaran tidak terbaca": charge berhasil di satu lingkungan,
-  // tapi status/webhook dicari di lingkungan yang lain. Lebih baik ditolak di
-  // sini daripada ketahuan setelah ada transaksi customer yang menggantung.
-  if (isProduction && serverKey.startsWith("SB-")) {
-    return { error: "Mode Production dipilih, tapi server key-nya key sandbox (diawali SB-). Periksa lagi." };
-  }
-  if (!isProduction && serverKey.startsWith("Mid-")) {
-    return { error: "Mode Sandbox dipilih, tapi server key-nya key production (diawali Mid-). Periksa lagi." };
-  }
-
   await saveMidtransConfig({ serverKey, merchantId: parsed.data.merchantId, isProduction });
 
   // Server key TIDAK PERNAH masuk log admin - cuma fakta bahwa dia berubah.
@@ -77,6 +70,17 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
     serverKeyChanged: Boolean(parsed.data.serverKey),
   });
   revalidatePath("/admin/payment-config");
+
+  // Peringatan (BUKAN blokir save) kalau key production dipasang saat mode
+  // Sandbox dicentang. Sengaja tidak menolak simpan: format prefix key
+  // sandbox Midtrans pernah berubah/tidak konsisten antar akun merchant, jadi
+  // menjadikan ini gerbang keras pernah menahan admin menyimpan key yang
+  // sebenarnya valid. Kesalahan mismatch key<->mode yang sebenarnya tetap
+  // akan ketahuan cepat lewat gejala nyata (charge/status gagal), bukan lewat
+  // tebakan prefix di sini.
+  if (isProduction && serverKey.startsWith("SB-")) {
+    return { ok: "Konfigurasi Midtrans tersimpan. Peringatan: mode Production dicentang tapi key diawali \"SB-\" (biasanya penanda sandbox) - pastikan ini memang key yang benar." };
+  }
   return { ok: "Konfigurasi Midtrans tersimpan." };
 }
 

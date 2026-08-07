@@ -59,11 +59,11 @@ export function MidtransConfigForm({
             name="serverKey"
             type="password"
             autoComplete="off"
-            placeholder={status.configured ? "Isi untuk mengganti yang tersimpan" : "SB-Mid-server-..."}
+            placeholder={status.configured ? "Isi untuk mengganti yang tersimpan" : "Mid-server-..."}
           />
           <p className="text-xs text-muted-foreground">
-            Sandbox diawali <code>SB-Mid-server-</code>, production diawali <code>Mid-server-</code>. Ambil di
-            dashboard Midtrans → Settings → Access Keys.
+            Ambil di dashboard Midtrans → Settings → Access Keys, sesuai mode (Sandbox/Production) yang aktif di
+            sana. Pastikan togglenya di bawah cocok dengan mode key yang kamu salin.
           </p>
         </div>
 
