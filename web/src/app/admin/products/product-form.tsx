@@ -132,7 +132,7 @@ export function ProductForm({
             aspect={1}
             maxDimension={MAX_DIMENSION.productIcon}
             accept="image/png,image/jpeg,image/webp,image/svg+xml"
-            helpText="Dipakai di kartu katalog, section Trending, dan ikon halaman produk. Kosongkan untuk pakai gradien default."
+            helpText="Dipakai di kartu katalog, section Trending, dan ikon halaman produk. Disarankan 512×512px, persegi (1:1). Kosongkan untuk pakai gradien default."
             previewClassName="size-14 rounded-md"
             onUploadingChange={setIconUploading}
           />
@@ -150,7 +150,7 @@ export function ProductForm({
             aspect={21 / 9}
             maxDimension={MAX_DIMENSION.productBanner}
             accept="image/png,image/jpeg,image/webp,image/svg+xml"
-            helpText="Gambar lebar di bagian atas halaman produk. Kosongkan kalau tidak perlu."
+            helpText="Gambar lebar di bagian atas halaman produk. Disarankan 1280×549px (rasio 21:9). Kosongkan kalau tidak perlu."
             previewClassName="h-14 w-32 rounded-md"
             onUploadingChange={setBannerUploading}
           />

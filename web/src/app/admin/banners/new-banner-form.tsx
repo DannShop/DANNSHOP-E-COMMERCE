@@ -40,7 +40,7 @@ export function NewBannerForm({
         aspect={21 / 9}
         maxDimension={MAX_DIMENSION.heroBanner}
         accept="image/png,image/jpeg,image/webp,image/svg+xml"
-        helpText="Tampil di carousel beranda. Area dalam kotak crop itulah yang terlihat di HP."
+        helpText="Tampil di carousel beranda. Disarankan sekitar 1920×823px (rasio 21:9), otomatis dikecilkan & dikonversi ke WebP. Area dalam kotak crop itulah yang terlihat di HP."
         previewClassName="aspect-21/9 w-40 rounded-md"
         onUploadingChange={setUploading}
       />

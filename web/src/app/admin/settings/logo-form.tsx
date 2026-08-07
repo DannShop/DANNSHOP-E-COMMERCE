@@ -43,11 +43,20 @@ export function LogoForm({
         value={logoUrl}
         onChange={handleUploaded}
         upload={uploadLogoFile}
-        // Tanpa crop: logo tampil object-contain di kotak tetap, jadi memotongnya
-        // tidak mengubah apa pun. Video juga tidak bisa lewat canvas.
+        // Crop khusus untuk GAMBAR - berguna kalau file sumbernya punya banyak
+        // spasi kosong/elemen lain di sekitar logo dan admin mau memilih hanya
+        // bagian logonya. Rasio disamakan dengan kotak tampil navbar (h-12
+        // w-40 di bawah) supaya hasil crop pas 1:1 dengan yang akan tampil,
+        // bukan tebakan. Video TETAP otomatis melewati dialog crop ini (lihat
+        // ImageUploadField.handleFileChange - hanya file image/* yang masuk
+        // jalur crop) karena video tidak bisa diproses lewat canvas.
+        aspect={40 / 12}
         maxDimension={MAX_DIMENSION.siteLogo}
         accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,video/webm"
-        helpText="Tampil di navbar. Gambar otomatis dikecilkan; SVG dan video diunggah apa adanya."
+        // Angka "20MB" di sini harus sinkron manual dengan MAX_VIDEO_UPLOAD_BYTES
+        // di lib/blob-upload.ts - tidak diimpor langsung supaya file ini
+        // (client component) tidak ikut menarik dependency @vercel/blob ke bundle browser.
+        helpText="Tampil di navbar. Gambar: disarankan sekitar 512×154px (rasio ~10:3), otomatis dikecilkan & dikonversi ke WebP. SVG diunggah apa adanya. Video (mp4/webm): tanpa crop/kompresi, maks 20MB."
         previewClassName="h-12 w-40 rounded-md border bg-muted/40"
         previewFit="contain"
         onUploadingChange={setUploading}

@@ -34,9 +34,10 @@ export function FaviconForm({
         value={faviconUrl}
         onChange={setFaviconUrl}
         upload={uploadFaviconFile}
+        aspect={1}
         maxDimension={MAX_DIMENSION.favicon}
         accept="image/png,image/jpeg,image/webp,image/svg+xml"
-        helpText="Ikon tab browser. Persegi (1:1) paling aman. Browser sering cache favicon lama — hard-refresh kalau belum berubah."
+        helpText="Ikon tab browser. Disarankan 256×256px, persegi (1:1) - dipaksa lewat crop di bawah biar tidak gepeng. Browser sering cache favicon lama — hard-refresh kalau belum berubah."
         previewClassName="size-12 rounded-md border bg-muted/40"
         previewFit="contain"
         onUploadingChange={setUploading}

@@ -17,6 +17,11 @@ const ALLOWED_LOGO_TYPES = new Set([
   "video/webm",
 ]);
 
+// Favicon TIDAK boleh menerima video - browser tidak bisa merender video
+// sebagai ikon tab, jadi mengizinkannya cuma bikin admin bisa "berhasil"
+// upload sesuatu yang tidak akan pernah tampil di mana pun.
+const ALLOWED_FAVICON_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
+
 async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
   const session = await auth();
   if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
@@ -97,7 +102,7 @@ export async function uploadFaviconFile(formData: FormData): Promise<{ url?: str
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "File tidak ditemukan." };
-  return uploadToBlob("site-settings", `favicon-${Date.now()}`, file, ALLOWED_LOGO_TYPES);
+  return uploadToBlob("site-settings", `favicon-${Date.now()}`, file, ALLOWED_FAVICON_TYPES);
 }
 
 const faviconSchema = z.object({ faviconUrl: z.string().url("URL favicon tidak valid") });
