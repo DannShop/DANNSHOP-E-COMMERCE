@@ -1,0 +1,18 @@
+-- Menambahkan ProviderApiLog.viaRelay: penanda apakah panggilan keluar lewat relay
+-- ber-IP tetap atau langsung dari runtime.
+--
+-- Wajib terlihat karena kegagalan Digiflazz rc 45 ("IP Anda tidak kami kenali")
+-- artinya sangat berbeda tergantung jalurnya: lewat relay berarti IP relay yang
+-- belum didaftarkan di whitelist, sedangkan langsung berarti env relay belum
+-- terpasang di deployment itu. Dua perbaikan yang sama sekali berbeda, dan tanpa
+-- penanda ini keduanya tampak sebagai kegagalan yang identik.
+--
+-- Kolom ini sempat ikut ditulis ke migrasi 20260808120000_add_provider_api_log,
+-- tapi migrasi itu SUDAH diterapkan ke produksi lebih dulu tanpa kolomnya. File
+-- migrasi yang sudah diterapkan tidak boleh diubah (Prisma menyimpan checksum-nya
+-- dan akan menolak jalan), jadi penambahannya dipisah ke sini.
+--
+-- Keadaan database diverifikasi lebih dulu dengan `prisma migrate diff` sebelum
+-- migrasi ini ditulis, jadi DDL-nya boleh polos: tidak perlu penjagaan idempoten
+-- yang justru menambah risiko di TiDB.
+ALTER TABLE `ProviderApiLog` ADD COLUMN `viaRelay` BOOLEAN NOT NULL DEFAULT false;
