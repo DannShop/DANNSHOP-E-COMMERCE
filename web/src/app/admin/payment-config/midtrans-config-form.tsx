@@ -15,13 +15,22 @@ export function MidtransConfigForm({
   status,
   webhookUrl,
   action,
+  testAction,
 }: {
   status: MidtransConfigStatus;
   webhookUrl: string;
   action: (formData: FormData) => Promise<ActionResult>;
+  testAction: () => Promise<ActionResult>;
 }) {
   const [state, formAction, pending] = useActionState(
     (_prev: ActionResult, formData: FormData) => action(formData),
+    INITIAL_STATE,
+  );
+  // Form terpisah dari form simpan: uji koneksi memakai kredensial yang SUDAH
+  // TERSIMPAN, bukan isi field yang belum disimpan - kalau dijadikan satu form,
+  // admin akan mengira key yang baru diketik itulah yang diuji.
+  const [testState, testFormAction, testPending] = useActionState(
+    () => testAction(),
     INITIAL_STATE,
   );
   const [copied, setCopied] = useState(false);
@@ -93,6 +102,23 @@ export function MidtransConfigForm({
         </Button>
         {(state.ok || state.error) && (
           <p className={`text-xs ${state.error ? "text-destructive" : "text-emerald-700"}`}>{state.error ?? state.ok}</p>
+        )}
+      </form>
+
+      <form action={testFormAction} className="flex flex-col gap-2 rounded-lg border p-3">
+        <p className="text-sm font-medium">Uji Koneksi</p>
+        <p className="text-xs text-muted-foreground">
+          Memeriksa apakah server key yang tersimpan benar-benar diterima Midtrans pada mode yang aktif. Tidak membuat
+          transaksi apa pun. Jalankan ini setiap kali mengganti key atau memindahkan mode — key sandbox dan production
+          bisa punya awalan yang sama persis, jadi salah pasang mode cuma ketahuan lewat uji ini.
+        </p>
+        <Button type="submit" variant="outline" disabled={testPending || !status.configured} className="self-start">
+          {testPending ? "Menguji..." : "Test Koneksi"}
+        </Button>
+        {(testState.ok || testState.error) && (
+          <p className={`text-xs ${testState.error ? "text-destructive" : "text-emerald-700"}`}>
+            {testState.error ?? testState.ok}
+          </p>
         )}
       </form>
 

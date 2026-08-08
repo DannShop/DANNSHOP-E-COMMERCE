@@ -10,6 +10,7 @@ import { chargeByMethodCode } from "@/lib/midtrans/client";
 import { calculateFee, calculateTotal, generateUniqueCode } from "@/lib/payment/fee";
 import { getPaymentRules } from "@/lib/payment/rules";
 import { getMidtransCreds } from "@/lib/payment/gateway-config";
+import { reportChargeFailure } from "@/lib/payment/charge-failure";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
@@ -281,13 +282,27 @@ async function createMidtransOrder(input: {
       historyPromise,
     ]);
   } catch (e) {
-    console.error("Checkout: charge Midtrans gagal", { orderId: order.id, method: method.code, error: e });
+    const { failure, buyerMessage } = reportChargeFailure(
+      { scope: "checkout", refId: order.orderNumber, method: method.code },
+      e,
+    );
     await db.order.update({ where: { id: order.id }, data: { status: "FAILED" } });
-    await db.orderPayment.update({ where: { orderId: order.id }, data: { status: "FAILED" } });
-    await db.orderStatusHistory.create({
-      data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "FAILED", note: "Charge Midtrans gagal" },
+    // Alasan kegagalan ikut tersimpan (kolom rawResponse selama ini menganggur
+    // di jalur gagal) supaya admin bisa membacanya dari detail order, bukan
+    // dari log runtime yang sudah keburu hilang saat keluhan customer masuk.
+    await db.orderPayment.update({
+      where: { orderId: order.id },
+      data: { status: "FAILED", rawResponse: failure },
     });
-    return { error: "Gagal membuat pembayaran, silakan coba lagi." };
+    await db.orderStatusHistory.create({
+      data: {
+        orderId: order.id,
+        fromStatus: "PENDING_PAYMENT",
+        toStatus: "FAILED",
+        note: `Charge Midtrans gagal (${failure.kind}): ${failure.statusMessage ?? failure.message}`.slice(0, 500),
+      },
+    });
+    return { error: buyerMessage };
   }
 
   try {

@@ -7,6 +7,9 @@ import {
   chargeEchannel,
   chargeEwallet,
   chargeByMethodCode,
+  pingMidtrans,
+  describeMidtransFailure,
+  MidtransApiError,
 } from "@/lib/midtrans/client";
 
 const creds = { serverKey: "SB-server-key", isProduction: false };
@@ -234,5 +237,102 @@ describe("chargeByMethodCode", () => {
     await expect(chargeByMethodCode("dompet-misterius", "INV-10", 22000, 15, creds)).rejects.toThrow(
       /tidak dikenali/,
     );
+  });
+});
+
+// Regresi untuk kegagalan production 2026-08-08: server key sandbox dipakai
+// saat Mode Production dicentang. Midtrans membalas 401 "Unknown Merchant
+// server_key/id", tapi dulu balasan itu lolos JSON.parse, gagal di zod, dan
+// berubah jadi "response tidak sesuai (...)" terpotong 200 karakter - status
+// HTTP-nya hilang sama sekali, dan checkout menampilkan "silakan coba lagi"
+// untuk kegagalan yang mustahil sembuh dengan diulang.
+describe("penanganan error Midtrans", () => {
+  it("charge yang ditolak 401 melempar MidtransApiError kind config, bukan error schema", async () => {
+    mockFetchOnce(
+      { status_code: "401", status_message: "Unknown Merchant server_key/id", id: "abc-123" },
+      401,
+    );
+
+    const err = await chargeQris({ orderId: "INV-1", grossAmount: 22000, expiryMinutes: 15 }, creds).catch((e) => e);
+
+    expect(err).toBeInstanceOf(MidtransApiError);
+    expect(err.kind).toBe("config");
+    expect(err.httpStatus).toBe(401);
+    expect(err.statusCode).toBe(401);
+    expect(err.statusMessage).toBe("Unknown Merchant server_key/id");
+    // Pesan aslinya harus utuh - inilah satu-satunya petunjuk yang dipunya admin.
+    expect(err.message).toContain("Unknown Merchant server_key/id");
+  });
+
+  it("channel belum aktif (402) juga kind config", async () => {
+    mockFetchOnce({ status_code: "402", status_message: "Merchant cannot use this feature." }, 402);
+    const err = await chargeQris({ orderId: "INV-1", grossAmount: 1000, expiryMinutes: 15 }, creds).catch((e) => e);
+    expect(err.kind).toBe("config");
+  });
+
+  it("order_id bentrok (406) dianggap transient - checkout ulang memang bikin nomor baru", async () => {
+    mockFetchOnce({ status_code: "406", status_message: "The request could not be completed due to a conflict." }, 406);
+    const err = await chargeQris({ orderId: "INV-1", grossAmount: 1000, expiryMinutes: 15 }, creds).catch((e) => e);
+    expect(err.kind).toBe("transient");
+  });
+
+  it("gangguan gateway (5xx) transient", async () => {
+    mockFetchOnce({ status_code: "500", status_message: "Sorry, we encountered an internal error." }, 500);
+    const err = await chargeQris({ orderId: "INV-1", grossAmount: 1000, expiryMinutes: 15 }, creds).catch((e) => e);
+    expect(err.kind).toBe("transient");
+  });
+
+  it("status_code di BODY yang menentukan, bukan status HTTP", async () => {
+    // Kasus nyata: GET status membalas HTTP 200 padahal transaksinya tidak ada.
+    // Kalau cuma res.ok yang dicek, error ini lolos tanpa terdeteksi.
+    mockFetchOnce({ status_code: "404", status_message: "Transaction doesn't exist.", id: "x" }, 200);
+    const err = await getTransactionStatus("INV-404", creds).catch((e) => e);
+    expect(err).toBeInstanceOf(MidtransApiError);
+    expect(err.statusCode).toBe(404);
+    expect(err.httpStatus).toBe(200);
+  });
+
+  it("error validasi membawa serta error_messages", async () => {
+    mockFetchOnce(
+      { status_code: "400", status_message: "One or more parameters is not valid.", error_messages: ["gross_amount is not valid"] },
+      400,
+    );
+    const err = await chargeQris({ orderId: "INV-1", grossAmount: 0, expiryMinutes: 15 }, creds).catch((e) => e);
+    expect(err.kind).toBe("request");
+    expect(err.errorMessages).toEqual(["gross_amount is not valid"]);
+    expect(err.message).toContain("gross_amount is not valid");
+  });
+
+  it("describeMidtransFailure menandai error non-Midtrans (timeout/DNS) sebagai transient", () => {
+    const failure = describeMidtransFailure(new DOMException("signal timed out", "TimeoutError"));
+    expect(failure.kind).toBe("transient");
+    expect(failure.statusCode).toBeNull();
+    expect(failure.message).toContain("TimeoutError");
+  });
+});
+
+describe("pingMidtrans", () => {
+  it("404 'Transaction doesn't exist' = otentikasi SAH", async () => {
+    const fn = mockFetchOnce({ status_code: "404", status_message: "Transaction doesn't exist." }, 200);
+    const r = await pingMidtrans(creds);
+    expect(r.ok).toBe(true);
+    // Wajib GET - ping tidak boleh membuat transaksi apa pun.
+    expect((fn.mock.calls[0][1] as RequestInit).method).toBe("GET");
+    expect(fn.mock.calls[0][0]).toMatch(/^https:\/\/api\.sandbox\.midtrans\.com\/v2\/PING-.+\/status$/);
+  });
+
+  it("401 = key tidak sah untuk environment ini", async () => {
+    mockFetchOnce({ status_code: "401", status_message: "Unknown Merchant server_key/id" }, 401);
+    const r = await pingMidtrans({ serverKey: "key-sandbox", isProduction: true });
+    expect(r.ok).toBe(false);
+    expect(r.statusCode).toBe(401);
+    expect(r.isProduction).toBe(true);
+  });
+
+  it("tidak pernah melempar walau jaringan mati", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+    const r = await pingMidtrans(creds);
+    expect(r.ok).toBe(false);
+    expect(r.statusMessage).toContain("ECONNREFUSED");
   });
 });

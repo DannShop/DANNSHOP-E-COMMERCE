@@ -2,7 +2,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { saveMidtransConfig, getStoredMidtransConfig } from "@/lib/payment/gateway-config";
+import { saveMidtransConfig, getStoredMidtransConfig, getMidtransCreds } from "@/lib/payment/gateway-config";
+import { pingMidtrans } from "@/lib/midtrans/client";
 import { savePaymentRules } from "@/lib/payment/rules";
 import { MAX_UNIQUE_CODE } from "@/lib/payment/fee";
 
@@ -83,6 +84,62 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
     return { ok: "Konfigurasi Midtrans tersimpan. Peringatan: mode Production dicentang tapi key diawali \"SB-\" (biasanya penanda sandbox) - pastikan ini memang key yang benar." };
   }
   return { ok: "Konfigurasi Midtrans tersimpan." };
+}
+
+// Memvalidasi kredensial yang BENAR-BENAR aktif (hasil getMidtransCreds, jadi
+// ikut menguji jalur decrypt & fallback env, bukan cuma isi form) langsung ke
+// Midtrans, tanpa membuat transaksi apa pun.
+//
+// Ada karena satu-satunya cara mengetahui key/mode salah dulu adalah menunggu
+// customer gagal checkout: panel menyimpan apa pun yang diketik admin tanpa
+// pernah menanyakannya ke Midtrans. Tebakan prefix key tidak bisa menggantikan
+// ini - Midtrans menerbitkan key sandbox yang diawali "Mid-server-" persis
+// seperti key production, jadi mismatch key<->mode MUSTAHIL dideteksi tanpa
+// benar-benar memanggil API-nya.
+export async function testMidtransConnection(): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const creds = await getMidtransCreds();
+  if (!creds.serverKey) {
+    return { error: "Belum ada server key tersimpan - isi dan simpan dulu sebelum menguji koneksi." };
+  }
+
+  const modeLabel = creds.isProduction ? "Production" : "Sandbox";
+  const result = await pingMidtrans(creds);
+  if (result.ok) {
+    return { ok: `Koneksi berhasil. Server key ini sah untuk mode ${modeLabel}.` };
+  }
+
+  // Kegagalan otentikasi -> uji key yang SAMA di environment seberang. Kalau di
+  // sana lolos, penyebabnya bukan key rusak melainkan salah pasang mode, dan
+  // admin langsung dapat instruksi tepat alih-alih pesan mentah Midtrans.
+  if (result.statusCode === 401) {
+    const opposite = await pingMidtrans({ serverKey: creds.serverKey, isProduction: !creds.isProduction });
+    if (opposite.ok) {
+      const realMode = creds.isProduction ? "Sandbox" : "Production";
+      return {
+        error:
+          `Server key ditolak Midtrans di mode ${modeLabel}, tetapi DITERIMA di mode ${realMode}. ` +
+          `Berarti key yang tersimpan sebenarnya key ${realMode}. ` +
+          (creds.isProduction
+            ? "Ambil Server Key dari dashboard Midtrans saat toggle di kanan atas berada di Production, lalu simpan ulang di sini."
+            : "Centang Mode Production, atau ganti dengan Server Key dari dashboard mode Sandbox."),
+      };
+    }
+    return {
+      error:
+        `Server key ditolak Midtrans di mode ${modeLabel} maupun mode seberangnya ` +
+        `(${result.statusMessage ?? "401 unauthorized"}). Pastikan key disalin utuh tanpa spasi dan akun Midtrans-nya aktif.`,
+    };
+  }
+
+  return {
+    error:
+      `Uji koneksi gagal di mode ${modeLabel}: ` +
+      `${result.statusMessage ?? "tidak ada pesan"} (HTTP ${result.httpStatus ?? "-"} / status_code ${result.statusCode ?? "-"}).`,
+  };
 }
 
 const rulesSchema = z

@@ -1,6 +1,6 @@
 import { getMidtransConfigStatus } from "@/lib/payment/gateway-config";
 import { getPaymentRules } from "@/lib/payment/rules";
-import { saveMidtransCredentials, savePaymentRulesAction } from "@/app/actions/payment-config";
+import { saveMidtransCredentials, savePaymentRulesAction, testMidtransConnection } from "@/app/actions/payment-config";
 import { MidtransConfigForm } from "./midtrans-config-form";
 import { PaymentRulesForm } from "./payment-rules-form";
 
@@ -27,7 +27,12 @@ export default async function PaymentConfigPage() {
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">Midtrans</h2>
-        <MidtransConfigForm status={status} webhookUrl={webhookUrl} action={saveMidtransCredentials} />
+        <MidtransConfigForm
+          status={status}
+          webhookUrl={webhookUrl}
+          action={saveMidtransCredentials}
+          testAction={testMidtransConnection}
+        />
       </section>
 
       <section className="space-y-2">

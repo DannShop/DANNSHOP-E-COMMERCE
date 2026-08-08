@@ -7,6 +7,7 @@ import { chargeByMethodCode } from "@/lib/midtrans/client";
 import { calculateFee, calculateTotal, generateUniqueCode } from "@/lib/payment/fee";
 import { getPaymentRules } from "@/lib/payment/rules";
 import { getMidtransCreds } from "@/lib/payment/gateway-config";
+import { reportChargeFailure } from "@/lib/payment/charge-failure";
 import { getMembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
 import { requireActiveAccount } from "@/lib/account/user-status";
@@ -80,9 +81,18 @@ export async function createDeposit(
     const { actions } = await chargeByMethodCode(method.code, deposit.id, Number(totalPaid), expiryMinutes, creds);
     await db.deposit.update({ where: { id: deposit.id }, data: { rawResponse: actions as object } });
   } catch (e) {
-    console.error("Deposit: charge Midtrans gagal", { depositId: deposit.id, method: method.code, error: e });
-    await db.deposit.update({ where: { id: deposit.id }, data: { status: "FAILED" } });
-    return { error: "Gagal membuat pembayaran, silakan coba lagi." };
+    const { failure, buyerMessage } = reportChargeFailure(
+      { scope: "deposit", refId: deposit.id, method: method.code },
+      e,
+    );
+    // rawResponse di jalur SUKSES berisi `actions`; di jalur gagal berisi
+    // alasan kegagalan. Dibedakan lewat status baris (FAILED) - sama seperti
+    // OrderPayment di checkout.
+    await db.deposit.update({
+      where: { id: deposit.id },
+      data: { status: "FAILED", rawResponse: failure },
+    });
+    return { error: buyerMessage };
   }
 
   try {

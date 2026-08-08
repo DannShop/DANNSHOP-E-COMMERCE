@@ -22,6 +22,127 @@ function authHeader(creds: MidtransCreds): string {
   return `Basic ${Buffer.from(`${creds.serverKey}:`).toString("base64")}`;
 }
 
+// Tiga kelas kegagalan, karena TINDAKAN yang benar untuk masing-masing beda
+// dan dulu ketiganya tersamar jadi satu pesan "silakan coba lagi":
+//   config    - kredensial/akun merchant. Mengulang checkout SELAMANYA gagal
+//               sampai admin membetulkan key atau mengaktifkan channel.
+//   request   - payload yang kita kirim ditolak. Ini bug kita, bukan nasib.
+//   transient - gangguan sesaat (5xx, jaringan, timeout, order_id bentrok).
+//               Cuma di kelas inilah "coba lagi" benar-benar masuk akal.
+export type MidtransFailureKind = "config" | "request" | "transient";
+
+function classify(statusCode: number): MidtransFailureKind {
+  // 401 "Unknown Merchant server_key/id" = key tidak dikenal di environment
+  // ini - gejala paling sering: key sandbox dipakai saat Mode Production
+  // dicentang (prefix key Midtrans TIDAK bisa dipercaya untuk membedakannya,
+  // ada key sandbox yang diawali "Mid-server-" persis seperti key production).
+  // 402 = channel-nya belum diaktifkan Midtrans untuk merchant ini.
+  if (statusCode === 401 || statusCode === 402 || statusCode === 403) return "config";
+  // 406 = order_id sudah pernah dipakai. Checkout ulang membuat orderNumber
+  // baru, jadi ini benar-benar bisa sembuh dengan mencoba lagi.
+  if (statusCode === 406) return "transient";
+  if (statusCode >= 500) return "transient";
+  if (statusCode >= 400) return "request";
+  return "transient";
+}
+
+export class MidtransApiError extends Error {
+  readonly kind: MidtransFailureKind;
+  readonly httpStatus: number;
+  /** `status_code` dari body Midtrans - sering BEDA dari status HTTP. */
+  readonly statusCode: number | null;
+  readonly statusMessage: string | null;
+  readonly errorMessages: string[];
+  readonly endpoint: string;
+  readonly raw: unknown;
+
+  constructor(input: {
+    endpoint: string;
+    httpStatus: number;
+    statusCode: number | null;
+    statusMessage: string | null;
+    errorMessages: string[];
+    raw: unknown;
+  }) {
+    const detail = [input.statusMessage, ...input.errorMessages].filter(Boolean).join(" | ") || "(tanpa pesan)";
+    super(`Midtrans ${input.endpoint} ditolak [HTTP ${input.httpStatus} / status_code ${input.statusCode ?? "-"}]: ${detail}`);
+    this.name = "MidtransApiError";
+    this.endpoint = input.endpoint;
+    this.httpStatus = input.httpStatus;
+    this.statusCode = input.statusCode;
+    this.statusMessage = input.statusMessage;
+    this.errorMessages = input.errorMessages;
+    this.raw = input.raw;
+    this.kind = classify(input.statusCode ?? input.httpStatus);
+  }
+}
+
+/**
+ * Ringkasan kegagalan yang AMAN disimpan ke DB & ditulis ke log: tidak pernah
+ * memuat server key, dan tidak dipotong 200 karakter seperti dulu. Inilah yang
+ * masuk ke OrderPayment.rawResponse / Deposit.rawResponse supaya admin bisa
+ * tahu penyebabnya tanpa akses log runtime Vercel (yang fana).
+ */
+// `type`, BUKAN `interface`: bentuk ini ditulis langsung ke kolom Json Prisma,
+// dan Prisma.InputJsonObject butuh index signature implisit yang cuma didapat
+// type alias - interface akan ditolak TypeScript di call site.
+export type MidtransFailure = {
+  kind: MidtransFailureKind;
+  httpStatus: number | null;
+  statusCode: number | null;
+  statusMessage: string | null;
+  errorMessages: string[];
+  message: string;
+  at: string;
+};
+
+export function describeMidtransFailure(e: unknown): MidtransFailure {
+  const at = new Date().toISOString();
+  if (e instanceof MidtransApiError) {
+    return {
+      kind: e.kind,
+      httpStatus: e.httpStatus,
+      statusCode: e.statusCode,
+      statusMessage: e.statusMessage,
+      errorMessages: e.errorMessages,
+      message: e.message,
+      at,
+    };
+  }
+  // Timeout/DNS/TLS dan error tak terduga lain. Bukan config - jangan sampai
+  // gangguan jaringan sesaat bikin admin mengira key-nya salah.
+  return {
+    kind: "transient",
+    httpStatus: null,
+    statusCode: null,
+    statusMessage: null,
+    errorMessages: [],
+    message: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+    at,
+  };
+}
+
+// Body error Midtrans bentuknya konsisten: status_code (string), kadang
+// status_message, kadang error_messages[]. Dibaca defensif karena ini justru
+// jalur yang paling sering kena bentuk tak terduga.
+function readErrorEnvelope(raw: unknown): {
+  statusCode: number | null;
+  statusMessage: string | null;
+  errorMessages: string[];
+} {
+  if (typeof raw !== "object" || raw === null) {
+    return { statusCode: null, statusMessage: null, errorMessages: [] };
+  }
+  const o = raw as Record<string, unknown>;
+  const codeRaw = o.status_code;
+  const code = typeof codeRaw === "string" ? Number(codeRaw) : typeof codeRaw === "number" ? codeRaw : NaN;
+  return {
+    statusCode: Number.isFinite(code) ? code : null,
+    statusMessage: typeof o.status_message === "string" ? o.status_message : null,
+    errorMessages: Array.isArray(o.error_messages) ? o.error_messages.map(String) : [],
+  };
+}
+
 async function request(url: string, creds: MidtransCreds, init?: RequestInit): Promise<unknown> {
   const res = await fetch(url, {
     ...init,
@@ -34,11 +155,39 @@ async function request(url: string, creds: MidtransCreds, init?: RequestInit): P
     signal: AbortSignal.timeout(15_000),
   });
   const text = await res.text();
+
+  let raw: unknown;
   try {
-    return JSON.parse(text);
+    raw = JSON.parse(text);
   } catch {
-    throw new Error(`Midtrans ${url}: response bukan JSON (status ${res.status}): ${text.slice(0, 200)}`);
+    throw new MidtransApiError({
+      endpoint: url,
+      httpStatus: res.status,
+      statusCode: null,
+      statusMessage: `response bukan JSON: ${text.slice(0, 500)}`,
+      errorMessages: [],
+      raw: text.slice(0, 2000),
+    });
   }
+
+  // Status HTTP SAJA tidak cukup: GET /v2/{id}/status membalas HTTP 200 dengan
+  // body status_code "404" saat transaksi tidak ada, dan /v2/charge membalas
+  // HTTP 200 dengan status_code "201" saat SUKSES. Yang menentukan adalah
+  // status_code di body; status HTTP cuma cadangan kalau body tidak punya.
+  const env = readErrorEnvelope(raw);
+  const effective = env.statusCode ?? res.status;
+  if (effective >= 400) {
+    throw new MidtransApiError({
+      endpoint: url,
+      httpStatus: res.status,
+      statusCode: env.statusCode,
+      statusMessage: env.statusMessage,
+      errorMessages: env.errorMessages,
+      raw,
+    });
+  }
+
+  return raw;
 }
 
 const chargeSchema = z.object({
@@ -348,6 +497,57 @@ export async function getTransactionStatus(
     statusCode: d.status_code,
     raw,
   };
+}
+
+// ===== Uji koneksi (dipakai tombol "Test Koneksi" di panel admin) =====
+
+export interface MidtransPingResult {
+  /** true = server key ini SAH untuk environment yang sedang dipilih. */
+  ok: boolean;
+  isProduction: boolean;
+  httpStatus: number | null;
+  statusCode: number | null;
+  statusMessage: string | null;
+}
+
+/**
+ * Memvalidasi pasangan (server key, mode) TANPA membuat transaksi apa pun.
+ *
+ * Caranya: GET status sebuah order_id yang dijamin tidak ada. Midtrans membalas
+ *   - status_code 404 "Transaction doesn't exist."  -> otentikasi SAH
+ *   - status_code 401 "Unknown Merchant server_key/id" -> key tidak dikenal di
+ *     environment ini (paling sering: key sandbox dipakai di mode production)
+ * Jadi 404 di sini adalah SUKSES, bukan kegagalan.
+ *
+ * Tidak pernah melempar - pemanggilnya adalah UI diagnostik, yang justru harus
+ * bisa menampilkan kegagalan alih-alih ikut meledak.
+ */
+export async function pingMidtrans(creds: MidtransCreds): Promise<MidtransPingResult> {
+  const probeOrderId = `PING-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  try {
+    await request(`${baseUrl(creds)}/v2/${probeOrderId}/status`, creds, { method: "GET" });
+    // Tidak diharapkan (order_id acak mustahil ada), tapi kalau lolos berarti
+    // otentikasi jelas sah.
+    return { ok: true, isProduction: creds.isProduction, httpStatus: 200, statusCode: 200, statusMessage: null };
+  } catch (e) {
+    if (e instanceof MidtransApiError) {
+      const authOk = e.statusCode === 404;
+      return {
+        ok: authOk,
+        isProduction: creds.isProduction,
+        httpStatus: e.httpStatus,
+        statusCode: e.statusCode,
+        statusMessage: e.statusMessage,
+      };
+    }
+    return {
+      ok: false,
+      isProduction: creds.isProduction,
+      httpStatus: null,
+      statusCode: null,
+      statusMessage: e instanceof Error ? e.message : String(e),
+    };
+  }
 }
 
 export type PaymentActions =
