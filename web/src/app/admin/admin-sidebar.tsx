@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { PanelLeftClose, PanelLeftOpen, LogOut } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
+import { SiteLogo } from "@/components/site-logo";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, isNavItemActive } from "./nav-config";
 
@@ -13,6 +14,9 @@ export function AdminSidebar({
   onNavigate,
   userEmail,
   userRole,
+  logoUrl,
+  logoType,
+  faviconUrl,
 }: {
   pathname: string;
   collapsed: boolean;
@@ -21,32 +25,59 @@ export function AdminSidebar({
   onNavigate?: () => void;
   userEmail: string;
   userRole: string;
+  /** Logo yang diunggah admin di Pengaturan Situs; null = belum pernah diisi. */
+  logoUrl: string | null;
+  logoType: "image" | "video";
+  /** Favicon situs (dipaksa persegi saat diunggah); null = belum pernah diisi. */
+  faviconUrl: string | null;
 }) {
   return (
     <div className="flex h-full flex-col">
       {/* ===== Brand ===== */}
+      {/* Sumbernya sama persis dengan navbar storefront & halaman auth (SiteLogo
+          + logo_url/logo_type dari Pengaturan Situs), supaya panel admin tidak
+          jadi satu-satunya tempat yang punya brand sendiri.
+
+          Logo situs berformat melebar (~10:3), jadi hanya dipakai saat sidebar
+          melebar. Dalam keadaan diciutkan lebarnya cuma 4,75rem - di situ yang
+          tampil favicon situs, yang memang sudah dipaksa persegi saat diunggah.
+          Kalau admin belum pernah mengunggah logo/favicon, tampilannya persis
+          seperti sebelumnya (mark gradient "D" + wordmark DANNSHOP). */}
       <div
         className={cn(
           "flex h-16 shrink-0 items-center gap-3 px-4",
           collapsed && "justify-center px-0",
         )}
       >
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 font-heading text-base font-bold text-white shadow-lg shadow-indigo-500/25">
-          D
-        </span>
-        <span
-          className={cn(
-            "flex min-w-0 flex-col overflow-hidden transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-            collapsed && "pointer-events-none -translate-x-2 opacity-0",
-          )}
-        >
-          <span className="truncate font-heading text-sm leading-tight font-bold tracking-tight">
-            DANNSHOP
-          </span>
-          <span className="truncate text-[10px] leading-tight font-medium tracking-[0.18em] text-muted-foreground">
-            DIGITAL
-          </span>
-        </span>
+        {logoUrl && !collapsed ? (
+          <SiteLogo logoUrl={logoUrl} logoType={logoType} className="h-8 max-w-[11.5rem]" />
+        ) : (
+          <>
+            {collapsed && faviconUrl ? (
+              <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-foreground/[0.04]">
+                {/* eslint-disable-next-line @next/next/no-img-element -- URL upload arbitrer dari admin, tanpa domain whitelist di next.config */}
+                <img src={faviconUrl} alt="" className="size-full object-contain" />
+              </span>
+            ) : (
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 font-heading text-base font-bold text-white shadow-lg shadow-indigo-500/25">
+                D
+              </span>
+            )}
+            <span
+              className={cn(
+                "flex min-w-0 flex-col overflow-hidden transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                collapsed && "pointer-events-none -translate-x-2 opacity-0",
+              )}
+            >
+              <span className="truncate font-heading text-sm leading-tight font-bold tracking-tight">
+                DANNSHOP
+              </span>
+              <span className="truncate text-[10px] leading-tight font-medium tracking-[0.18em] text-muted-foreground">
+                DIGITAL
+              </span>
+            </span>
+          </>
+        )}
       </div>
 
       {/* ===== Menu ===== */}

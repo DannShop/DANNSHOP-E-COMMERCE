@@ -36,10 +36,18 @@ export function AdminShell({
   children,
   userEmail,
   userRole,
+  logoUrl,
+  logoType,
+  faviconUrl,
 }: {
   children: React.ReactNode;
   userEmail: string;
   userRole: string;
+  /** Logo situs dari Admin > Pengaturan Situs - sumber yang sama dengan storefront. */
+  logoUrl: string | null;
+  logoType: "image" | "video";
+  /** Favicon situs (selalu persegi) - dipakai sebagai mark saat sidebar diciutkan. */
+  faviconUrl: string | null;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -139,6 +147,9 @@ export function AdminShell({
           onToggleCollapse={toggleCollapse}
           userEmail={userEmail}
           userRole={userRole}
+          logoUrl={logoUrl}
+          logoType={logoType}
+          faviconUrl={faviconUrl}
         />
       </aside>
 
@@ -165,6 +176,9 @@ export function AdminShell({
           onNavigate={() => setMobileOpen(false)}
           userEmail={userEmail}
           userRole={userRole}
+          logoUrl={logoUrl}
+          logoType={logoType}
+          faviconUrl={faviconUrl}
         />
       </aside>
 
