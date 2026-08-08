@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { digiflazzSign, verifyDigiflazzWebhookSignature } from "./digiflazz-sign";
+import {
+  noopProviderApiLogger, redactProviderRequest,
+  type ProviderApiLogger, type ProviderApiOutcome,
+} from "./api-log";
 import type {
-  CallbackResult, CreateTrxInput, ProviderSkuPrice, ProviderTrxResult,
+  CallbackResult, CreateTrxInput, ProviderCallContext, ProviderSkuPrice, ProviderTrxResult,
   TopupProviderAdapter,
 } from "./types";
 
@@ -46,36 +50,134 @@ function mapTrxStatus(status: string, rc: string): "success" | "pending" | "fail
 
 const BASE_URL = "https://api.digiflazz.com/v1";
 
+// Menentukan "panggilan ini sebenarnya berhasil atau tidak" dari respons mentah.
+//
+// TIDAK BISA pakai status HTTP: Digiflazz membalas 200 untuk penolakan (IP belum
+// di-whitelist, signature salah, saldo kurang) — persis jebakan yang sama seperti
+// Midtrans. Yang menentukan adalah `data.rc` di dalam body.
+export function classifyDigiflazzResponse(json: unknown): {
+  outcome: ProviderApiOutcome;
+  rc: string | null;
+  message: string | null;
+} {
+  const data = (json as { data?: unknown } | null | undefined)?.data;
+
+  // /price-list sukses membalas `data: [...]` (array baris SKU), bukan objek.
+  if (Array.isArray(data)) return { outcome: "SUCCESS", rc: null, message: null };
+  if (data === null || typeof data !== "object") {
+    return { outcome: "INVALID_RESPONSE", rc: null, message: null };
+  }
+
+  const d = data as Record<string, unknown>;
+  const rc = typeof d.rc === "string" ? d.rc : null;
+  const message = typeof d.message === "string" ? d.message : null;
+  const status = typeof d.status === "string" ? d.status : null;
+
+  if (rc === null) {
+    // /cek-saldo yang sukses membalas `data: { deposit }` tanpa rc sama sekali.
+    // Objek tanpa rc DAN tanpa deposit = bentuk error Digiflazz (mis.
+    // `{ data: { message: "Invalid Signature" } }`), bukan keberhasilan.
+    return { outcome: "deposit" in d ? "SUCCESS" : "REJECTED", rc, message };
+  }
+  if (rc === "00" || status === "Sukses") return { outcome: "SUCCESS", rc, message };
+  if (rc === "03" || status === "Pending") return { outcome: "PENDING", rc, message };
+  return { outcome: "REJECTED", rc, message };
+}
+
 export class DigiflazzAdapter implements TopupProviderAdapter {
   readonly key = "digiflazz" as const;
 
+  private baseUrl: string;
+  private log: ProviderApiLogger;
+
+  // Logger disuntik (bukan di-import langsung) supaya adapter tetap bisa dipakai
+  // tanpa database — test dan skrip one-off memakai default no-op, sementara
+  // registry.getAdapter menyuntikkan penulis DB yang sesungguhnya.
   constructor(
     private creds: DigiflazzCredentials,
-    private baseUrl: string = BASE_URL,
-  ) {}
+    options?: { baseUrl?: string; log?: ProviderApiLogger },
+  ) {
+    this.baseUrl = options?.baseUrl ?? BASE_URL;
+    this.log = options?.log ?? noopProviderApiLogger;
+  }
 
-  private async post(path: string, body: Record<string, unknown>): Promise<unknown> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-    });
-    // Digiflazz membalas error dalam body JSON (bukan selalu non-200) — parse dulu, validasi di caller.
-    const text = await res.text();
+  private async post(
+    path: string,
+    body: Record<string, unknown>,
+    meta: { operation: string; context?: ProviderCallContext },
+  ): Promise<unknown> {
+    const startedAt = Date.now();
+    const endpoint = `${this.baseUrl}${path}`;
+    let httpStatus: number | null = null;
+    let parsed: unknown;
+    let responseText: string | null = null;
+    let outcome: ProviderApiOutcome = "TRANSPORT_ERROR";
+    let providerRc: string | null = null;
+    let message: string | null = null;
+    let errorMessage: string | null = null;
+
     try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error(`Digiflazz ${path}: response bukan JSON (status ${res.status}): ${text.slice(0, 200)}`);
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+      });
+      httpStatus = res.status;
+      // Digiflazz membalas error dalam body JSON (bukan selalu non-200) — parse dulu, validasi di caller.
+      const text = await res.text();
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // Body mentah disimpan apa adanya: halaman error HTML dari WAF/proxy di
+        // depan provider justru sering memuat sebab sebenarnya (IP diblokir,
+        // rate limit) yang tidak muncul di mana pun lagi.
+        outcome = "INVALID_RESPONSE";
+        responseText = text;
+        errorMessage = `Respons bukan JSON (status ${res.status})`;
+        throw new Error(`Digiflazz ${path}: response bukan JSON (status ${res.status}): ${text.slice(0, 200)}`);
+      }
+      const classified = classifyDigiflazzResponse(parsed);
+      outcome = classified.outcome;
+      providerRc = classified.rc;
+      message = classified.message;
+      return parsed;
+    } catch (e) {
+      // errorMessage yang sudah diisi di atas lebih spesifik — jangan ditimpa.
+      errorMessage ??= e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      // Dicatat di `finally` supaya jalur yang MELEMPAR (timeout, DNS, non-JSON)
+      // ikut tersimpan — justru jalur itulah yang sebelumnya tidak meninggalkan
+      // jejak apa pun selain satu baris console.error yang hilang saat redeploy.
+      await this.log({
+        provider: "DIGIFLAZZ",
+        operation: meta.operation,
+        endpoint,
+        outcome,
+        httpStatus,
+        durationMs: Date.now() - startedAt,
+        requestBody: redactProviderRequest(body),
+        responseBody: parsed,
+        responseText,
+        providerRc,
+        message,
+        errorMessage,
+        context: meta.context,
+      });
     }
   }
 
   async fetchPriceList(): Promise<ProviderSkuPrice[]> {
-    const raw = await this.post("/price-list", {
-      cmd: "prepaid",
-      username: this.creds.username,
-      sign: digiflazzSign(this.creds.username, this.creds.apiKey, "pricelist"),
-    });
+    const raw = await this.post(
+      "/price-list",
+      {
+        cmd: "prepaid",
+        username: this.creds.username,
+        sign: digiflazzSign(this.creds.username, this.creds.apiKey, "pricelist"),
+      },
+      { operation: "price-list" },
+    );
     const parsed = priceListSchema.safeParse(raw);
     if (!parsed.success) {
       throw new Error(`Digiflazz price-list: response tidak sesuai (${JSON.stringify(raw).slice(0, 200)})`);
@@ -91,11 +193,15 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
   }
 
   async fetchBalance(): Promise<bigint> {
-    const raw = await this.post("/cek-saldo", {
-      cmd: "deposit",
-      username: this.creds.username,
-      sign: digiflazzSign(this.creds.username, this.creds.apiKey, "depo"),
-    });
+    const raw = await this.post(
+      "/cek-saldo",
+      {
+        cmd: "deposit",
+        username: this.creds.username,
+        sign: digiflazzSign(this.creds.username, this.creds.apiKey, "depo"),
+      },
+      { operation: "cek-saldo" },
+    );
     const parsed = balanceSchema.safeParse(raw);
     if (!parsed.success) {
       throw new Error("Digiflazz cek-saldo: response tidak sesuai skema yang diharapkan");
@@ -104,6 +210,14 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
   }
 
   async createTransaction(input: CreateTrxInput): Promise<ProviderTrxResult> {
+    return this.sendTrx(input, "transaction");
+  }
+
+  // Badan bersama createTransaction & checkStatus: request-nya identik (cek status
+  // = kirim ulang transaksi yang sama, idempotent by ref_id). Dipisah hanya supaya
+  // log bisa membedakan "pengiriman awal" dari "cek status ulang" — dua-duanya
+  // muncul sebagai POST /transaction yang sama persis di riwayat.
+  private async sendTrx(input: CreateTrxInput, operation: "transaction" | "check-status"): Promise<ProviderTrxResult> {
     const body: Record<string, unknown> = {
       username: this.creds.username,
       buyer_sku_code: input.skuCode,
@@ -113,7 +227,10 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
     };
     if (input.testing) body.testing = true;
 
-    const raw = await this.post("/transaction", body);
+    const raw = await this.post("/transaction", body, {
+      operation,
+      context: { ourRefId: input.refId, ...input.context },
+    });
     const parsed = trxSchema.safeParse(raw);
     if (!parsed.success) {
       throw new Error("Digiflazz transaction: response tidak sesuai skema yang diharapkan");
@@ -130,7 +247,7 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
   }
 
   async checkStatus(input: CreateTrxInput): Promise<ProviderTrxResult> {
-    return this.createTransaction(input);
+    return this.sendTrx(input, "check-status");
   }
 
   parseCallback(input: { rawBody: string; headers: Record<string, string> }): CallbackResult | null {

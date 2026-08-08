@@ -29,11 +29,23 @@ export interface CallbackResult {
   raw: unknown;
 }
 
+// Identitas order yang MEMICU panggilan ini — dipakai semata-mata untuk mengaitkan
+// baris ProviderApiLog ke order, supaya halaman detail order bisa menampilkan
+// riwayat panggilan API-nya sendiri. Semuanya opsional: panggilan yang tidak
+// terikat order (sync price-list, cek saldo) tetap dicatat, hanya tanpa kaitan.
+export interface ProviderCallContext {
+  orderId?: string;
+  orderNumber?: string;
+  fulfillmentId?: string;
+  ourRefId?: string;
+}
+
 export interface CreateTrxInput {
   skuCode: string;
   target: string;   // customer_no gabungan (mis. userid+zoneid) — pembentukan format = urusan pemanggil
   refId: string;    // our_ref_id, unik per attempt, kunci idempotency
   testing?: boolean; // mode tes Digiflazz (transaksi simulasi)
+  context?: ProviderCallContext;
 }
 
 export interface TopupProviderAdapter {

@@ -2,6 +2,7 @@ import type { ProviderKey } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decryptJson } from "@/lib/crypto";
 import { DigiflazzAdapter, type DigiflazzCredentials } from "./digiflazz";
+import { recordProviderApiCall } from "./api-log";
 import type { TopupProviderAdapter } from "./types";
 
 type DbLike = {
@@ -32,7 +33,11 @@ export async function getAdapter(
 
   switch (key) {
     case "DIGIFLAZZ":
-      return new DigiflazzAdapter(decryptJson<DigiflazzCredentials>(config.credentials));
+      // Logger disuntik DI SINI, satu-satunya pabrik adapter untuk panggilan
+      // keluar — jadi tidak ada jalur transaksi yang bisa lolos tanpa tercatat.
+      return new DigiflazzAdapter(decryptJson<DigiflazzCredentials>(config.credentials), {
+        log: recordProviderApiCall,
+      });
     default:
       throw new Error(`Provider ${key} belum didukung (adapter menyusul di Fase 5).`);
   }

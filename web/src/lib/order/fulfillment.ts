@@ -6,7 +6,8 @@ import { buildCustomerNo } from "@/lib/order/customer-no";
 import { generateRefId } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { decideRefundDestination } from "@/lib/wallet/decisions";
-import { formatOrderAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
+import { formatOrderAlertMessage, formatFulfillmentFailureMessage, sendTelegramAlert } from "@/lib/notify/telegram";
+import { diagnoseFailure } from "@/lib/order/failure-reason";
 import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 import { decideFulfillmentRetry } from "@/lib/order/retry-decision";
 import { truncateNote } from "@/lib/order/status-note";
@@ -166,6 +167,7 @@ async function selectAndSend(
       skuCode: decision.sku.providerSkuCode,
       target,
       refId: ourRefId,
+      context: { orderId: order.id, orderNumber: order.orderNumber, fulfillmentId: fulfillment.id },
     });
     await applyFulfillmentResult(fulfillment.id, result);
   } catch (e) {
@@ -244,10 +246,29 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
             throw new Error("ORDER_ALREADY_TERMINAL");
           }
         });
+        const diagnosis = diagnoseFailure(result.message);
         await db.orderStatusHistory.create({
-          data: { orderId: order.id, toStatus: "REFUNDED", note: truncateNote(`Auto-refund ke saldo: ${result.message}`) },
+          data: {
+            orderId: order.id,
+            toStatus: "REFUNDED",
+            note: truncateNote(`Auto-refund ke saldo — ${diagnosis.label}: ${result.message}`),
+          },
         });
         await sendOrderFailedEmail(order, result.message, { toWallet: true });
+        // Auto-refund yang BERHASIL pun tetap harus memberi tahu admin. Refund
+        // menyelamatkan uang pelanggan, tapi tidak memperbaiki sebabnya - dan
+        // sebab yang sistemik akan menggagalkan semua order berikutnya juga.
+        await sendTelegramAlert(
+          formatFulfillmentFailureMessage({
+            orderNumber: order.orderNumber,
+            productName: order.productName,
+            itemName: order.itemName,
+            providerMessage: result.message ?? "",
+            diagnosisLabel: diagnosis.label,
+            diagnosisAction: diagnosis.action,
+            refunded: "wallet",
+          }),
+        );
       } catch (e) {
         if (e instanceof Error && e.message === "ORDER_ALREADY_TERMINAL") {
           // Transaksi sudah di-rollback oleh Prisma (kredit wallet & ledger TIDAK jadi ditulis) -
@@ -265,13 +286,31 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
         await escalateOrder({ orderId: order.id, orderNumber: order.orderNumber, toStatus: "NEEDS_REVIEW", note });
       }
     } else {
-      // Guest — antrean manual admin (Fase 7a: halaman /admin/orders + notifikasi Telegram)
-      await escalateOrder({
+      // Guest — antrean manual admin (Fase 7a: halaman /admin/orders + notifikasi Telegram).
+      // alertOnFailure=false lalu kirim sendiri: pesan kaya di bawah memuat sebab +
+      // tindakan, jauh lebih berguna daripada alert generik escalateOrder, dan
+      // mengirim keduanya cuma bikin notifikasi dobel untuk satu kejadian.
+      const diagnosis = diagnoseFailure(result.message);
+      const escalated = await escalateOrder({
         orderId: order.id,
         orderNumber: order.orderNumber,
         toStatus: "REFUND_PENDING",
-        note: result.message,
+        note: truncateNote(`${diagnosis.label}: ${result.message}`),
+        alertOnFailure: false,
       });
+      if (escalated.claimed) {
+        await sendTelegramAlert(
+          formatFulfillmentFailureMessage({
+            orderNumber: order.orderNumber,
+            productName: order.productName,
+            itemName: order.itemName,
+            providerMessage: result.message ?? "",
+            diagnosisLabel: diagnosis.label,
+            diagnosisAction: diagnosis.action,
+            refunded: "manual",
+          }),
+        );
+      }
       await sendOrderFailedEmail(order, result.message, { toWallet: false });
     }
   }
@@ -326,7 +365,12 @@ export async function retryOrderFulfillment(orderId: string): Promise<{ ok: true
         // allowInactive: true - retry manual admin untuk cek ulang status attempt yang sudah
         // terlanjur dikirim ke provider tidak boleh terhalang kill-switch (bukan transaksi baru).
         const adapter = await getAdapter(fulfillment.provider, db, { allowInactive: true });
-        const result = await adapter.checkStatus({ skuCode: fulfillment.providerSkuCode, target, refId: fulfillment.ourRefId });
+        const result = await adapter.checkStatus({
+          skuCode: fulfillment.providerSkuCode,
+          target,
+          refId: fulfillment.ourRefId,
+          context: { orderId: order.id, orderNumber: order.orderNumber, fulfillmentId: fulfillment.id },
+        });
         await applyFulfillmentResult(fulfillment.id, result);
         if (result.status === "pending") {
           await db.job.create({

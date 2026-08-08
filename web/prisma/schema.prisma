@@ -576,3 +576,45 @@ model WebhookEvent {
 
   @@index([source, externalRef])
 }
+
+// Riwayat MENTAH setiap panggilan HTTP KELUAR ke API provider: request yang kita
+// kirim, respons apa adanya, status HTTP, durasi, dan error transport.
+//
+// WebhookEvent di atas hanya mencatat yang MASUK. Untuk arah keluar, satu-satunya
+// jejak selama ini adalah OrderFulfillment.message (satu kalimat) + rawCallback -
+// dan rawCallback baru terisi kalau respons berhasil di-parse DAN row-nya berhasil
+// diklaim. Kalau panggilan timeout, ditolak di lapisan jaringan, atau membalas
+// HTML/non-JSON, seluruh datanya hilang dan admin tidak punya apa pun untuk
+// dilihat selain order yang gagal tanpa sebab. Tabel ini menyimpan semuanya,
+// termasuk panggilan yang TIDAK terikat order (sync harga, cek saldo) yang gagal
+// karena sebab sistemik yang sama (IP belum di-whitelist, kredensial salah).
+//
+// Sengaja TANPA foreign key ke Order/OrderFulfillment: penulisan log tidak boleh
+// pernah gagal gara-gara row induknya belum/tidak ada, dan log wajib tetap ada
+// walau order-nya dihapus - log forensik yang ikut terhapus bersama objek yang
+// sedang diselidiki tidak ada gunanya.
+model ProviderApiLog {
+  id            String      @id @default(cuid())
+  provider      ProviderKey
+  operation     String // "transaction" | "check-status" | "price-list" | "cek-saldo"
+  endpoint      String
+  outcome       String // lihat PROVIDER_API_OUTCOMES di lib/providers/api-log.ts
+  httpStatus    Int?
+  durationMs    Int
+  orderId       String?
+  orderNumber   String?
+  fulfillmentId String?
+  ourRefId      String?
+  providerRc    String? // rc mentah dari provider, kalau ada
+  message       String?     @db.Text // pesan mentah provider, disalin keluar biar bisa dicari
+  requestBody   Json // kredensial SUDAH diredaksi sebelum disimpan
+  responseBody  Json?
+  responseText  String?     @db.Text // diisi hanya kalau respons BUKAN JSON
+  errorMessage  String?     @db.Text
+  createdAt     DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([orderId])
+  @@index([ourRefId])
+  @@index([provider, outcome, createdAt])
+}

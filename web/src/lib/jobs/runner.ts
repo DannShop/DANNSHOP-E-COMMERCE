@@ -170,6 +170,31 @@ export const handlers: Record<string, JobHandler> = {
     return `deleted=${deleted.count}`;
   },
 
+  // ProviderApiLog tumbuh tiap panggilan keluar (transaksi, recheck tiap menit,
+  // sync harga tiap 3 jam) dan TIDAK pernah dibaca setelah beberapa hari - tanpa
+  // pembersihan, tabel forensik ini pelan-pelan jadi tabel terbesar di database.
+  // 30 hari jauh lebih panjang dari umur pakainya (mendiagnosis order yang baru
+  // saja gagal), tapi masih cukup untuk menelusuri keluhan pelanggan yang telat.
+  "cleanup-provider-api-logs": async () => {
+    const RETENTION_DAYS = 30;
+    const threshold = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60_000);
+    // Dibatasi per eksekusi supaya penghapusan pertama di tabel yang sudah besar
+    // tidak mengunci tabel lama-lama dan bikin request cron timeout; sisanya
+    // terhapus di jadwal-jadwal berikutnya.
+    const stale = await db.providerApiLog.findMany({
+      where: { createdAt: { lt: threshold } },
+      select: { id: true },
+      take: 1000,
+    });
+    const deleted = stale.length
+      ? await db.providerApiLog.deleteMany({ where: { id: { in: stale.map((r) => r.id) } } })
+      : { count: 0 };
+    await db.job.create({
+      data: { type: "cleanup-provider-api-logs", payload: {}, runAt: new Date(Date.now() + 6 * 60 * 60_000) },
+    });
+    return `deleted=${deleted.count}`;
+  },
+
   "recheck-fulfillment": async (payload) => {
     const { fulfillmentId, attempt } = payload as { fulfillmentId: string; attempt: number };
     const fulfillment = await db.orderFulfillment.findUniqueOrThrow({ where: { id: fulfillmentId } });
@@ -198,6 +223,7 @@ export const handlers: Record<string, JobHandler> = {
         skuCode: fulfillment.providerSkuCode,
         target,
         refId: fulfillment.ourRefId,
+        context: { orderId: order.id, orderNumber: order.orderNumber, fulfillmentId: fulfillment.id },
       });
       await applyFulfillmentResult(fulfillment.id, result);
     } catch (e) {
@@ -309,6 +335,22 @@ export async function ensureRecurringJobs(): Promise<void> {
   });
   if (!existingCleanupRateLimits) {
     await db.job.create({ data: { type: "cleanup-rate-limits", payload: {}, runAt: new Date() } });
+  }
+
+  // Guard basi yang sama seperti cleanup-rate-limits di atas.
+  const CLEANUP_API_LOGS_RUNNING_STALE_MINUTES = 10;
+  const cleanupApiLogsRunningFreshAfter = new Date(Date.now() - CLEANUP_API_LOGS_RUNNING_STALE_MINUTES * 60_000);
+  const existingCleanupApiLogs = await db.job.findFirst({
+    where: {
+      type: "cleanup-provider-api-logs",
+      OR: [
+        { status: "PENDING" },
+        { status: "RUNNING", updatedAt: { gt: cleanupApiLogsRunningFreshAfter } },
+      ],
+    },
+  });
+  if (!existingCleanupApiLogs) {
+    await db.job.create({ data: { type: "cleanup-provider-api-logs", payload: {}, runAt: new Date() } });
   }
 }
 

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { ORDER_STATUS_LABEL } from "@/lib/order/status-labels";
+import { diagnoseFailure } from "@/lib/order/failure-reason";
+import { ProviderApiLogEntryCard } from "@/components/admin/provider-api-log-entry";
 import {
   retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction,
 } from "@/app/actions/orders";
@@ -35,6 +37,16 @@ export default async function AdminOrderDetailPage({
 
   const latestFulfillment = order.fulfillments[0];
   const canRetryRefund = Boolean(order.userId) && latestFulfillment?.status === "FAILED";
+
+  // Dicocokkan lewat orderId ATAU ourRefId: log yang ditulis sebelum konteks order
+  // sempat dilampirkan (atau oleh jalur yang hanya tahu ref id) tetap ikut terambil,
+  // supaya halaman ini tidak pernah menyembunyikan panggilan yang justru gagal.
+  const refIds = order.fulfillments.map((f) => f.ourRefId);
+  const apiLogs = await db.providerApiLog.findMany({
+    where: { OR: [{ orderId: order.id }, ...(refIds.length ? [{ ourRefId: { in: refIds } }] : [])] },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -101,12 +113,71 @@ export default async function AdminOrderDetailPage({
               <p className="text-sm text-muted-foreground">Belum ada percobaan.</p>
             ) : (
               <ul className="flex flex-col gap-2 text-sm">
-                {order.fulfillments.map((f) => (
-                  <li key={f.id} className="rounded border p-2">
-                    <p>Attempt {f.attemptNo} · {f.provider} ({f.providerSkuCode}) · <Badge variant="muted">{f.status}</Badge></p>
-                    {f.sn && <p className="text-xs text-muted-foreground">SN: {f.sn}</p>}
-                    {f.message && <p className="text-xs text-muted-foreground">{f.message}</p>}
-                  </li>
+                {order.fulfillments.map((f) => {
+                  // Diagnosis hanya ditampilkan untuk attempt yang GAGAL - di
+                  // attempt sukses/pending, "sebab" tidak punya arti apa pun.
+                  const diagnosis = f.status === "FAILED" ? diagnoseFailure(f.message) : null;
+                  return (
+                    <li key={f.id} className="rounded border p-2">
+                      <p>Attempt {f.attemptNo} · {f.provider} ({f.providerSkuCode}) · <Badge variant="muted">{f.status}</Badge></p>
+                      <p className="text-xs text-muted-foreground">
+                        Ref: <span className="font-mono">{f.ourRefId}</span>
+                        {f.providerRef && <> · Provider ref: <span className="font-mono">{f.providerRef}</span></>}
+                        {" · "}{formatDateTime(f.createdAt)}
+                      </p>
+                      {f.sn && <p className="text-xs text-muted-foreground">SN: {f.sn}</p>}
+                      {f.message && <p className="text-xs text-muted-foreground">{f.message}</p>}
+                      {diagnosis && (
+                        <div className="mt-1.5 rounded bg-destructive/10 px-2 py-1.5 text-xs">
+                          <p className="font-medium text-destructive">{diagnosis.label}</p>
+                          {diagnosis.action && <p className="mt-0.5 text-muted-foreground">{diagnosis.action}</p>}
+                        </div>
+                      )}
+                      {/* Respons MENTAH dari provider. Selama ini sudah tersimpan
+                          di kolom rawCallback tapi tidak pernah ditampilkan, jadi
+                          satu-satunya cara melihatnya adalah membuka database.
+                          Ditutup secara default supaya tidak membanjiri halaman. */}
+                      {f.rawCallback ? (
+                        <details className="mt-1.5">
+                          <summary className="cursor-pointer text-xs text-muted-foreground select-none">
+                            Respons mentah provider (semua data)
+                          </summary>
+                          <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all">
+                            {JSON.stringify(f.rawCallback, null, 2)}
+                          </pre>
+                        </details>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Belum ada respons mentah — provider belum menjawab, atau panggilan gagal sebelum sempat
+                          mendapat respons (cek log runtime).
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* Riwayat panggilan API ke provider untuk order ini. Beda dengan
+              "Percobaan Fulfillment" di atas: blok itu menampilkan HASIL yang
+              berhasil tersimpan ke row fulfillment, sedangkan blok ini menampilkan
+              tiap panggilan HTTP apa adanya — termasuk yang timeout atau ditolak
+              sebelum sempat menghasilkan row fulfillment sama sekali. */}
+          <div className="rounded-xl ring-1 ring-foreground/10 p-4">
+            <h2 className="text-sm font-semibold">Riwayat Panggilan API Provider</h2>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Semua data mentah: request yang dikirim, respons provider apa adanya, status HTTP, dan durasi.
+            </p>
+            {apiLogs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Belum ada panggilan tercatat untuk order ini. Order lama (sebelum fitur log ini aktif) memang tidak
+                punya riwayat — hanya order baru yang terekam.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {apiLogs.map((log) => (
+                  <ProviderApiLogEntryCard key={log.id} log={log} />
                 ))}
               </ul>
             )}

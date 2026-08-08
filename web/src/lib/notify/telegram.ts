@@ -17,6 +17,45 @@ export function formatOrderAlertMessage(
   return `⚠️ Order ${params.orderNumber} → ${params.status}\n${params.reason}\n${baseUrl}/admin/orders/${params.orderNumber}`;
 }
 
+// Notifikasi kegagalan fulfillment - TERMASUK yang sudah berhasil auto-refund.
+//
+// Sebelumnya alert Telegram HANYA dikirim lewat escalateOrder(), yaitu ketika
+// order jatuh ke NEEDS_REVIEW/REFUND_PENDING. Akibatnya kasus yang paling
+// sering terjadi - order member gagal lalu di-refund otomatis - berlalu tanpa
+// satu pun notifikasi: uang pelanggan kembali, tapi admin tidak pernah tahu
+// ada produk yang tidak terkirim. Kalau penyebabnya sistemik (saldo provider
+// habis, IP belum di-whitelist), SELURUH order berikutnya ikut gagal diam-diam.
+export function formatFulfillmentFailureMessage(
+  params: {
+    orderNumber: string;
+    productName: string;
+    itemName: string;
+    providerMessage: string;
+    diagnosisLabel: string;
+    diagnosisAction: string;
+    refunded: "wallet" | "manual";
+  },
+  baseUrl: string = process.env.NEXT_PUBLIC_APP_URL ?? "",
+): string {
+  const refundLine =
+    params.refunded === "wallet"
+      ? "Dana sudah dikembalikan otomatis ke saldo pembeli."
+      : "Pembeli tamu - refund perlu diproses manual.";
+  return [
+    `❌ Order ${params.orderNumber} gagal diproses`,
+    `${params.productName} · ${params.itemName}`,
+    ``,
+    `Sebab: ${params.diagnosisLabel}`,
+    `Pesan provider: ${params.providerMessage || "-"}`,
+    params.diagnosisAction ? `Tindakan: ${params.diagnosisAction}` : "",
+    ``,
+    refundLine,
+    `${baseUrl}/admin/orders/${params.orderNumber}`,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 export function formatBalanceAlertMessage(
   params: { displayName: string; balance: bigint; threshold: bigint; recovered: boolean },
   baseUrl: string = process.env.NEXT_PUBLIC_APP_URL ?? "",

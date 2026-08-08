@@ -12,6 +12,7 @@ import {
   KeyRound,
   Server,
   Webhook,
+  Radio,
   Activity,
   Crown,
   Users,
@@ -79,6 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/payment-methods", label: "Metode Pembayaran", icon: CreditCard },
       { href: "/admin/providers", label: "Providers", icon: Server },
       { href: "/admin/webhooks", label: "Log Callback", icon: Webhook },
+      { href: "/admin/provider-logs", label: "Log API Provider", icon: Radio },
     ],
   },
   {
