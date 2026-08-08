@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
-import { safeCompare } from "@/lib/crypto";
+import { isAuthorizedCron } from "@/lib/jobs/cron-auth";
 import { isMaintenanceModeOn } from "@/lib/site-settings";
 
 const { auth } = NextAuth(authConfig);
@@ -33,12 +33,12 @@ export default auth(async (req) => {
     // sendiri) tidak butuh limit berbasis IP tambahan - IP dari X-Forwarded-For bisa dispoof
     // caller, jadi limit IP di sini sebenarnya cuma lubang DoS (starve bucket IP bersama) untuk
     // endpoint yang sudah punya autentikasi sendiri via secret.
-    const cronSecretHeader = req.headers.get("x-cron-secret");
-    const isTrustedCron =
-      rule.key === "cron-tick" &&
-      !!process.env.CRON_SECRET &&
-      !!cronSecretHeader &&
-      safeCompare(cronSecretHeader, process.env.CRON_SECRET);
+    // isAuthorizedCron (bukan cek `x-cron-secret` manual) supaya lapisan ini
+    // mengenali skema header yang SAMA dengan route handler-nya. Vercel Cron
+    // mengirim `Authorization: Bearer <CRON_SECRET>`, bukan `x-cron-secret`;
+    // dengan cek manual yang lama, cron Vercel yang sah tidak dianggap tepercaya
+    // dan ikut masuk hitungan rate limit per-IP bersama.
+    const isTrustedCron = rule.key === "cron-tick" && isAuthorizedCron(req.headers);
     if (!isTrustedCron) {
       const result = await checkRateLimit(`${rule.key}:ip:${ip}`, rule.limit, rule.windowMs);
       if (!result.allowed) {

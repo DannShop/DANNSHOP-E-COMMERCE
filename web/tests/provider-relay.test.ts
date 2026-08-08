@@ -1,9 +1,24 @@
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isRelayConfigured, providerHttpPost } from "@/lib/providers/relay";
 import { DigiflazzAdapter } from "@/lib/providers/digiflazz";
 import type { ProviderApiLogEntry } from "@/lib/providers/api-log";
 
 const creds = { username: "userX", apiKey: "keyY" };
+
+// Dihitung ulang di test, bukan meminjam digiflazzSign(), supaya test benar-benar
+// menguji rumusnya dan bukan sekadar mencocokkan fungsi dengan dirinya sendiri.
+function md5(input: string): string {
+  return createHash("md5").update(input).digest("hex");
+}
+
+function mockFetchOnce(json: unknown, status = 200) {
+  const fn = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(json), { status, headers: { "content-type": "application/json" } }),
+  );
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
 
 const ORIGINAL_ENV = { url: process.env.PROVIDER_RELAY_URL, secret: process.env.PROVIDER_RELAY_SECRET };
 
@@ -190,5 +205,53 @@ describe("pesan penolakan provider tidak boleh hilang", () => {
       ),
     );
     await expect(new DigiflazzAdapter(creds).fetchPriceList()).rejects.toThrow(/rc 83\): Rate limit terlampaui/);
+  });
+});
+
+describe("Development Key untuk transaksi mode testing", () => {
+  // Digiflazz menerbitkan DUA key per akun. Transaksi `testing: true` harus
+  // ditandatangani dengan Development Key; memakai Production Key ditolak dengan
+  // rc 41 "Signature Anda salah" - pesan yang menyesatkan karena kredensialnya
+  // sebenarnya sah. Gejala nyatanya: cek-saldo SUKSES (Production Key) tapi
+  // transaksi testing gagal terus di akun yang sama.
+  const credsWithDev = { username: "userX", apiKey: "prodKey", devApiKey: "dev-abc123" };
+
+  function signOf(fetchMock: ReturnType<typeof vi.fn>): string {
+    return JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).sign;
+  }
+
+  it("testing:true ditandatangani dengan Development Key, bukan Production Key", async () => {
+    const fn = mockFetchOnce({ data: { ref_id: "T-1", status: "Sukses", rc: "00", sn: "SN" } });
+    await new DigiflazzAdapter(credsWithDev).createTransaction({
+      skuCode: "xld10", target: "087800001230", refId: "T-1", testing: true,
+    });
+    expect(signOf(fn)).toBe(md5("userXdev-abc123T-1"));
+    expect(signOf(fn)).not.toBe(md5("userXprodKeyT-1"));
+  });
+
+  it("transaksi NYATA tetap memakai Production Key", async () => {
+    const fn = mockFetchOnce({ data: { ref_id: "T-2", status: "Sukses", rc: "00", sn: "SN" } });
+    await new DigiflazzAdapter(credsWithDev).createTransaction({
+      skuCode: "AzGg98", target: "553038736", refId: "T-2",
+    });
+    expect(signOf(fn)).toBe(md5("userXprodKeyT-2"));
+  });
+
+  it("cek-saldo memakai Production Key walau Development Key terisi", async () => {
+    const fn = mockFetchOnce({ data: { deposit: 922 } });
+    await new DigiflazzAdapter(credsWithDev).fetchBalance();
+    expect(signOf(fn)).toBe(md5("userXprodKeydepo"));
+  });
+
+  it("testing:true tanpa Development Key digagalkan dengan pesan yang menjelaskan sebabnya", async () => {
+    const fn = vi.fn();
+    vi.stubGlobal("fetch", fn);
+    await expect(
+      new DigiflazzAdapter({ username: "userX", apiKey: "prodKey" }).createTransaction({
+        skuCode: "xld10", target: "087800001230", refId: "T-3", testing: true,
+      }),
+    ).rejects.toThrow(/Development Key/);
+    // Request yang dijamin ditolak tidak usah dikirim sama sekali.
+    expect(fn).not.toHaveBeenCalled();
   });
 });

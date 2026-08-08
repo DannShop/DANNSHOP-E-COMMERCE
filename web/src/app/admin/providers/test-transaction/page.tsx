@@ -1,4 +1,4 @@
-import { sendTestTransaction } from "@/app/actions/providers";
+import { sendTestTransaction, checkTestTransactionStatus } from "@/app/actions/providers";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { TestTransactionForm } from "./test-transaction-form";
 
@@ -20,7 +20,10 @@ export default function TestTransactionPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <TestTransactionForm sendTestTransaction={sendTestTransaction} />
+          <TestTransactionForm
+            sendTestTransaction={sendTestTransaction}
+            checkTestTransactionStatus={checkTestTransactionStatus}
+          />
         </CardContent>
       </Card>
     </div>

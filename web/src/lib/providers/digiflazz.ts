@@ -12,7 +12,21 @@ import type {
 
 export interface DigiflazzCredentials {
   username: string;
+  /** Production Key — dipakai untuk SEMUA operasi nyata (transaksi, cek saldo, price list). */
   apiKey: string;
+  /**
+   * Development Key (berawalan `dev-`) — HANYA dipakai untuk transaksi `testing: true`.
+   *
+   * Digiflazz menerbitkan dua key terpisah per akun. Signature transaksi simulasi
+   * harus ditandatangani dengan Development Key; memakai Production Key untuk
+   * `testing: true` ditolak sebagai `rc 41 "Signature Anda salah"` - pesan yang
+   * menyesatkan, karena kredensialnya sebenarnya sah dan rumus signature-nya benar.
+   * Persis kelas jebakan yang sama dengan Snap vs Core API di Midtrans: dua
+   * kredensial yang tidak bisa dibedakan dari bentuk key-nya.
+   *
+   * Opsional: akun yang tidak pernah memakai mode testing tidak membutuhkannya.
+   */
+  devApiKey?: string;
   webhookSecret?: string;
 }
 
@@ -232,12 +246,25 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
   // log bisa membedakan "pengiriman awal" dari "cek status ulang" — dua-duanya
   // muncul sebagai POST /transaction yang sama persis di riwayat.
   private async sendTrx(input: CreateTrxInput, operation: "transaction" | "check-status"): Promise<ProviderTrxResult> {
+    // Transaksi simulasi WAJIB ditandatangani dengan Development Key, bukan
+    // Production Key (lihat DigiflazzCredentials.devApiKey). Digagalkan di sini
+    // dengan pesan yang menjelaskan sebabnya, alih-alih mengirim request yang
+    // dijamin ditolak lalu memantulkan "Signature Anda salah" yang membingungkan.
+    if (input.testing && !this.creds.devApiKey) {
+      throw new Error(
+        "Mode testing butuh Development Key Digiflazz (yang berawalan `dev-`), dan itu belum diisi. " +
+          "Isi di Admin → Providers → kartu Digiflazz → field Development Key. " +
+          "Production Key tidak bisa dipakai untuk transaksi simulasi.",
+      );
+    }
+    const signingKey = input.testing ? this.creds.devApiKey! : this.creds.apiKey;
+
     const body: Record<string, unknown> = {
       username: this.creds.username,
       buyer_sku_code: input.skuCode,
       customer_no: input.target,
       ref_id: input.refId,
-      sign: digiflazzSign(this.creds.username, this.creds.apiKey, input.refId),
+      sign: digiflazzSign(this.creds.username, signingKey, input.refId),
     };
     if (input.testing) body.testing = true;
 

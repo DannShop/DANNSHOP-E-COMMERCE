@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { decryptJson } from "@/lib/crypto";
+import type { DigiflazzCredentials } from "@/lib/providers/digiflazz";
 import {
   saveDigiflazzCredentials,
   toggleProviderActive,
@@ -7,6 +9,24 @@ import {
   saveBalanceThreshold,
 } from "@/app/actions/providers";
 import { ProviderCard } from "./provider-card";
+
+// Hanya mengembalikan penanda ADA/TIDAK, tidak pernah nilainya. Kartu provider
+// perlu tahu bahwa sebuah rahasia sudah tersimpan (supaya bisa bilang "kosongkan
+// = tidak diubah"), tapi rahasia itu sendiri tidak boleh ikut terkirim ke browser.
+function describeStoredSecrets(credentials: unknown): { hasDevApiKey: boolean; hasWebhookSecret: boolean } {
+  if (typeof credentials !== "string" || credentials.length === 0) {
+    return { hasDevApiKey: false, hasWebhookSecret: false };
+  }
+  try {
+    const creds = decryptJson<DigiflazzCredentials>(credentials);
+    return { hasDevApiKey: Boolean(creds.devApiKey), hasWebhookSecret: Boolean(creds.webhookSecret) };
+  } catch {
+    // Kredensial tidak bisa didekripsi (mis. CREDENTIALS_ENCRYPTION_KEY berganti).
+    // Halaman admin tetap harus tampil supaya admin BISA memperbaikinya - jangan
+    // sampai satu-satunya tempat untuk membetulkan kredensial ikut mati.
+    return { hasDevApiKey: false, hasWebhookSecret: false };
+  }
+}
 
 function formatDateTime(d: Date | null | undefined): string {
   if (!d) return "Belum pernah";
@@ -61,6 +81,7 @@ export default async function AdminProvidersPage() {
             displayName={provider.displayName}
             isActive={provider.isActive}
             hasCredentials={provider.credentials != null}
+            {...describeStoredSecrets(provider.credentials)}
             healthStatus={provider.healthStatus}
             balanceDisplay={formatRupiah(provider.balance)}
             lastHealthCheckDisplay={formatDateTime(provider.lastHealthCheckAt)}

@@ -117,7 +117,10 @@ describe("DigiflazzAdapter.createTransaction", () => {
     const fn = mockFetchOnce({
       data: { ref_id: "DS-F2-4", status: "Pending", message: "", rc: "03", sn: "" },
     });
-    const adapter = new DigiflazzAdapter(creds);
+    // devApiKey WAJIB ada untuk mode testing: Digiflazz menandatangani transaksi
+    // simulasi dengan Development Key, bukan Production Key. Detail perilakunya
+    // diuji di tests/provider-relay.test.ts.
+    const adapter = new DigiflazzAdapter({ ...creds, devApiKey: "dev-abc" });
     await adapter.createTransaction({ skuCode: "ML86", target: "123", refId: "DS-F2-4", testing: true });
     const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
     expect(body.testing).toBe(true);

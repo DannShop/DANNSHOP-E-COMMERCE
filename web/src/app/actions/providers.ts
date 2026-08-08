@@ -3,13 +3,20 @@ import { z } from "zod";
 import type { ProviderKey } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { encryptJson } from "@/lib/crypto";
+import { encryptJson, decryptJson } from "@/lib/crypto";
+import type { DigiflazzCredentials } from "@/lib/providers/digiflazz";
 import { getAdapter } from "@/lib/providers/registry";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 
 export const digiflazzCredentialsSchema = z.object({
   username: z.string().min(1, "Username wajib diisi"),
   apiKey: z.string().min(1, "API key wajib diisi"),
+  // Development Key: hanya dipakai untuk transaksi `testing: true`. Dikosongkan =
+  // "jangan ubah yang sudah tersimpan" (lihat saveDigiflazzCredentials).
+  devApiKey: z
+    .string()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v)),
   webhookSecret: z
     .string()
     .optional()
@@ -94,13 +101,42 @@ export async function saveDigiflazzCredentials(formData: FormData): Promise<Acti
   const parsed = digiflazzCredentialsSchema.safeParse({
     username: formData.get("username"),
     apiKey: formData.get("apiKey"),
+    devApiKey: formData.get("devApiKey") ?? "",
     webhookSecret: formData.get("webhookSecret") ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
+  // Field opsional yang DIKOSONGKAN berarti "biarkan yang tersimpan", bukan "hapus".
+  //
+  // Sebelumnya blob kredensial ditimpa mentah-mentah, padahal form tidak pernah
+  // mengisi ulang nilai rahasia yang sudah tersimpan (sengaja - jangan kirim
+  // rahasia balik ke browser). Akibatnya setiap kali admin menyimpan ulang
+  // username/API key, webhookSecret ikut TERHAPUS diam-diam - dan verifikasi
+  // signature callback Digiflazz langsung berhenti berfungsi tanpa satu pun
+  // pesan error, sampai ada yang sadar status order tidak pernah update lagi.
+  const existing = await db.providerConfig.findUnique({ where: { key: "DIGIFLAZZ" } });
+  let current: Partial<DigiflazzCredentials> = {};
+  if (typeof existing?.credentials === "string" && existing.credentials.length > 0) {
+    try {
+      current = decryptJson<DigiflazzCredentials>(existing.credentials);
+    } catch (e) {
+      // Kredensial lama tidak bisa didekripsi (mis. CREDENTIALS_ENCRYPTION_KEY
+      // berganti). Jangan menggagalkan penyimpanan - admin justru sedang
+      // memperbaiki keadaan itu; cukup jangan pertahankan apa pun dari yang lama.
+      console.error("saveDigiflazzCredentials: kredensial lama gagal didekripsi, disimpan sebagai baru", { error: e });
+    }
+  }
+
+  const merged: DigiflazzCredentials = {
+    username: parsed.data.username,
+    apiKey: parsed.data.apiKey,
+    devApiKey: parsed.data.devApiKey ?? current.devApiKey,
+    webhookSecret: parsed.data.webhookSecret ?? current.webhookSecret,
+  };
+
   await db.providerConfig.update({
     where: { key: "DIGIFLAZZ" },
-    data: { credentials: encryptJson(parsed.data) },
+    data: { credentials: encryptJson(merged) },
   });
   await logAdmin(admin.adminId, "provider.save_credentials", "DIGIFLAZZ"); // isi kredensial TIDAK di-log
   revalidatePath("/admin/providers");
@@ -156,8 +192,16 @@ export async function checkProviderBalance(formData: FormData): Promise<ActionRe
   }
 }
 
+// skuCode/target/testing ikut dikembalikan supaya tombol "Cek Status" bisa
+// mengirim ulang request yang SAMA PERSIS - cek status Digiflazz bukan sekadar
+// menanyakan ref_id, melainkan mengulang request transaksi identik.
 export async function sendTestTransaction(formData: FormData): Promise<
-  ActionResult & { result?: { refId: string; status: string; sn: string | null; message: string } }
+  ActionResult & {
+    result?: {
+      refId: string; status: string; sn: string | null; message: string;
+      skuCode: string; target: string; testing: boolean;
+    };
+  }
 > {
   "use server";
   const admin = await requireAdmin();
@@ -177,10 +221,65 @@ export async function sendTestTransaction(formData: FormData): Promise<
     await logAdmin(admin.adminId, "provider.test_transaction", "DIGIFLAZZ", {
       refId, skuCode: parsed.data.skuCode, status: result.status,
     });
-    return { ok: `Transaksi tes terkirim (${result.status}).`, result: { refId, status: result.status, sn: result.sn, message: result.message } };
+    return {
+      ok: `Transaksi tes terkirim (${result.status}).`,
+      result: {
+        refId, status: result.status, sn: result.sn, message: result.message,
+        skuCode: parsed.data.skuCode, target: parsed.data.target, testing: parsed.data.testing,
+      },
+    };
   } catch (e) {
     console.error("testProviderTransaction: transaksi tes gagal", { error: e });
     return { error: `Transaksi tes gagal: ${describeProviderError(e)}` };
+  }
+}
+
+export const checkTestTransactionSchema = z.object({
+  skuCode: z.string().min(1, "Kode SKU wajib diisi"),
+  target: z.string().min(1, "Nomor tujuan wajib diisi"),
+  refId: z.string().min(1, "Ref ID wajib diisi"),
+  testing: z.coerce.boolean().default(false),
+});
+
+// Cek status transaksi tes yang tadi dikirim.
+//
+// KENAPA PERLU: Digiflazz membalas `Pending` secara SINKRON untuk hampir semua
+// topup, lalu mengirim hasil finalnya belakangan lewat callback. Form tes cuma
+// menampilkan balasan sinkron itu, jadi hasilnya "Diproses" selamanya walaupun
+// transaksinya sudah sukses di sisi Digiflazz - persis kebingungan yang wajar
+// muncul saat mengecek transaksi ke SKU asli.
+//
+// AMAN DIULANG: cek status Digiflazz = mengirim ulang request transaksi yang
+// sama persis, dan mereka idempotent by ref_id - tidak akan membuat transaksi
+// kedua atau memotong saldo dua kali (lihat komentar TopupProviderAdapter.checkStatus).
+export async function checkTestTransactionStatus(formData: FormData): Promise<
+  ActionResult & { result?: { refId: string; status: string; sn: string | null; message: string } }
+> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = checkTestTransactionSchema.safeParse({
+    skuCode: formData.get("skuCode"),
+    target: formData.get("target"),
+    refId: formData.get("refId"),
+    testing: formData.get("testing") === "true",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  try {
+    // allowInactive: true - ini operasi baca terhadap transaksi yang SUDAH terkirim,
+    // bukan transaksi baru; kill-switch provider tidak boleh memblokirnya (pola yang
+    // sama dipakai jalur recheck-fulfillment di lib/order/fulfillment.ts).
+    const adapter = await getAdapter("DIGIFLAZZ", db, { allowInactive: true });
+    const result = await adapter.checkStatus(parsed.data);
+    return {
+      ok: `Status terkini: ${result.status}.`,
+      result: { refId: parsed.data.refId, status: result.status, sn: result.sn, message: result.message },
+    };
+  } catch (e) {
+    console.error("checkTestTransactionStatus: gagal cek status transaksi tes", { error: e });
+    return { error: `Gagal cek status: ${describeProviderError(e)}` };
   }
 }
 

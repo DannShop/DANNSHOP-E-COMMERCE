@@ -79,6 +79,9 @@ export interface ProviderCardProps {
   displayName: string;
   isActive: boolean;
   hasCredentials: boolean;
+  /** Sekadar penanda ADA/TIDAK — nilainya sendiri tidak pernah dikirim ke browser. */
+  hasDevApiKey: boolean;
+  hasWebhookSecret: boolean;
   healthStatus: string;
   balanceDisplay: string;
   lastHealthCheckDisplay: string;
@@ -98,6 +101,8 @@ export function ProviderCard({
   displayName,
   isActive,
   hasCredentials,
+  hasDevApiKey,
+  hasWebhookSecret,
   healthStatus,
   balanceDisplay,
   lastHealthCheckDisplay,
@@ -247,11 +252,35 @@ export function ProviderCard({
                 <Input id="digiflazz-username" name="username" required autoComplete="off" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="digiflazz-apiKey">API Key</Label>
+                <Label htmlFor="digiflazz-apiKey">API Key (Production Key)</Label>
                 <Input id="digiflazz-apiKey" name="apiKey" type="password" required autoComplete="off" />
+                <p className="text-xs text-muted-foreground">
+                  Dipakai untuk semua operasi nyata: transaksi, cek saldo, sync harga.
+                </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="digiflazz-webhookSecret">Webhook Secret (opsional)</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="digiflazz-devApiKey">Development Key (opsional)</Label>
+                  {hasDevApiKey && <Badge variant="success">Tersimpan</Badge>}
+                </div>
+                <Input
+                  id="digiflazz-devApiKey"
+                  name="devApiKey"
+                  type="password"
+                  autoComplete="off"
+                  placeholder={hasDevApiKey ? "Kosongkan = tidak diubah" : "dev-xxxxxxxx-xxxx-..."}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Key berawalan <span className="font-mono">dev-</span> dari dashboard Digiflazz. Wajib HANYA kalau mau
+                  memakai transaksi mode testing — Production Key ditolak untuk simulasi dengan pesan{" "}
+                  <em>&quot;Signature Anda salah&quot;</em>.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="digiflazz-webhookSecret">Webhook Secret (opsional)</Label>
+                  {hasWebhookSecret && <Badge variant="success">Tersimpan</Badge>}
+                </div>
                 <div className="flex gap-2">
                   <Input
                     id="digiflazz-webhookSecret"
@@ -260,7 +289,7 @@ export function ProviderCard({
                     autoComplete="off"
                     value={webhookSecret}
                     onChange={(e) => setWebhookSecret(e.target.value)}
-                    placeholder="Klik Generate, atau isi manual"
+                    placeholder={hasWebhookSecret ? "Kosongkan = tidak diubah" : "Klik Generate, atau isi manual"}
                     className="font-mono"
                   />
                   <Button
