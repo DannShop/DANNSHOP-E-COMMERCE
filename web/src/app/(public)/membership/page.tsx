@@ -3,8 +3,11 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getMembershipContext } from "@/lib/membership/tier";
 import { parseBenefits } from "@/lib/membership/benefits";
-import { purchaseTier } from "@/app/actions/membership";
+import { getTierCatalogProducts } from "@/lib/catalog/public";
+import { buildTierPriceTable } from "@/lib/membership/tier-price-table";
+import { purchaseTier, getPublicTierPriceTable } from "@/app/actions/membership";
 import { TierPurchaseCard } from "./tier-purchase-card";
+import { TierPriceCatalog } from "./tier-price-catalog";
 
 export const metadata: Metadata = { title: "Membership" };
 export const dynamic = "force-dynamic";
@@ -13,10 +16,22 @@ export default async function MembershipPage() {
   const session = await auth();
   const userId = session?.user?.id ?? null;
 
-  const [tiers, membership] = await Promise.all([
+  const [tiers, membership, catalog] = await Promise.all([
     db.membershipTier.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     getMembershipContext(userId),
+    getTierCatalogProducts(),
   ]);
+
+  // Tabel produk pertama dirender di SERVER, bukan diambil klien lewat effect
+  // saat mount. Dua alasan: tidak ada kedipan "Memuat harga..." di paint
+  // pertama (bagian ini yang menjual membership, jadi harus langsung terbaca),
+  // dan komponennya jadi bebas useEffect - pengambilan data berikutnya murni
+  // dipicu klik user. Query ini nol biaya kalau tidak ada produk/tier.
+  const firstProduct = catalog.products[0] ?? null;
+  const initialTable =
+    firstProduct && tiers.length > 0
+      ? await buildTierPriceTable({ productId: firstProduct.id }, { includeInactiveTiers: false })
+      : null;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -62,6 +77,21 @@ export default async function MembershipPage() {
               action={purchaseTier}
             />
           ))}
+        </div>
+      )}
+
+      {/* Katalog harga hanya masuk akal kalau ada tier yang bisa dibeli DAN ada
+          produk untuk dibandingkan - kalau salah satunya kosong, seksi ini cuma
+          jadi kerangka kosong di bawah halaman. */}
+      {firstProduct && initialTable && (
+        <div className="mt-4 border-t pt-8">
+          <TierPriceCatalog
+            products={catalog.products}
+            categories={catalog.categories}
+            initialProductId={firstProduct.id}
+            initialTable={initialTable}
+            loadTable={getPublicTierPriceTable}
+          />
         </div>
       )}
     </div>

@@ -82,6 +82,45 @@ export async function getCatalogHomeData(): Promise<CatalogCategory[]> {
   }));
 }
 
+// Daftar produk untuk PICKER katalog harga member (/membership). Sengaja tidak
+// memuat items sama sekali - harga per denominasi baru diambil lewat server
+// action setelah customer memilih satu produk, supaya payload halaman tidak
+// ikut membengkak seiring bertambahnya katalog. Bandingkan dengan
+// getCatalogHomeData() di atas yang memang perlu items untuk menghitung
+// "mulai dari Rp X" tiap kartu.
+export interface TierCatalogProduct {
+  id: string;
+  name: string;
+  publisher: string | null;
+  iconUrl: string | null;
+  categoryId: string;
+}
+
+export interface TierCatalogCategory {
+  id: string;
+  name: string;
+}
+
+export async function getTierCatalogProducts(): Promise<{
+  products: TierCatalogProduct[];
+  categories: TierCatalogCategory[];
+}> {
+  const [products, categories] = await Promise.all([
+    db.product.findMany({
+      where: { isActive: true, items: { some: { isActive: true } } },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, publisher: true, iconUrl: true, categoryId: true },
+    }),
+    db.category.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
+  ]);
+
+  // Kategori yang tidak punya satu pun produk tayang dibuang di sini, bukan di
+  // client - chip filter yang selalu menghasilkan daftar kosong cuma bikin
+  // customer mengira katalognya rusak.
+  const usedCategoryIds = new Set(products.map((p) => p.categoryId));
+  return { products, categories: categories.filter((c) => usedCategoryIds.has(c.id)) };
+}
+
 export interface ProductSearchResult {
   id: string;
   slug: string;

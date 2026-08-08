@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { BENEFIT_CATALOG } from "@/lib/membership/benefits";
-import { effectivePrice, isFlashActive } from "@/lib/pricing/effective-price";
+import { buildTierPriceTable } from "@/lib/membership/tier-price-table";
 
 export type ActionResult = { ok?: string; error?: string };
 
@@ -263,46 +263,17 @@ export type TierPricePreviewResult = {
   error?: string;
 };
 
-const PREVIEW_ITEM_LIMIT = 150;
-
+// Admin sengaja melihat SEMUA tier termasuk yang isActive: false - dia perlu
+// mengecek harga sebuah tier yang baru dibuat/sedang dinonaktifkan SEBELUM
+// menyalakannya untuk publik, bukan cuma yang sudah live. Beda dari
+// previewTierPricingPublic di actions/membership.ts yang cuma boleh
+// menunjukkan tier yang benar-benar bisa dibeli customer sekarang.
 export async function previewTierPricing(formData: FormData): Promise<TierPricePreviewResult> {
   const admin = await requireAdmin();
   if ("error" in admin) return admin;
 
   const categoryId = String(formData.get("categoryId") ?? "");
-
-  const [tiers, items] = await Promise.all([
-    db.membershipTier.findMany({
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, name: true, badgeColor: true, discountPercent: true },
-    }),
-    db.productItem.findMany({
-      where: {
-        isActive: true,
-        product: { isActive: true, ...(categoryId ? { categoryId } : {}) },
-      },
-      include: { product: { select: { name: true } } },
-      orderBy: [{ product: { name: "asc" } }, { sortOrder: "asc" }],
-      take: PREVIEW_ITEM_LIMIT,
-    }),
-  ]);
-
+  const { tiers, rows } = await buildTierPriceTable({ categoryId }, { includeInactiveTiers: true });
   if (tiers.length === 0) return { error: "Belum ada tier yang bisa dibandingkan. Buat tier dulu di atas." };
-
-  // Satu `now` untuk seluruh tabel, bukan Date baru per baris - kalau tidak,
-  // item yang flash sale-nya persis berakhir di tengah perhitungan bisa tampil
-  // tidak konsisten antar kolom di baris yang sama.
-  const now = new Date();
-
-  const rows: TierPricePreviewRow[] = items.map((item) => ({
-    itemId: item.id,
-    productName: item.product.name,
-    itemName: item.name,
-    basePrice: effectivePrice(item, { discountBp: 0, now }).toString(),
-    memberFloor: item.memberPrice.toString(),
-    flashActive: isFlashActive(item, now),
-    tierPrices: tiers.map((t) => effectivePrice(item, { discountBp: t.discountPercent, now }).toString()),
-  }));
-
   return { tiers, rows };
 }
