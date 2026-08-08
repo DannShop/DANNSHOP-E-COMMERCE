@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ActionResult } from "@/app/actions/providers";
 
 // 32 byte acak (256-bit) di-encode hex - kekuatan yang wajar untuk kunci HMAC,
@@ -326,6 +328,29 @@ export function ProviderCard({
           </Button>
           <ActionMessage state={syncState} />
         </form>
+
+        {/* Halaman ini sudah ada (page.tsx + server action) sejak awal, tapi
+            sebelumnya tidak pernah ditaut dari mana pun - satu-satunya cara
+            mengaksesnya adalah mengetik URL-nya langsung. Dipasang di sini,
+            khusus Digiflazz, karena kirim TRANSAKSI (bukan cuma cek koneksi)
+            adalah verifikasi paling meyakinkan bahwa relay+whitelist IP benar.
+            Link biasa + buttonVariants, BUKAN <Button asChild> - komponen Button
+            di sini dibangun di atas @base-ui/react/button (pola `render`, bukan
+            Slot ala Radix), dan pola Link+buttonVariants ini sudah dipakai di
+            beberapa halaman admin lain (mis. admin/products/page.tsx). */}
+        {providerKey === "DIGIFLAZZ" && (
+          <Link
+            href="/admin/providers/test-transaction"
+            aria-disabled={actionsDisabled}
+            tabIndex={actionsDisabled ? -1 : undefined}
+            className={cn(
+              buttonVariants({ size: "sm", variant: "outline" }),
+              actionsDisabled && "pointer-events-none opacity-50",
+            )}
+          >
+            Kirim Transaksi Tes
+          </Link>
+        )}
       </CardFooter>
     </Card>
   );
