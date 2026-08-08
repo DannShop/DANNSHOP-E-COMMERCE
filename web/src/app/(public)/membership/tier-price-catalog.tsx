@@ -100,23 +100,30 @@ export function TierPriceCatalog({
         </p>
       </div>
 
-      {/* ===== Filter kategori ===== */}
-      <div className="no-scrollbar flex gap-2 overflow-x-auto py-1">
-        <CategoryChip
-          active={categoryId === ""}
-          onClick={() => selectCategory("")}
-          label="Semua"
-          count={countFor("")}
-        />
-        {categories.map((c) => (
-          <CategoryChip
-            key={c.id}
-            active={categoryId === c.id}
-            onClick={() => selectCategory(c.id)}
-            label={c.name}
-            count={countFor(c.id)}
-          />
-        ))}
+      {/* ===== Filter kategori =====
+          Dropdown, bukan deretan chip: katalog ini punya 10 kategori dan
+          jumlahnya ditentukan admin lewat panel, jadi kontrolnya harus punya
+          tinggi tetap berapa pun kategorinya bertambah. <select> native
+          dipilih daripada dropdown kustom karena di ponsel dia memunculkan
+          picker bawaan OS yang jauh lebih enak dipakai satu tangan - pola
+          yang sama sudah dipakai di markup-form.tsx panel admin. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="tier-catalog-category" className="text-sm font-medium">
+          Kategori
+        </label>
+        <select
+          id="tier-catalog-category"
+          value={categoryId}
+          onChange={(e) => selectCategory(e.target.value)}
+          className="h-9 min-w-[12rem] flex-1 rounded-md border bg-background px-2 text-sm sm:flex-none"
+        >
+          <option value="">Semua ({countFor("")})</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} ({countFor(c.id)})
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="overflow-hidden rounded-[var(--radius)] border">
@@ -196,34 +203,6 @@ export function TierPriceCatalog({
   );
 }
 
-function CategoryChip({
-  active,
-  onClick,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors duration-200 ease-out",
-        active
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-border text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
-      )}
-    >
-      {label} ({count})
-    </button>
-  );
-}
-
 function PriceTable({ state }: { state: TableState }) {
   if (state.status === "loading") {
     return (
@@ -255,19 +234,35 @@ function PriceTable({ state }: { state: TableState }) {
       {/* Tabel HTML biasa, bukan komponen Table milik panel admin: yang itu
           dirancang untuk daftar padat di layar lebar, sementara di sini jumlah
           kolomnya tumbuh mengikuti jumlah tier dan harus tetap terbaca di
-          ponsel - jadi dibungkus scroller horizontalnya sendiri. */}
-      <div className="overflow-x-auto rounded-[var(--radius)] border">
+          ponsel - jadi dibungkus scroller-nya sendiri.
+
+          Tinggi dikunci max-h-96 dengan scroll di DALAM kotak: satu produk bisa
+          punya 40 nominal, dan tanpa batas ini seksi katalog akan mendorong
+          seluruh isi halaman di bawahnya ribuan piksel ke bawah. Dengan
+          dikunci, tinggi seksi ini konstan berapa pun nominal produknya.
+          Header dibuat sticky supaya nama tier tetap terbaca sambil menggulir
+          - tanpa itu, menggulir ke nominal ke-30 berarti menebak kolom mana
+          milik tier mana. */}
+      <div className="max-h-96 overflow-auto rounded-[var(--radius)] border">
         <table className="w-full min-w-[34rem] border-collapse text-sm">
-          <thead>
-            <tr className="bg-muted/60">
-              <th scope="col" className="px-3 py-2.5 text-left font-heading text-xs font-bold tracking-wide uppercase">
+          <thead className="sticky top-0 z-10">
+            {/* Warna latar dipasang di <th>, bukan di <tr>: baris sticky yang
+                latarnya transparan akan ditembus konten yang lewat di baliknya. */}
+            <tr>
+              <th
+                scope="col"
+                className="bg-muted px-3 py-2.5 text-left font-heading text-xs font-bold tracking-wide uppercase"
+              >
                 Nominal
               </th>
-              <th scope="col" className="px-3 py-2.5 text-right font-heading text-xs font-bold tracking-wide uppercase">
+              <th
+                scope="col"
+                className="bg-muted px-3 py-2.5 text-right font-heading text-xs font-bold tracking-wide uppercase"
+              >
                 Harga Normal
               </th>
               {tiers.map((t) => (
-                <th key={t.id} scope="col" className="px-3 py-2.5 text-right">
+                <th key={t.id} scope="col" className="bg-muted px-3 py-2.5 text-right">
                   <span className="flex flex-col items-end gap-0.5">
                     <span
                       className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
@@ -317,8 +312,8 @@ function PriceTable({ state }: { state: TableState }) {
 
       <div className="space-y-1 text-xs text-muted-foreground">
         <p>
-          Harga di tabel ini sama persis dengan yang ditagih saat checkout — dihitung lewat jalur harga
-          yang sama, bukan perkiraan.
+          {rows.length} nominal tersedia — gulir di dalam tabel untuk melihat sisanya. Harga di sini sama
+          persis dengan yang ditagih saat checkout, dihitung lewat jalur harga yang sama, bukan perkiraan.
         </p>
         {anyFlash && (
           <p className="flex items-start gap-1.5">
