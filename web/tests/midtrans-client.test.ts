@@ -401,7 +401,10 @@ describe("createSnapTransaction", () => {
 
   it("memetakan tiap metode ke kode Snap yang benar", async () => {
     const cases: [string, string][] = [
-      ["qris", "qris"],
+      // REGRESI: pernah salah dikirim sebagai "qris" -> Snap tidak mengenalinya
+      // dan popup menampilkan "No payment channels available", padahal
+      // pembuatan token-nya sukses HTTP 201 jadi tidak ada error di server.
+      ["qris", "other_qris"],
       ["va_bni", "bni_va"],
       ["va_bri", "bri_va"],
       ["va_permata", "permata_va"],

@@ -521,7 +521,14 @@ function snapBaseUrl(creds: MidtransCreds): string {
  * bukan diam-diam melewatkan enabled_payments.
  */
 const SNAP_PAYMENT_CODE: Record<string, string> = {
-  qris: "qris",
+  // "other_qris", BUKAN "qris". Ini sudah memakan korban sekali: mengirim
+  // "qris" membuat Snap tidak menemukan channel yang cocok dan popup-nya
+  // menampilkan "No payment channels available" - tanpa error apa pun di sisi
+  // server, karena pembuatan TOKEN-nya sendiri tetap berhasil (HTTP 201).
+  // Dokumentasi Snap: "Set what payment method to show in Snap's payment list.
+  // Value: other_qris" (https://docs.midtrans.com/reference/other-qris).
+  // "other_qris" = QRIS generik; acquirer aslinya (GoPay/ShopeePay) disamarkan.
+  qris: "other_qris",
   va_bca: "bca_va",
   va_bni: "bni_va",
   va_bri: "bri_va",
