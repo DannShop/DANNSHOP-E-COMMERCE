@@ -1,6 +1,11 @@
 import { getMidtransConfigStatus } from "@/lib/payment/gateway-config";
 import { getPaymentRules } from "@/lib/payment/rules";
-import { saveMidtransCredentials, savePaymentRulesAction, testMidtransConnection } from "@/app/actions/payment-config";
+import {
+  saveMidtransCredentials,
+  savePaymentRulesAction,
+  testMidtransConnection,
+  testPaymentChannels,
+} from "@/app/actions/payment-config";
 import { MidtransConfigForm } from "./midtrans-config-form";
 import { PaymentRulesForm } from "./payment-rules-form";
 
@@ -32,6 +37,7 @@ export default async function PaymentConfigPage() {
           webhookUrl={webhookUrl}
           action={saveMidtransCredentials}
           testAction={testMidtransConnection}
+          channelTestAction={testPaymentChannels}
         />
       </section>
 

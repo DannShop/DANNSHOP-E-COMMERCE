@@ -3,7 +3,8 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveMidtransConfig, getStoredMidtransConfig, getMidtransCreds } from "@/lib/payment/gateway-config";
-import { pingMidtrans } from "@/lib/midtrans/client";
+import { pingMidtrans, chargeByMethodCode, cancelTransaction, describeMidtransFailure } from "@/lib/midtrans/client";
+import { MIN_EXPIRY_MINUTES } from "@/lib/payment/rules";
 import { savePaymentRules } from "@/lib/payment/rules";
 import { MAX_UNIQUE_CODE } from "@/lib/payment/fee";
 
@@ -109,7 +110,17 @@ export async function testMidtransConnection(): Promise<ActionResult> {
   const modeLabel = creds.isProduction ? "Production" : "Sandbox";
   const result = await pingMidtrans(creds);
   if (result.ok) {
-    return { ok: `Koneksi berhasil. Server key ini sah untuk mode ${modeLabel}.` };
+    // SENGAJA tidak bilang "pembayaran siap" - uji ini cuma membuktikan
+    // kredensialnya sah. Channel yang belum diaktifkan Midtrans (status_code
+    // 402 "Payment channel is not activated.") tetap lolos di sini karena
+    // GET status tidak menyentuh channel sama sekali. Menyatakan "berhasil"
+    // tanpa kualifikasi persis lampu hijau palsu yang bikin admin mengira
+    // semuanya beres padahal QRIS-nya mati.
+    return {
+      ok:
+        `Kredensial sah: server key ini diterima Midtrans di mode ${modeLabel}. ` +
+        `Ini BELUM membuktikan channel pembayarannya aktif — jalankan "Uji Channel Pembayaran" di bawah untuk itu.`,
+    };
   }
 
   // Kegagalan otentikasi -> uji key yang SAMA di environment seberang. Kalau di
@@ -140,6 +151,91 @@ export async function testMidtransConnection(): Promise<ActionResult> {
       `Uji koneksi gagal di mode ${modeLabel}: ` +
       `${result.statusMessage ?? "tidak ada pesan"} (HTTP ${result.httpStatus ?? "-"} / status_code ${result.statusCode ?? "-"}).`,
   };
+}
+
+export interface ChannelTestRow {
+  code: string;
+  label: string;
+  ok: boolean;
+  /** null kalau ok. Kalau gagal, alasan mentah dari Midtrans. */
+  reason: string | null;
+}
+
+export interface ChannelTestResult {
+  error?: string;
+  mode?: string;
+  rows?: ChannelTestRow[];
+}
+
+// Nominal uji. Di atas batas minimum semua channel yang dipakai (beberapa VA
+// menolak di bawah Rp 10.000), jadi kegagalan yang muncul benar-benar soal
+// aktivasi channel, bukan soal nominal yang kekecilan.
+const CHANNEL_TEST_AMOUNT = 10_000;
+
+/**
+ * Menjawab pertanyaan yang sebenarnya ingin diketahui admin: "kalau ada
+ * customer checkout SEKARANG, jalan atau tidak?"
+ *
+ * testMidtransConnection() tidak bisa menjawab itu - GET status tidak
+ * menyentuh channel pembayaran sama sekali, jadi channel yang belum diaktifkan
+ * Midtrans tetap tampak sehat di sana. Satu-satunya cara mengetahuinya adalah
+ * benar-benar mencoba charge, jadi fungsi ini MEMBUAT transaksi percobaan
+ * untuk tiap metode aktif lalu langsung membatalkannya.
+ *
+ * Kejadian yang melahirkan fungsi ini (2026-08-08): kredensial production
+ * sah sepenuhnya, tapi tiap checkout QRIS gagal karena Midtrans membalas
+ * HTTP 200 + status_code 402 "Payment channel is not activated." Tidak ada
+ * satu pun permukaan di panel yang bisa menunjukkan itu sebelum customer
+ * pertama gagal membayar.
+ */
+export async function testPaymentChannels(): Promise<ChannelTestResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return { error: admin.error };
+
+  const creds = await getMidtransCreds();
+  if (!creds.serverKey) {
+    return { error: "Belum ada server key tersimpan - isi dan simpan dulu sebelum menguji channel." };
+  }
+
+  const methods = await db.paymentMethodConfig.findMany({
+    where: { isActive: true },
+    orderBy: { sortOrder: "asc" },
+  });
+  if (methods.length === 0) {
+    return { error: "Tidak ada metode pembayaran aktif untuk diuji." };
+  }
+
+  const mode = creds.isProduction ? "Production" : "Sandbox";
+  const rows: ChannelTestRow[] = [];
+
+  // Berurutan, bukan Promise.all: ini menembak gateway pembayaran sungguhan,
+  // dan menembakkan 9 charge sekaligus adalah cara cepat kena rate limit.
+  for (const method of methods) {
+    const probeOrderId = `TEST-${method.code}-${Date.now().toString(36)}${Math.floor(Math.random() * 10000)}`;
+    try {
+      await chargeByMethodCode(method.code, probeOrderId, CHANNEL_TEST_AMOUNT, MIN_EXPIRY_MINUTES, creds);
+      // Berhasil dibuat = channel hidup. Langsung dibatalkan supaya tidak
+      // menumpuk transaksi menggantung di dashboard Midtrans.
+      await cancelTransaction(probeOrderId, creds);
+      rows.push({ code: method.code, label: method.label, ok: true, reason: null });
+    } catch (e) {
+      const failure = describeMidtransFailure(e);
+      rows.push({
+        code: method.code,
+        label: method.label,
+        ok: false,
+        reason: failure.statusMessage ?? failure.message,
+      });
+    }
+  }
+
+  await logAdmin(admin.adminId, "payment_config.channels.test", {
+    mode,
+    hasil: rows.map((r) => ({ code: r.code, ok: r.ok, reason: r.reason })),
+  });
+
+  return { mode, rows };
 }
 
 const rulesSchema = z

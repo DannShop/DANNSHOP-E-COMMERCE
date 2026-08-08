@@ -8,6 +8,7 @@ import {
   chargeEwallet,
   chargeByMethodCode,
   pingMidtrans,
+  cancelTransaction,
   describeMidtransFailure,
   MidtransApiError,
 } from "@/lib/midtrans/client";
@@ -270,6 +271,22 @@ describe("penanganan error Midtrans", () => {
     expect(err.kind).toBe("config");
   });
 
+  it("REGRESI: 'Payment channel is not activated.' datang sebagai HTTP 200, tetap harus ditolak", async () => {
+    // Ini penyebab persis kegagalan production 2026-08-08, dan bentuknya jahat:
+    // Midtrans membalas HTTP **200** sambil menaruh 402 di body. Perbaikan yang
+    // cuma memeriksa `res.ok` akan MELEWATKAN kasus ini sepenuhnya dan meneruskan
+    // body error itu ke parser seolah-olah sukses.
+    mockFetchOnce({ status_code: "402", status_message: "Payment channel is not activated.", id: "26bbfcf7" }, 200);
+
+    const err = await chargeQris({ orderId: "INV-1", grossAmount: 10000, expiryMinutes: 15 }, creds).catch((e) => e);
+
+    expect(err).toBeInstanceOf(MidtransApiError);
+    expect(err.httpStatus).toBe(200);
+    expect(err.statusCode).toBe(402);
+    expect(err.kind).toBe("config");
+    expect(err.message).toContain("Payment channel is not activated.");
+  });
+
   it("order_id bentrok (406) dianggap transient - checkout ulang memang bikin nomor baru", async () => {
     mockFetchOnce({ status_code: "406", status_message: "The request could not be completed due to a conflict." }, 406);
     const err = await chargeQris({ orderId: "INV-1", grossAmount: 1000, expiryMinutes: 15 }, creds).catch((e) => e);
@@ -334,5 +351,31 @@ describe("pingMidtrans", () => {
     const r = await pingMidtrans(creds);
     expect(r.ok).toBe(false);
     expect(r.statusMessage).toContain("ECONNREFUSED");
+  });
+
+  it("kredensial sah TIDAK membuktikan channel aktif - ping tetap ok walau QRIS mati", async () => {
+    // Alasan "Uji Channel Pembayaran" harus ada sebagai tombol terpisah: GET
+    // status tidak menyentuh channel, jadi akun dengan QRIS belum diaktifkan
+    // tetap lolos ping. Pesan sukses ping wajib mencerminkan batasan ini.
+    mockFetchOnce({ status_code: "404", status_message: "Transaction doesn't exist." }, 200);
+    const r = await pingMidtrans({ serverKey: "Mid-server-valid", isProduction: true });
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe("cancelTransaction", () => {
+  it("POST ke /v2/{orderId}/cancel", async () => {
+    const fn = mockFetchOnce({ status_code: "200", status_message: "Success, transaction is canceled" }, 200);
+    const ok = await cancelTransaction("TEST-qris-abc", creds);
+    expect(ok).toBe(true);
+    expect(fn.mock.calls[0][0]).toBe("https://api.sandbox.midtrans.com/v2/TEST-qris-abc/cancel");
+    expect((fn.mock.calls[0][1] as RequestInit).method).toBe("POST");
+  });
+
+  it("cancel yang ditolak mengembalikan false, TIDAK melempar", async () => {
+    // Best-effort: transaksi uji yang gagal dibatalkan toh kedaluwarsa sendiri.
+    // Kalau ini melempar, uji channel akan ikut gagal padahal channel-nya sehat.
+    mockFetchOnce({ status_code: "412", status_message: "Merchant cannot modify the status of the transaction" }, 412);
+    await expect(cancelTransaction("TEST-qris-abc", creds)).resolves.toBe(false);
   });
 });

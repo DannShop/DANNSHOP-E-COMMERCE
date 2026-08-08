@@ -499,6 +499,22 @@ export async function getTransactionStatus(
   };
 }
 
+/**
+ * Membatalkan transaksi PENDING. Best-effort: TIDAK pernah melempar.
+ *
+ * Dipakai uji channel di panel admin untuk merapikan transaksi percobaan yang
+ * baru saja dibuatnya. Kegagalan cancel bukan alasan menggagalkan uji - kalau
+ * cancel ditolak, transaksinya toh kedaluwarsa sendiri.
+ */
+export async function cancelTransaction(orderId: string, creds: MidtransCreds): Promise<boolean> {
+  try {
+    await request(`${baseUrl(creds)}/v2/${orderId}/cancel`, creds, { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ===== Uji koneksi (dipakai tombol "Test Koneksi" di panel admin) =====
 
 export interface MidtransPingResult {

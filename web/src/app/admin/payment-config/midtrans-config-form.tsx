@@ -7,20 +7,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { MidtransConfigStatus } from "@/lib/payment/gateway-config";
+import type { ChannelTestResult } from "@/app/actions/payment-config";
 
 type ActionResult = { ok?: string; error?: string };
 const INITIAL_STATE: ActionResult = {};
+const INITIAL_CHANNEL_STATE: ChannelTestResult = {};
+// Cerminan CHANNEL_TEST_AMOUNT di actions/payment-config.ts. Sengaja disalin
+// sebagai teks, bukan diimpor: modul action itu menarik db + auth, dan
+// mengimpor nilai (bukan type) dari sana akan menyeret keduanya ke bundle
+// browser. Kalau nominal ujinya diubah, ubah juga di sini.
+const CHANNEL_TEST_AMOUNT_LABEL = "10.000";
 
 export function MidtransConfigForm({
   status,
   webhookUrl,
   action,
   testAction,
+  channelTestAction,
 }: {
   status: MidtransConfigStatus;
   webhookUrl: string;
   action: (formData: FormData) => Promise<ActionResult>;
   testAction: () => Promise<ActionResult>;
+  channelTestAction: () => Promise<ChannelTestResult>;
 }) {
   const [state, formAction, pending] = useActionState(
     (_prev: ActionResult, formData: FormData) => action(formData),
@@ -32,6 +41,10 @@ export function MidtransConfigForm({
   const [testState, testFormAction, testPending] = useActionState(
     () => testAction(),
     INITIAL_STATE,
+  );
+  const [channelState, channelFormAction, channelPending] = useActionState(
+    () => channelTestAction(),
+    INITIAL_CHANNEL_STATE,
   );
   const [copied, setCopied] = useState(false);
 
@@ -119,6 +132,36 @@ export function MidtransConfigForm({
           <p className={`text-xs ${testState.error ? "text-destructive" : "text-emerald-700"}`}>
             {testState.error ?? testState.ok}
           </p>
+        )}
+      </form>
+
+      <form action={channelFormAction} className="flex flex-col gap-2 rounded-lg border p-3">
+        <p className="text-sm font-medium">Uji Channel Pembayaran</p>
+        <p className="text-xs text-muted-foreground">
+          Mencoba membuat pembayaran Rp {CHANNEL_TEST_AMOUNT_LABEL} untuk setiap metode yang aktif, lalu langsung
+          membatalkannya. Inilah satu-satunya cara mengetahui channel mana yang benar-benar sudah diaktifkan Midtrans
+          untuk akun ini — kredensial yang sah tidak menjamin channel-nya hidup. Tidak ada uang yang berpindah.
+        </p>
+        <Button type="submit" variant="outline" disabled={channelPending || !status.configured} className="self-start">
+          {channelPending ? "Menguji channel..." : "Uji Channel Pembayaran"}
+        </Button>
+        {channelState.error && <p className="text-xs text-destructive">{channelState.error}</p>}
+        {channelState.rows && (
+          <ul className="flex flex-col gap-1">
+            {channelState.rows.map((row) => (
+              <li key={row.code} className="flex items-start gap-1.5 text-xs">
+                {row.ok ? (
+                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" aria-hidden="true" />
+                ) : (
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-hidden="true" />
+                )}
+                <span className={row.ok ? "text-emerald-700 dark:text-emerald-400" : "text-destructive"}>
+                  <span className="font-medium">{row.label}</span>
+                  {row.ok ? " — aktif" : ` — ${row.reason ?? "gagal"}`}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </form>
 
