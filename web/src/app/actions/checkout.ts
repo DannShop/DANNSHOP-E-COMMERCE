@@ -6,10 +6,10 @@ import { auth } from "@/lib/auth";
 import { checkoutSchema, extractTargetFromFormData } from "@/lib/validation/checkout";
 import { generateOrderNumber } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
-import { chargeByMethodCode } from "@/lib/midtrans/client";
+import type { PaymentActions } from "@/lib/midtrans/client";
+import { createPaymentActions } from "@/lib/payment/create-payment";
 import { calculateFee, calculateTotal, generateUniqueCode } from "@/lib/payment/fee";
 import { getPaymentRules } from "@/lib/payment/rules";
-import { getMidtransCreds } from "@/lib/payment/gateway-config";
 import { reportChargeFailure } from "@/lib/payment/charge-failure";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { headers } from "next/headers";
@@ -272,10 +272,14 @@ async function createMidtransOrder(input: {
     data: { orderId: order.id, toStatus: "PENDING_PAYMENT", note: "Checkout" },
   });
 
-  let chargedActions: Awaited<ReturnType<typeof chargeByMethodCode>>["actions"];
+  let chargedActions: PaymentActions;
   try {
-    const creds = await getMidtransCreds();
-    const { actions } = await chargeByMethodCode(method.code, order.orderNumber, Number(total), expiryMinutes, creds);
+    const actions = await createPaymentActions({
+      methodCode: method.code,
+      orderId: order.orderNumber,
+      grossAmount: Number(total),
+      expiryMinutes,
+    });
     chargedActions = actions;
     await Promise.all([
       db.orderPayment.update({ where: { orderId: order.id }, data: { actions } }),

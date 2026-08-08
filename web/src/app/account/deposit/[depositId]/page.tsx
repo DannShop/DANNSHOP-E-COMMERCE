@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { PaymentActions } from "@/lib/midtrans/client";
+import { getSnapBrowserConfig } from "@/lib/payment/gateway-config";
 import { DepositStatus } from "./deposit-status";
 
 export default async function DepositStatusPage({
@@ -22,12 +23,14 @@ export default async function DepositStatusPage({
     actions?.kind === "qris" && actions.qrString
       ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 })
       : null;
+  const snapConfig = actions?.kind === "snap" ? await getSnapBrowserConfig() : null;
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       <DepositStatus
         depositId={deposit.id}
         qrDataUri={qrDataUri}
+        snapConfig={snapConfig}
         initial={{
           depositId: deposit.id,
           status: deposit.status,

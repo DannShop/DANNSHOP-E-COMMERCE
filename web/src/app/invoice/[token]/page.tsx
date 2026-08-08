@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
 import type { PaymentActions } from "@/lib/midtrans/client";
+import { getSnapBrowserConfig } from "@/lib/payment/gateway-config";
 import { InvoiceStatus } from "./invoice-status";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export default async function InvoicePage({
     actions?.kind === "qris" && actions.qrString
       ? await QRCode.toDataURL(actions.qrString, { width: 240, margin: 1 })
       : null;
+  // Dibaca hanya saat pembayarannya memang mode Snap - order Core API tidak
+  // perlu kena satu query konfigurasi tambahan di tiap kali invoice dibuka.
+  const snapConfig = actions?.kind === "snap" ? await getSnapBrowserConfig() : null;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 py-10">
@@ -34,6 +38,7 @@ export default async function InvoicePage({
       <InvoiceStatus
         token={order.publicToken}
         qrDataUri={qrDataUri}
+        snapConfig={snapConfig}
         initial={{
           orderNumber: order.orderNumber,
           status: order.status,

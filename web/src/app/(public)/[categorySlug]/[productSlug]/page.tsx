@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getProductForCheckout } from "@/lib/catalog/public";
 import { getMembershipContext } from "@/lib/membership/tier";
+import { hasBenefit } from "@/lib/membership/benefits";
+import { getPaymentRules } from "@/lib/payment/rules";
 import { ProductDetailClient } from "./product-detail-client";
 
 export default async function ProductDetailPage({
@@ -18,9 +20,10 @@ export default async function ProductDetailPage({
   const authSession = await auth();
   const membership = await getMembershipContext(authSession?.user?.id ?? null);
 
-  const [product, paymentMethods] = await Promise.all([
+  const [product, paymentMethods, rules] = await Promise.all([
     getProductForCheckout(categorySlug, productSlug, membership.discountBp),
     db.paymentMethodConfig.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    getPaymentRules(),
   ]);
   if (!product) notFound();
 
@@ -41,6 +44,20 @@ export default async function ProductDetailPage({
         feeFlat: m.feeFlat.toString(),
         feePercent: m.feePercent,
       }))}
+      // Benefit tier IKUT dikirim, bukan cuma discountBp. Tanpa ini rincian di
+      // halaman produk menagihkan fee & kode unik kepada member yang justru
+      // dibebaskan darinya di server (actions/checkout.ts membaca benefit yang
+      // sama) - angka yang dilihat pembeli jadi LEBIH BESAR dari yang benar-benar
+      // ditagih. Sumber kebenarannya tetap server; ini murni supaya tampilannya
+      // tidak berbohong.
+      pricing={{
+        freeFee: hasBenefit(membership.benefits, "free_order_fee"),
+        noUniqueCode: hasBenefit(membership.benefits, "no_unique_code_order"),
+        uniqueCodeMin: rules.uniqueCodeMin,
+        uniqueCodeMax: rules.uniqueCodeMax,
+        feeEnabled: rules.feeOrder,
+        uniqueCodeEnabled: rules.uniqueCodeOrder,
+      }}
     />
   );
 }

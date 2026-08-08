@@ -132,14 +132,28 @@ function NominalButton({
   );
 }
 
+export interface CheckoutPricingContext {
+  /** Benefit tier: fee order dibebaskan. */
+  freeFee: boolean;
+  /** Benefit tier: kode unik order dibebaskan. */
+  noUniqueCode: boolean;
+  uniqueCodeMin: number;
+  uniqueCodeMax: number;
+  /** Aturan global admin (lib/payment/rules.ts). */
+  feeEnabled: boolean;
+  uniqueCodeEnabled: boolean;
+}
+
 export function ProductDetailClient({
   product,
   session,
   paymentMethods,
+  pricing,
 }: {
   product: ProductForCheckout;
   session: { email: string; walletBalance: bigint } | null;
   paymentMethods: { code: string; label: string; logoUrl: string | null; feeFlat: string; feePercent: number }[];
+  pricing: CheckoutPricingContext;
 }) {
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
@@ -172,8 +186,14 @@ export function ProductDetailClient({
   // di-generate acak di server, bukan bisa diprediksi di client.
   const isBalanceSelected = Boolean(session) && selectedMethod === "balance";
   const selectedMethodConfig = paymentMethods.find((m) => m.code === selectedMethod);
+  // Fee bisa nol karena DUA sebab berbeda: admin mematikannya global
+  // (rules.feeOrder) atau benefit tier member (free_order_fee). Keduanya
+  // dievaluasi otoritatif di server; di sini cuma supaya angkanya sama.
+  const feeWaived = pricing.freeFee;
+  const feeApplies = pricing.feeEnabled && !feeWaived;
+  const uniqueCodeApplies = pricing.uniqueCodeEnabled && !pricing.noUniqueCode;
   const previewFee =
-    selectedItem && selectedMethodConfig && !isBalanceSelected
+    selectedItem && selectedMethodConfig && !isBalanceSelected && feeApplies
       ? (selectedItem.effectivePrice * BigInt(selectedMethodConfig.feePercent)) / 10_000n + BigInt(selectedMethodConfig.feeFlat)
       : 0n;
   const previewTotal = selectedItem ? selectedItem.effectivePrice + previewFee : 0n;
@@ -250,21 +270,6 @@ export function ProductDetailClient({
               </div>
             </div>
           ))}
-          {selectedItem && (
-            <div className="flex flex-col gap-1 rounded-md bg-muted px-4 py-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Total Bayar</span>
-                <span className="font-heading text-2xl font-bold text-primary">
-                  {formatRupiah(previewTotal)}
-                </span>
-              </div>
-              {!isBalanceSelected && (
-                <p className="text-right text-xs text-muted-foreground">
-                  Sudah termasuk fee metode pembayaran. Belum termasuk kode unik (+ Rp1-999, muncul di halaman invoice).
-                </p>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="flex flex-col gap-3 border-t pt-6">
@@ -277,9 +282,13 @@ export function ProductDetailClient({
           <RadioGroup value={selectedMethod} onValueChange={setSelectedMethod}>
             {paymentMethods.map((m) => {
               const feeBp = m.feePercent;
-              const fee = selectedItem
-                ? (selectedItem.effectivePrice * BigInt(feeBp)) / 10_000n + BigInt(m.feeFlat)
-                : 0n;
+              // Ikut feeApplies juga - kalau tidak, member ber-benefit
+              // free_order_fee melihat "+ Rp350" di sini tapi "Gratis" di
+              // rincian bawah, dua angka berbeda untuk hal yang sama.
+              const fee =
+                selectedItem && feeApplies
+                  ? (selectedItem.effectivePrice * BigInt(feeBp)) / 10_000n + BigInt(m.feeFlat)
+                  : 0n;
               return (
                 <RadioGroupItem key={m.code} value={m.code}>
                   {m.logoUrl ? (
@@ -339,6 +348,52 @@ export function ProductDetailClient({
             <p className="text-xs text-muted-foreground">Dipakai CS untuk menghubungi Anda kalau ada kendala pesanan.</p>
           </div>
         </div>
+
+        {selectedItem && (
+          <div className="flex flex-col gap-2 rounded-[var(--radius)] border bg-muted/50 p-4">
+            <p className="font-heading text-sm font-bold">Rincian Pembayaran</p>
+            <div className="flex justify-between gap-3 text-sm">
+              <span className="min-w-0 text-muted-foreground">{selectedItem.name}</span>
+              <span className="shrink-0 font-medium">{formatRupiah(selectedItem.effectivePrice)}</span>
+            </div>
+            {!isBalanceSelected && (
+              <>
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="min-w-0 text-muted-foreground">
+                    Fee {selectedMethodConfig?.label ?? "pembayaran"}
+                    {feeWaived && <span className="ml-1 text-primary">(gratis, benefit member)</span>}
+                  </span>
+                  <span className="shrink-0 font-medium">
+                    {previewFee > 0n ? formatRupiah(previewFee) : formatRupiah(0n)}
+                  </span>
+                </div>
+                {uniqueCodeApplies && (
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="min-w-0 text-muted-foreground">Kode unik</span>
+                    <span className="shrink-0 font-medium">
+                      Rp{pricing.uniqueCodeMin}–{pricing.uniqueCodeMax}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+            <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-2">
+              <span className="text-sm font-medium">Total Bayar</span>
+              <span className="font-heading text-2xl font-bold text-primary">
+                {formatRupiah(previewTotal)}
+                {uniqueCodeApplies && !isBalanceSelected && <span className="text-base">+</span>}
+              </span>
+            </div>
+            {uniqueCodeApplies && !isBalanceSelected && (
+              // Kode unik di-generate acak di SERVER saat order dibuat, jadi
+              // angka pastinya memang belum ada di sini. Ditampilkan jujur
+              // sebagai rentang alih-alih ditebak atau disembunyikan.
+              <p className="text-xs text-muted-foreground">
+                Kode unik ditentukan saat pesanan dibuat — nominal pastinya muncul di halaman invoice.
+              </p>
+            )}
+          </div>
+        )}
 
         {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}
         <Button

@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check, ExternalLink } from "lucide-react";
+import Script from "next/script";
+import { Copy, Check, ExternalLink, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PaymentActions } from "@/lib/midtrans/client";
+import type { SnapBrowserConfig } from "@/lib/payment/gateway-config";
 
 // Instruksi pembayaran (QRIS / VA / Mandiri bill / e-wallet). Sebelumnya blok
 // ini disalin identik di invoice-status.tsx dan deposit-status.tsx, sehingga
@@ -18,12 +20,16 @@ const EWALLET_LABEL: Record<string, string> = {
 export function PaymentInstructions({
   payment,
   qrDataUri,
+  snapConfig,
 }: {
   payment: PaymentActions | null;
   /** QRIS: data URI hasil render di server dari qr_string. Metode lain: null. */
   qrDataUri: string | null;
+  /** Hanya terisi kalau pembayaran ini dibuat lewat mode Snap. */
+  snapConfig?: SnapBrowserConfig | null;
 }) {
   const [copied, setCopied] = useState(false);
+  const [snapReady, setSnapReady] = useState(false);
 
   async function copy(text: string) {
     try {
@@ -36,6 +42,55 @@ export function PaymentInstructions({
   }
 
   if (!payment) return null;
+
+  if (payment.kind === "snap") {
+    // Instruksi pembayarannya ada DI DALAM popup Midtrans, jadi di sini kita
+    // cuma menyediakan pemicunya. redirect_url disediakan sebagai jalan keluar
+    // kalau Snap.js gagal dimuat (pemblokir iklan, jaringan korporat) - tanpa
+    // itu, pembeli yang skripnya diblokir tidak punya cara membayar sama sekali.
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-md border p-4">
+        {snapConfig && (
+          <Script
+            src={snapConfig.scriptUrl}
+            data-client-key={snapConfig.clientKey}
+            strategy="afterInteractive"
+            onReady={() => setSnapReady(true)}
+          />
+        )}
+        <p className="text-sm text-muted-foreground">Selesaikan pembayaran Anda</p>
+        {/* Tombol popup HANYA dirender kalau client key-nya benar-benar ada.
+            Skenario nyatanya: admin memindahkan toggle kembali ke Core API (atau
+            mengosongkan client key) setelah order ini terbentuk - order lama
+            tetap sah dan masih bisa dibayar, tapi popup-nya sudah mustahil
+            dimuat. Menampilkan tombol mati di situ hanya membuat pembeli
+            mengira pembayarannya rusak; link di bawah tetap jalan. */}
+        {snapConfig && (
+          <Button
+            type="button"
+            className="w-full"
+            disabled={!snapReady}
+            onClick={() => window.snap?.pay(payment.token)}
+          >
+            <CreditCard className="size-4" aria-hidden="true" />
+            {snapReady ? "Bayar Sekarang" : "Menyiapkan pembayaran..."}
+          </Button>
+        )}
+        <a
+          href={payment.redirectUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground underline"
+        >
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+          Buka halaman pembayaran di tab baru
+        </a>
+        <p className="text-xs text-muted-foreground">
+          Setelah membayar, kembali ke halaman ini — status akan diperbarui otomatis.
+        </p>
+      </div>
+    );
+  }
 
   if (payment.kind === "qris") {
     // QR di-generate SEKALI saat charge dan disimpan di DB - gambar ini tidak

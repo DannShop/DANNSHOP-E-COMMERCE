@@ -47,6 +47,13 @@ export function MidtransConfigForm({
     INITIAL_CHANNEL_STATE,
   );
   const [copied, setCopied] = useState(false);
+  // Radio mode dikendalikan state supaya field Client Key bisa BEREAKSI saat
+  // admin memilih Snap - bukan cuma mengikuti nilai yang sudah tersimpan.
+  // Tanpa ini, admin yang baru memindahkan ke Snap tidak melihat penanda apa
+  // pun bahwa client key jadi wajib, lalu simpanannya ditolak server tanpa
+  // pernah tahu field mana yang dimaksud.
+  const [mode, setMode] = useState(status.integrationMode);
+  const snapSelected = mode === "snap";
 
   async function copyWebhookUrl() {
     try {
@@ -63,7 +70,8 @@ export function MidtransConfigForm({
       {status.configured ? (
         <div className="flex flex-wrap items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
           <CheckCircle2 className="size-3.5 shrink-0" aria-hidden="true" />
-          Mode {status.isProduction ? "Production" : "Sandbox"} — server key {status.serverKeyMasked}
+          Mode {status.isProduction ? "Production" : "Sandbox"} · Integrasi{" "}
+          {status.integrationMode === "snap" ? "Snap" : "Core API"} — server key {status.serverKeyMasked}
           {status.source === "env" && " (dari environment variable, belum diatur lewat panel ini)"}
         </div>
       ) : (
@@ -86,6 +94,56 @@ export function MidtransConfigForm({
           <p className="text-xs text-muted-foreground">
             Ambil di dashboard Midtrans → Settings → Access Keys, sesuai mode (Sandbox/Production) yang aktif di
             sana. Pastikan togglenya di bawah cocok dengan mode key yang kamu salin.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Metode Integrasi</Label>
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2.5 text-sm">
+            <input
+              type="radio"
+              name="integrationMode"
+              value="core_api"
+              defaultChecked={status.integrationMode === "core_api"}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Core API</span> — pembayaran inline di situs ini
+              <span className="block text-xs text-muted-foreground">
+                Jalur utama. Butuh layanan Core API diaktifkan Midtrans untuk Production.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2.5 text-sm">
+            <input
+              type="radio"
+              name="integrationMode"
+              value="snap"
+              defaultChecked={status.integrationMode === "snap"}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Snap</span> — popup pembayaran Midtrans
+              <span className="block text-xs text-muted-foreground">
+                Fallback saat Core API Production belum aktif. Pembeli tetap memilih metode di halaman kita; popup
+                Snap dibuka terkunci ke metode itu, jadi fee dan kode unik tetap persis.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="midtrans-client-key">Client Key {status.integrationMode === "snap" && "(wajib untuk Snap)"}</Label>
+          <Input
+            id="midtrans-client-key"
+            name="clientKey"
+            autoComplete="off"
+            defaultValue={status.clientKey}
+            placeholder="Mid-client-..."
+          />
+          <p className="text-xs text-muted-foreground">
+            Hanya dipakai mode Snap — popup-nya dimuat di browser dan menolak jalan tanpa ini. Core API tidak
+            memerlukannya. Client key memang dirancang untuk publik, jadi tidak disembunyikan seperti server key.
           </p>
         </div>
 

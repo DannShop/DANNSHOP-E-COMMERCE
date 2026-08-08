@@ -499,6 +499,84 @@ export async function getTransactionStatus(
   };
 }
 
+// ===== Snap (fallback saat Core API production belum diaktifkan) =====
+
+// Snap dilayani host yang BERBEDA dari Core API (app.* bukan api.*) - ini
+// sumber kesalahan klasik, memakai baseUrl() di sini menghasilkan 404.
+function snapBaseUrl(creds: MidtransCreds): string {
+  return creds.isProduction ? "https://app.midtrans.com" : "https://app.sandbox.midtrans.com";
+}
+
+/**
+ * Kode channel Snap (`enabled_payments`) BERBEDA dari `payment_type` Core API.
+ * Contoh: Core API "qris" -> Snap "qris"; Core API "bank_transfer"+bank bca ->
+ * Snap "bca_va"; Core API "echannel" -> Snap "echannel"; Core API "gopay" ->
+ * Snap "gopay". Nilai-nilai di bawah dari dokumentasi resmi Snap.
+ *
+ * Peta ini WAJIB lengkap: mengirim transaksi Snap tanpa `enabled_payments`
+ * membuat pembeli bisa memilih metode APA PUN di dalam popup, sementara
+ * nominalnya sudah terkunci memakai fee metode yang dia pilih di halaman kita.
+ * Pembeli bayar dengan fee metode yang salah - selisihnya kecil per transaksi
+ * tapi tidak pernah ketahuan. Karena itu metode tak terpetakan MELEMPAR error,
+ * bukan diam-diam melewatkan enabled_payments.
+ */
+const SNAP_PAYMENT_CODE: Record<string, string> = {
+  qris: "qris",
+  va_bca: "bca_va",
+  va_bni: "bni_va",
+  va_bri: "bri_va",
+  va_permata: "permata_va",
+  va_mandiri: "echannel",
+  // CIMB tidak muncul di daftar contoh dokumentasi Snap sejelas yang lain.
+  // Kalau Midtrans menolaknya, "Uji Channel Pembayaran" di panel admin yang
+  // akan memperlihatkannya lebih dulu - bukan customer.
+  va_cimb: "cimb_va",
+  ewallet_gopay: "gopay",
+  ewallet_shopeepay: "shopeepay",
+};
+
+const snapSchema = z.object({
+  token: z.string(),
+  redirect_url: z.string(),
+});
+
+export interface SnapTransactionResult {
+  token: string;
+  redirectUrl: string;
+}
+
+export async function createSnapTransaction(
+  input: { orderId: string; grossAmount: number; methodCode: string; expiryMinutes: number },
+  creds: MidtransCreds,
+): Promise<SnapTransactionResult> {
+  const enabled = SNAP_PAYMENT_CODE[input.methodCode];
+  if (!enabled) {
+    throw new Error(
+      `Snap: metode "${input.methodCode}" belum punya padanan enabled_payments - ` +
+        `menolak membuat transaksi supaya pembeli tidak bisa memilih metode dengan fee berbeda.`,
+    );
+  }
+
+  const raw = await request(`${snapBaseUrl(creds)}/snap/v1/transactions`, creds, {
+    method: "POST",
+    body: JSON.stringify({
+      transaction_details: { order_id: input.orderId, gross_amount: input.grossAmount },
+      enabled_payments: [enabled],
+      // Snap memakai `expiry`, BUKAN `custom_expiry` milik Core API, dan
+      // satuannya "minute" (bentuk jamak juga diterima). Nilainya tetap dari
+      // PaymentMethodConfig.expiryMinutes yang sama, supaya kedaluwarsa di
+      // Midtrans tetap sejalan dengan expiredAt lokal & job expire-order.
+      expiry: { unit: "minute", duration: input.expiryMinutes },
+    }),
+  });
+
+  const parsed = snapSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`Snap: response tidak sesuai (${JSON.stringify(raw).slice(0, 200)})`);
+  }
+  return { token: parsed.data.token, redirectUrl: parsed.data.redirect_url };
+}
+
 /**
  * Membatalkan transaksi PENDING. Best-effort: TIDAK pernah melempar.
  *
@@ -570,7 +648,11 @@ export type PaymentActions =
   | { kind: "qris"; qrString: string; qrUrl?: string | null }
   | { kind: "va"; bank: string; vaNumber: string }
   | { kind: "echannel"; billerCode: string; billKey: string }
-  | { kind: "ewallet"; provider: EwalletProvider; deeplink: string; qrUrl: string | null };
+  | { kind: "ewallet"; provider: EwalletProvider; deeplink: string; qrUrl: string | null }
+  // Mode Snap: instruksi pembayarannya ada DI DALAM popup Midtrans, bukan di
+  // halaman kita. Yang kita simpan cuma token untuk membuka popup + redirect_url
+  // sebagai cadangan kalau Snap.js gagal dimuat.
+  | { kind: "snap"; token: string; redirectUrl: string; method: string };
 
 export async function chargeByMethodCode(
   method: string,

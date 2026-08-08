@@ -78,6 +78,80 @@ describe("getMidtransConfigStatus", () => {
     siteSetting.findUnique.mockResolvedValue(null);
     const { getMidtransConfigStatus } = await import("@/lib/payment/gateway-config");
     const status = await getMidtransConfigStatus();
-    expect(status).toEqual({ configured: false, source: "none", isProduction: false, serverKeyMasked: null, merchantId: null });
+    expect(status).toEqual({
+      configured: false,
+      source: "none",
+      isProduction: false,
+      serverKeyMasked: null,
+      merchantId: null,
+      integrationMode: "core_api",
+      clientKey: "",
+    });
+  });
+});
+
+describe("mode integrasi (Core API vs Snap)", () => {
+  it("konfigurasi lama tanpa field integrationMode dibaca sebagai core_api", async () => {
+    // Row yang tersimpan SEBELUM fitur Snap ada tidak punya integrationMode
+    // maupun clientKey. Kalau normalisasinya lupa, mode-nya jadi undefined dan
+    // createPaymentActions diam-diam masuk cabang yang salah.
+    const { encryptJson } = await import("@/lib/crypto");
+    siteSetting.findUnique.mockResolvedValue({
+      value: encryptJson({ serverKey: "db-key", merchantId: "M1", isProduction: true }),
+    });
+
+    const { getMidtransRuntime } = await import("@/lib/payment/gateway-config");
+    const runtime = await getMidtransRuntime();
+    expect(runtime.mode).toBe("core_api");
+    expect(runtime.clientKey).toBe("");
+    expect(runtime.creds).toEqual({ serverKey: "db-key", isProduction: true });
+  });
+
+  it("mode snap terbaca beserta client key-nya", async () => {
+    const { encryptJson } = await import("@/lib/crypto");
+    siteSetting.findUnique.mockResolvedValue({
+      value: encryptJson({
+        serverKey: "db-key",
+        clientKey: "Mid-client-abc",
+        merchantId: "M1",
+        isProduction: true,
+        integrationMode: "snap",
+      }),
+    });
+
+    const { getMidtransRuntime } = await import("@/lib/payment/gateway-config");
+    const runtime = await getMidtransRuntime();
+    expect(runtime.mode).toBe("snap");
+    expect(runtime.clientKey).toBe("Mid-client-abc");
+  });
+
+  it("getSnapBrowserConfig memilih host Snap.js sesuai environment", async () => {
+    const { encryptJson } = await import("@/lib/crypto");
+    siteSetting.findUnique.mockResolvedValue({
+      value: encryptJson({
+        serverKey: "db-key",
+        clientKey: "Mid-client-abc",
+        merchantId: "",
+        isProduction: true,
+        integrationMode: "snap",
+      }),
+    });
+
+    const { getSnapBrowserConfig } = await import("@/lib/payment/gateway-config");
+    const snap = await getSnapBrowserConfig();
+    expect(snap).toEqual({
+      clientKey: "Mid-client-abc",
+      scriptUrl: "https://app.midtrans.com/snap/snap.js",
+    });
+  });
+
+  it("tanpa client key, getSnapBrowserConfig null - popup mustahil jalan", async () => {
+    const { encryptJson } = await import("@/lib/crypto");
+    siteSetting.findUnique.mockResolvedValue({
+      value: encryptJson({ serverKey: "db-key", merchantId: "", isProduction: false, integrationMode: "snap" }),
+    });
+
+    const { getSnapBrowserConfig } = await import("@/lib/payment/gateway-config");
+    expect(await getSnapBrowserConfig()).toBeNull();
   });
 });

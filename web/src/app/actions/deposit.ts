@@ -3,10 +3,9 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { depositSchema } from "@/lib/validation/deposit";
-import { chargeByMethodCode } from "@/lib/midtrans/client";
+import { createPaymentActions } from "@/lib/payment/create-payment";
 import { calculateFee, calculateTotal, generateUniqueCode } from "@/lib/payment/fee";
 import { getPaymentRules } from "@/lib/payment/rules";
-import { getMidtransCreds } from "@/lib/payment/gateway-config";
 import { reportChargeFailure } from "@/lib/payment/charge-failure";
 import { getMembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
@@ -77,8 +76,12 @@ export async function createDeposit(
   try {
     // deposit.id (cuid) dipakai langsung sebagai Midtrans order_id - Deposit
     // tidak punya nomor publik terpisah seperti Order.orderNumber.
-    const creds = await getMidtransCreds();
-    const { actions } = await chargeByMethodCode(method.code, deposit.id, Number(totalPaid), expiryMinutes, creds);
+    const actions = await createPaymentActions({
+      methodCode: method.code,
+      orderId: deposit.id,
+      grossAmount: Number(totalPaid),
+      expiryMinutes,
+    });
     await db.deposit.update({ where: { id: deposit.id }, data: { rawResponse: actions as object } });
   } catch (e) {
     const { failure, buyerMessage } = reportChargeFailure(

@@ -2,8 +2,20 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { saveMidtransConfig, getStoredMidtransConfig, getMidtransCreds } from "@/lib/payment/gateway-config";
-import { pingMidtrans, chargeByMethodCode, cancelTransaction, describeMidtransFailure } from "@/lib/midtrans/client";
+import {
+  saveMidtransConfig,
+  getStoredMidtransConfig,
+  getMidtransCreds,
+  getMidtransRuntime,
+  type MidtransIntegrationMode,
+} from "@/lib/payment/gateway-config";
+import {
+  pingMidtrans,
+  chargeByMethodCode,
+  createSnapTransaction,
+  cancelTransaction,
+  describeMidtransFailure,
+} from "@/lib/midtrans/client";
 import { MIN_EXPIRY_MINUTES } from "@/lib/payment/rules";
 import { savePaymentRules } from "@/lib/payment/rules";
 import { MAX_UNIQUE_CODE } from "@/lib/payment/fee";
@@ -35,6 +47,11 @@ const midtransSchema = z.object({
   // Boleh kosong: kosong berarti "jangan ubah server key yang sudah tersimpan",
   // supaya admin bisa memindahkan sandbox<->production tanpa mengetik ulang key.
   serverKey: z.string().trim().max(200),
+  // Client key TIDAK rahasia (Snap menanamkannya di halaman), jadi tidak pakai
+  // pola "kosong = jangan ubah" seperti server key - nilainya ditampilkan utuh
+  // di form dan disimpan apa adanya.
+  clientKey: z.string().trim().max(200),
+  integrationMode: z.string().nullish(),
   merchantId: z.string().trim().max(100),
   // .nullish() (= optional + nullable), BUKAN .optional(): checkbox yang TIDAK
   // dicentang bikin formData.get() mengembalikan `null` (bukan absen), dan
@@ -52,6 +69,8 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
 
   const parsed = midtransSchema.safeParse({
     serverKey: formData.get("serverKey") ?? "",
+    clientKey: formData.get("clientKey") ?? "",
+    integrationMode: formData.get("integrationMode"),
     merchantId: formData.get("merchantId") ?? "",
     isProduction: formData.get("isProduction"),
   });
@@ -64,12 +83,27 @@ export async function saveMidtransCredentials(formData: FormData): Promise<Actio
   }
 
   const isProduction = parsed.data.isProduction === "on";
+  const integrationMode: MidtransIntegrationMode = parsed.data.integrationMode === "snap" ? "snap" : "core_api";
 
-  await saveMidtransConfig({ serverKey, merchantId: parsed.data.merchantId, isProduction });
+  // Snap MUSTAHIL jalan tanpa client key - popupnya dimuat di browser dan
+  // Snap.js menolak tanpa data-client-key. Ditolak di sini, bukan dibiarkan
+  // tersimpan lalu gagal senyap saat customer pertama membuka invoice.
+  if (integrationMode === "snap" && !parsed.data.clientKey) {
+    return { error: "Mode Snap butuh Client Key. Ambil di dashboard Midtrans → Settings → Access Keys." };
+  }
+
+  await saveMidtransConfig({
+    serverKey,
+    clientKey: parsed.data.clientKey,
+    merchantId: parsed.data.merchantId,
+    isProduction,
+    integrationMode,
+  });
 
   // Server key TIDAK PERNAH masuk log admin - cuma fakta bahwa dia berubah.
   await logAdmin(admin.adminId, "payment_config.midtrans.update", {
     isProduction,
+    integrationMode,
     serverKeyChanged: Boolean(parsed.data.serverKey),
   });
   revalidatePath("/admin/payment-config");
@@ -193,7 +227,7 @@ export async function testPaymentChannels(): Promise<ChannelTestResult> {
   const admin = await requireAdmin();
   if ("error" in admin) return { error: admin.error };
 
-  const creds = await getMidtransCreds();
+  const { creds, mode: integrationMode } = await getMidtransRuntime();
   if (!creds.serverKey) {
     return { error: "Belum ada server key tersimpan - isi dan simpan dulu sebelum menguji channel." };
   }
@@ -206,7 +240,7 @@ export async function testPaymentChannels(): Promise<ChannelTestResult> {
     return { error: "Tidak ada metode pembayaran aktif untuk diuji." };
   }
 
-  const mode = creds.isProduction ? "Production" : "Sandbox";
+  const mode = `${creds.isProduction ? "Production" : "Sandbox"} · ${integrationMode === "snap" ? "Snap" : "Core API"}`;
   const rows: ChannelTestRow[] = [];
 
   // Berurutan, bukan Promise.all: ini menembak gateway pembayaran sungguhan,
@@ -214,10 +248,26 @@ export async function testPaymentChannels(): Promise<ChannelTestResult> {
   for (const method of methods) {
     const probeOrderId = `TEST-${method.code}-${Date.now().toString(36)}${Math.floor(Math.random() * 10000)}`;
     try {
-      await chargeByMethodCode(method.code, probeOrderId, CHANNEL_TEST_AMOUNT, MIN_EXPIRY_MINUTES, creds);
-      // Berhasil dibuat = channel hidup. Langsung dibatalkan supaya tidak
-      // menumpuk transaksi menggantung di dashboard Midtrans.
-      await cancelTransaction(probeOrderId, creds);
+      if (integrationMode === "snap") {
+        // Snap cuma menerbitkan token; tidak ada transaksi yang terbentuk
+        // sampai ada yang membayarnya, jadi tidak ada yang perlu dibatalkan.
+        // Yang diuji di sini: apakah metode ini punya padanan enabled_payments
+        // DAN diterima Snap untuk akun ini.
+        await createSnapTransaction(
+          {
+            orderId: probeOrderId,
+            grossAmount: CHANNEL_TEST_AMOUNT,
+            methodCode: method.code,
+            expiryMinutes: MIN_EXPIRY_MINUTES,
+          },
+          creds,
+        );
+      } else {
+        await chargeByMethodCode(method.code, probeOrderId, CHANNEL_TEST_AMOUNT, MIN_EXPIRY_MINUTES, creds);
+        // Berhasil dibuat = channel hidup. Langsung dibatalkan supaya tidak
+        // menumpuk transaksi menggantung di dashboard Midtrans.
+        await cancelTransaction(probeOrderId, creds);
+      }
       rows.push({ code: method.code, label: method.label, ok: true, reason: null });
     } catch (e) {
       const failure = describeMidtransFailure(e);

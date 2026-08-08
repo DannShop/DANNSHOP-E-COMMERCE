@@ -102,6 +102,13 @@ function paymentInstructionsHtml(actions: PaymentActions | null): string {
   if (actions.kind === "echannel") {
     return `<p>Bayar lewat <strong>Mandiri Bill Payment</strong> (ATM/Livin&apos;):</p><p>Kode Perusahaan: <strong>${actions.billerCode}</strong><br/>Kode Bayar: <strong>${actions.billKey}</strong></p>`;
   }
+  if (actions.kind === "snap") {
+    // Token Snap SENGAJA tidak ditaruh di email: dia cuma bisa dipakai oleh
+    // Snap.js di halaman yang memuat client key, jadi menempelkannya di sini
+    // tidak berguna. redirect_url pun sengaja tidak dikirim - link invoice
+    // adalah satu-satunya pintu yang statusnya ikut terpantau polling kita.
+    return `<p>Selesaikan pembayaran lewat link invoice di bawah — tombol pembayarannya ada di sana.</p>`;
+  }
   const label = actions.provider === "gopay" ? "GoPay" : "ShopeePay";
   return `<p>Bayar dengan <strong>${label}</strong> — buka link invoice di bawah untuk tombol pembayarannya.</p>`;
 }

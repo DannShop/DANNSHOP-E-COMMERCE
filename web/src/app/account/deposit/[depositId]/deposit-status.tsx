@@ -5,6 +5,7 @@ import { Clock, CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PaymentInstructions } from "@/components/payment/payment-instructions";
+import type { SnapBrowserConfig } from "@/lib/payment/gateway-config";
 import type { PaymentActions } from "@/lib/midtrans/client";
 
 const FINAL_STATUSES = ["PAID", "FAILED", "EXPIRED"];
@@ -52,10 +53,12 @@ export function DepositStatus({
   depositId,
   qrDataUri,
   initial,
+  snapConfig,
 }: {
   depositId: string;
   qrDataUri: string | null;
   initial: DepositStatusResponse;
+  snapConfig?: SnapBrowserConfig | null;
 }) {
   const { data, isFetching } = useQuery<DepositStatusResponse>({
     queryKey: ["deposit-status", depositId],
@@ -119,7 +122,7 @@ export function DepositStatus({
       )}
 
       {deposit.status === "PENDING" && (
-        <PaymentInstructions payment={deposit.payment} qrDataUri={qrDataUri} />
+        <PaymentInstructions payment={deposit.payment} qrDataUri={qrDataUri} snapConfig={snapConfig} />
       )}
 
       {deposit.status === "PAID" && (

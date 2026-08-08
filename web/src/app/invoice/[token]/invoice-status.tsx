@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PaymentInstructions } from "@/components/payment/payment-instructions";
+import type { SnapBrowserConfig } from "@/lib/payment/gateway-config";
 import type { PaymentActions } from "@/lib/midtrans/client";
 
 const FINAL_STATUSES = ["COMPLETED", "FAILED", "EXPIRED", "REFUNDED", "REFUND_PENDING", "NEEDS_REVIEW"];
@@ -84,10 +85,12 @@ export function InvoiceStatus({
   token,
   qrDataUri,
   initial,
+  snapConfig,
 }: {
   token: string;
   qrDataUri: string | null;
   initial: OrderStatusResponse;
+  snapConfig?: SnapBrowserConfig | null;
 }) {
   const [copied, setCopied] = useState(false);
   const { data, isFetching } = useQuery<OrderStatusResponse>({
@@ -164,7 +167,7 @@ export function InvoiceStatus({
       )}
 
       {order.status === "PENDING_PAYMENT" && (
-        <PaymentInstructions payment={order.payment} qrDataUri={qrDataUri} />
+        <PaymentInstructions payment={order.payment} qrDataUri={qrDataUri} snapConfig={snapConfig} />
       )}
 
       {order.status === "COMPLETED" && order.sn && (
