@@ -35,8 +35,10 @@ const PATTERNS: { category: FailureCategory; test: RegExp; label: string; action
     test: /ip anda tidak kami kenali|ip tidak dikenali|unrecognized ip|ip not (allowed|recognized)/i,
     label: "IP server belum terdaftar di provider",
     action:
-      "Daftarkan IP yang disebut di pesan ke whitelist Digiflazz (Atur Akun → IP Whitelist). " +
-      "Catatan: IP Vercel BERUBAH-UBAH, jadi whitelist satu IP tidak akan bertahan lama — butuh IP keluar yang tetap.",
+      "JANGAN langsung whitelist IP yang disebut di pesan ini kalau app berjalan di Vercel — IP keluar Vercel " +
+      "berganti tiap invocation, jadi besok akan gagal lagi dengan IP yang berbeda. Yang benar: arahkan panggilan " +
+      "provider lewat relay ber-IP tetap (PROVIDER_RELAY_URL), lalu whitelist IP relay itu SEKALI. " +
+      "Panduan lengkapnya di docs/08-IP-TETAP-DIGIFLAZZ.md.",
   },
   {
     category: "insufficient_balance",

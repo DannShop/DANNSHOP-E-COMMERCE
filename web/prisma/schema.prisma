@@ -607,6 +607,11 @@ model ProviderApiLog {
   ourRefId      String?
   providerRc    String? // rc mentah dari provider, kalau ada
   message       String?     @db.Text // pesan mentah provider, disalin keluar biar bisa dicari
+  // true = keluar lewat relay ber-IP tetap, false = langsung dari runtime ini.
+  // Wajib terlihat: kegagalan rc 45 ("IP tidak dikenal") artinya sangat berbeda
+  // tergantung jalurnya - lewat relay berarti IP relay yang belum di-whitelist,
+  // langsung berarti env relay-nya yang belum terpasang di deployment ini.
+  viaRelay      Boolean     @default(false)
   requestBody   Json // kredensial SUDAH diredaksi sebelum disimpan
   responseBody  Json?
   responseText  String?     @db.Text // diisi hanya kalau respons BUKAN JSON

@@ -4,6 +4,7 @@ import {
   noopProviderApiLogger, redactProviderRequest,
   type ProviderApiLogger, type ProviderApiOutcome,
 } from "./api-log";
+import { providerHttpPost } from "./relay";
 import type {
   CallbackResult, CreateTrxInput, ProviderCallContext, ProviderSkuPrice, ProviderTrxResult,
   TopupProviderAdapter,
@@ -84,6 +85,23 @@ export function classifyDigiflazzResponse(json: unknown): {
   return { outcome: "REJECTED", rc, message };
 }
 
+// Menyusun pesan error yang MEMPERTAHANKAN keterangan asli provider.
+//
+// Sebelumnya tiap operasi melempar kalimat generik ("response tidak sesuai skema
+// yang diharapkan") ketika respons gagal divalidasi Zod. Padahal penolakan
+// Digiflazz SELALU sampai lewat jalur itu — bentuk `{data:{rc,message}}` memang
+// tidak cocok dengan skema sukses mana pun. Akibatnya keterangan yang paling
+// menentukan, termasuk alamat IP persis pada rc 45, dibuang tepat sebelum
+// sampai ke admin, dan yang tersisa cuma kalimat yang tidak bisa ditindaklanjuti.
+function describeUnexpectedResponse(operation: string, raw: unknown): Error {
+  const classified = classifyDigiflazzResponse(raw);
+  if (classified.message) {
+    const rcPart = classified.rc ? ` (rc ${classified.rc})` : "";
+    return new Error(`Digiflazz ${operation} ditolak${rcPart}: ${classified.message}`);
+  }
+  return new Error(`Digiflazz ${operation}: response tidak dikenali (${JSON.stringify(raw).slice(0, 200)})`);
+}
+
 export class DigiflazzAdapter implements TopupProviderAdapter {
   readonly key = "digiflazz" as const;
 
@@ -115,17 +133,16 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
     let providerRc: string | null = null;
     let message: string | null = null;
     let errorMessage: string | null = null;
+    let viaRelay = false;
 
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
-      });
+      // Lewat relay ber-IP tetap kalau dikonfigurasi (lihat relay.ts): Digiflazz
+      // mewajibkan IP terdaftar, sementara IP keluar Vercel berubah-ubah.
+      const res = await providerHttpPost({ url: endpoint, body, timeoutMs: 15_000 });
+      viaRelay = res.viaRelay;
       httpStatus = res.status;
       // Digiflazz membalas error dalam body JSON (bukan selalu non-200) — parse dulu, validasi di caller.
-      const text = await res.text();
+      const text = res.text;
       try {
         parsed = JSON.parse(text);
       } catch {
@@ -163,6 +180,7 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
         providerRc,
         message,
         errorMessage,
+        viaRelay,
         context: meta.context,
       });
     }
@@ -179,9 +197,7 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
       { operation: "price-list" },
     );
     const parsed = priceListSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new Error(`Digiflazz price-list: response tidak sesuai (${JSON.stringify(raw).slice(0, 200)})`);
-    }
+    if (!parsed.success) throw describeUnexpectedResponse("price-list", raw);
     return parsed.data.data.map((r) => ({
       skuCode: r.buyer_sku_code,
       productName: r.product_name,
@@ -203,9 +219,7 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
       { operation: "cek-saldo" },
     );
     const parsed = balanceSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new Error("Digiflazz cek-saldo: response tidak sesuai skema yang diharapkan");
-    }
+    if (!parsed.success) throw describeUnexpectedResponse("cek-saldo", raw);
     return BigInt(Math.round(parsed.data.data.deposit));
   }
 
@@ -232,9 +246,7 @@ export class DigiflazzAdapter implements TopupProviderAdapter {
       context: { ourRefId: input.refId, ...input.context },
     });
     const parsed = trxSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new Error("Digiflazz transaction: response tidak sesuai skema yang diharapkan");
-    }
+    if (!parsed.success) throw describeUnexpectedResponse(operation, raw);
     const d = parsed.data.data;
     return {
       refId: d.ref_id,

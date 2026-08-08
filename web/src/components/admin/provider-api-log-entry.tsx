@@ -77,6 +77,15 @@ export function ProviderApiLogEntryCard({ log, showOrder = false }: { log: Provi
 
       <p className="mt-1 text-xs text-muted-foreground break-all">
         {log.endpoint}
+        {" · "}
+        {/* Jalur keluar wajib terlihat: rc 45 lewat relay artinya IP RELAY yang
+            belum di-whitelist, sedangkan rc 45 langsung artinya env relay belum
+            terpasang di deployment ini. Dua perbaikan yang sama sekali berbeda. */}
+        {/* text-warning-foreground, bukan text-warning: --warning itu warna LATAR
+            (kuning pucat #FEF3C7) yang praktis tak terbaca sebagai teks. */}
+        <span className={log.viaRelay ? "" : "font-medium text-warning-foreground"}>
+          {log.viaRelay ? "via relay" : "langsung"}
+        </span>
         {log.providerRc && <> · rc: <span className="font-mono">{log.providerRc}</span></>}
         {log.ourRefId && <> · ref: <span className="font-mono">{log.ourRefId}</span></>}
         {showOrder && log.orderNumber && <> · order: <span className="font-mono">{log.orderNumber}</span></>}
@@ -89,6 +98,15 @@ export function ProviderApiLogEntryCard({ log, showOrder = false }: { log: Provi
         <div className="mt-1.5 rounded bg-destructive/10 px-2 py-1.5 text-xs">
           <p className="font-medium text-destructive">{diagnosis.label}</p>
           {diagnosis.action && <p className="mt-0.5 text-muted-foreground">{diagnosis.action}</p>}
+          {/* Kalau SUDAH lewat relay tapi tetap rc 45, saran umum di atas menyesatkan:
+              relay-nya sudah jalan, yang kurang tinggal mendaftarkan IP-nya. IP yang
+              disebut provider di pesan itu adalah IP relay — itulah yang di-whitelist. */}
+          {diagnosis.category === "ip_not_whitelisted" && log.viaRelay && (
+            <p className="mt-1 font-medium text-foreground">
+              Relay sudah aktif — jadi IP di pesan ini adalah IP relay kamu. Daftarkan IP itu di Digiflazz (Atur Akun →
+              IP Whitelist). Setelah terdaftar, alamatnya tidak akan berubah lagi.
+            </p>
+          )}
         </div>
       )}
       {transportHint && (

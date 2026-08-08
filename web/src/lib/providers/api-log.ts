@@ -47,6 +47,8 @@ export interface ProviderApiLogEntry {
   providerRc?: string | null;
   message?: string | null;
   errorMessage?: string | null;
+  /** true = keluar lewat relay ber-IP tetap. Menentukan arti kegagalan rc 45. */
+  viaRelay?: boolean;
   context?: ProviderCallContext;
 }
 
@@ -141,6 +143,7 @@ export const recordProviderApiCall: ProviderApiLogger = async (entry) => {
         ourRefId: entry.context?.ourRefId ?? null,
         providerRc: entry.providerRc ?? null,
         message: entry.message ?? null,
+        viaRelay: entry.viaRelay ?? false,
         requestBody: truncateForLog(entry.requestBody),
         responseBody: entry.responseBody === undefined ? undefined : truncateForLog(entry.responseBody),
         responseText: entry.responseText ? truncateTextForLog(entry.responseText) : null,

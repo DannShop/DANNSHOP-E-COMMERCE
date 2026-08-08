@@ -16,6 +16,7 @@ CREATE TABLE `ProviderApiLog` (
     `ourRefId` VARCHAR(191) NULL,
     `providerRc` VARCHAR(191) NULL,
     `message` TEXT NULL,
+    `viaRelay` BOOLEAN NOT NULL DEFAULT false,
     `requestBody` JSON NOT NULL,
     `responseBody` JSON NULL,
     `responseText` TEXT NULL,

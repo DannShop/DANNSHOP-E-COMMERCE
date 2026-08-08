@@ -18,6 +18,18 @@ export const digiflazzCredentialsSchema = z.object({
 
 export type ActionResult = { ok?: string; error?: string };
 
+// Pesan error provider dipangkas panjangnya saja, TIDAK diganti kalimat generik.
+// Kalau ada yang menyebut alamat IP (kasus rc 45 Digiflazz), ditambahi petunjuk
+// bahwa mendaftarkan IP itu langsung percuma di Vercel - IP-nya berganti terus.
+export function describeProviderError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  const message = raw.length > 300 ? `${raw.slice(0, 300)}…` : raw;
+  if (/ip anda tidak kami kenali|ip tidak dikenali/i.test(message)) {
+    return `${message} — jangan whitelist IP ini langsung kalau app di Vercel (IP-nya berganti tiap saat); pakai relay ber-IP tetap, lihat docs/08-IP-TETAP-DIGIFLAZZ.md.`;
+  }
+  return message;
+}
+
 export const testTransactionSchema = z.object({
   skuCode: z.string().min(1, "Kode SKU wajib diisi"),
   target: z.string().min(1, "Nomor tujuan wajib diisi"),
@@ -134,7 +146,13 @@ export async function checkProviderBalance(formData: FormData): Promise<ActionRe
       data: { healthStatus: "DOWN", lastHealthCheckAt: new Date() },
     });
     console.error("checkProviderBalance: gagal cek saldo", { provider: key, error: e });
-    return { error: "Gagal cek saldo provider, coba lagi." };
+    // Pesan asli provider DITAMPILKAN, bukan ditelan jadi "coba lagi". Untuk kelas
+    // kegagalan konfigurasi (IP belum di-whitelist, signature salah), pesan itu
+    // memuat satu-satunya informasi yang menentukan - termasuk alamat IP persis
+    // yang perlu didaftarkan. "Coba lagi" justru menyuruh admin mengulangi hal
+    // yang dijamin gagal, dan menyembunyikan sebabnya. Aman ditampilkan: ini
+    // halaman admin, dan kredensial tidak pernah ikut di pesan error Digiflazz.
+    return { error: `Gagal cek saldo ${key}: ${describeProviderError(e)}` };
   }
 }
 
@@ -162,7 +180,7 @@ export async function sendTestTransaction(formData: FormData): Promise<
     return { ok: `Transaksi tes terkirim (${result.status}).`, result: { refId, status: result.status, sn: result.sn, message: result.message } };
   } catch (e) {
     console.error("testProviderTransaction: transaksi tes gagal", { error: e });
-    return { error: "Transaksi tes gagal, coba lagi." };
+    return { error: `Transaksi tes gagal: ${describeProviderError(e)}` };
   }
 }
 
