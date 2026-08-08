@@ -45,7 +45,10 @@ export function AdminSidebar({
           seperti sebelumnya (mark gradient "D" + wordmark DANNSHOP). */}
       <div
         className={cn(
-          "flex h-16 shrink-0 items-center gap-3 px-4",
+          // `relative` wajib: wordmark di bawah jadi `absolute` saat diciutkan.
+          // Tanpa ini containing block-nya lari ke dokumen - kelas bug yang
+          // sama persis dengan yang dijelaskan di admin-shell.tsx soal <main>.
+          "relative flex h-16 shrink-0 items-center gap-3 px-4",
           collapsed && "justify-center px-0",
         )}
       >
@@ -66,7 +69,7 @@ export function AdminSidebar({
             <span
               className={cn(
                 "flex min-w-0 flex-col overflow-hidden transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-                collapsed && "pointer-events-none -translate-x-2 opacity-0",
+                collapsed && "pointer-events-none absolute -translate-x-2 opacity-0",
               )}
             >
               <span className="truncate font-heading text-sm leading-tight font-bold tracking-tight">
@@ -141,7 +144,7 @@ export function AdminSidebar({
       <div className="shrink-0 border-t border-border/60 p-3">
         <div
           className={cn(
-            "mb-2 flex items-center gap-2.5 rounded-xl px-2 py-1.5",
+            "relative mb-2 flex items-center gap-2.5 rounded-xl px-2 py-1.5",
             collapsed && "justify-center px-0",
           )}
         >
@@ -151,7 +154,7 @@ export function AdminSidebar({
           <span
             className={cn(
               "flex min-w-0 flex-col overflow-hidden transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-              collapsed && "pointer-events-none -translate-x-2 opacity-0",
+              collapsed && "pointer-events-none absolute -translate-x-2 opacity-0",
             )}
           >
             <span className="truncate text-xs font-medium">{userEmail}</span>
