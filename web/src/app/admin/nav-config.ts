@@ -14,6 +14,7 @@ import {
   Webhook,
   Activity,
   Crown,
+  Users,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
@@ -59,7 +60,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Membership",
-    items: [{ href: "/admin/membership-tiers", label: "Tier Member", icon: Crown }],
+    items: [
+      { href: "/admin/users", label: "Kontrol User", icon: Users },
+      { href: "/admin/membership-tiers", label: "Tier Member", icon: Crown },
+    ],
   },
   {
     label: "Storefront",

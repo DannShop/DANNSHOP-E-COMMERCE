@@ -18,6 +18,7 @@ import { sendOrderCreatedEmail } from "@/lib/notify/email";
 import { effectivePrice } from "@/lib/pricing/effective-price";
 import { getMembershipContext, type MembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
+import { requireActiveAccount } from "@/lib/account/user-status";
 
 export interface CheckoutResult {
   ok?: string;
@@ -55,6 +56,11 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
 
   const session = await auth();
   const userId = session?.user?.id ?? null;
+
+  // Sebelum menyentuh apa pun yang berbiaya (rate limit, harga, provider).
+  // Tamu (userId null) selalu lolos - tidak ada akun untuk ditangguhkan.
+  const blocked = await requireActiveAccount(userId, session?.user?.updatedAt);
+  if (blocked) return { error: blocked };
 
   if (!userId) {
     const ip = extractIp(await headers());

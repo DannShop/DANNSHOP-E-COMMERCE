@@ -9,6 +9,7 @@ import { getPaymentRules } from "@/lib/payment/rules";
 import { getMidtransCreds } from "@/lib/payment/gateway-config";
 import { getMembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
+import { requireActiveAccount } from "@/lib/account/user-status";
 
 export interface DepositResult {
   error?: string;
@@ -21,6 +22,9 @@ export async function createDeposit(
 ): Promise<DepositResult> {
   const session = await auth();
   if (!session?.user?.id) return { error: "Harus login untuk isi saldo." };
+
+  const blocked = await requireActiveAccount(session.user.id, session.user.updatedAt);
+  if (blocked) return { error: blocked };
 
   const parsed = depositSchema.safeParse({ amount: formData.get("amount") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };

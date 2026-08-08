@@ -380,4 +380,31 @@
     mask-composite: exclude;
     pointer-events: none;
   }
+
+  /* Material untuk tooltip sidebar yang menciut.
+     Sengaja mendefinisikan warnanya SENDIRI dan tidak memakai --glass-* di
+     atas: Base UI mem-portal popup tooltip ke <body>, sementara variabel itu
+     discope ke .admin-shell/.account-shell - dari dalam portal, var()-nya
+     kosong dan panelnya akan tampil transparan tanpa warna sama sekali.
+
+     Sedikit lebih pekat (0.82) daripada .glass-panel (0.72) karena tooltip
+     melayang di atas konten padat, bukan di atas gradient latar - kalau
+     setipis panel, teksnya jadi susah dibaca saat kebetulan menimpa tabel. */
+  .glass-tooltip {
+    background-color: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow:
+      0 1px 2px rgba(16, 12, 45, 0.06),
+      0 12px 32px -12px rgba(49, 46, 129, 0.28);
+  }
+
+  .dark .glass-tooltip {
+    background-color: rgba(28, 28, 42, 0.82);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.5),
+      0 16px 40px -16px rgba(0, 0, 0, 0.8);
+  }
 }

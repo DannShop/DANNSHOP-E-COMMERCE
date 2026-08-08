@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { requireActiveAccount } from "@/lib/account/user-status";
 
 export type ActionResult = { ok?: string; error?: string };
 
@@ -26,6 +27,9 @@ export async function purchaseTier(formData: FormData): Promise<ActionResult> {
   const session = await auth();
   if (!session?.user?.id) return { error: "Harus login untuk beli tier member." };
   const userId = session.user.id;
+
+  const blocked = await requireActiveAccount(userId, session.user.updatedAt);
+  if (blocked) return { error: blocked };
 
   const tierId = String(formData.get("tierId") ?? "");
   const tier = await db.membershipTier.findUnique({ where: { id: tierId } });

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Tooltip } from "@base-ui/react/tooltip";
 import { PanelLeftClose, PanelLeftOpen, LogOut } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import { SiteLogo } from "@/components/site-logo";
@@ -85,60 +86,98 @@ export function AdminSidebar({
 
       {/* ===== Menu ===== */}
       {/* no-scrollbar + overflow-y-auto: daftar menu tetap bisa di-scroll di
-          layar pendek. Konsekuensinya tooltip kustom akan terpotong container,
-          jadi saat collapsed labelnya pakai atribut `title` bawaan browser -
-          pilihan sadar: anti-terpotong & tetap terbaca screen reader. */}
-      <nav className="no-scrollbar flex-1 overflow-y-auto px-3 pb-3">
-        {NAV_GROUPS.map((group, groupIndex) => (
-          <div key={group.label || "root"} className={cn(groupIndex > 0 && "mt-5")}>
-            {group.label &&
-              (collapsed ? (
-                <div className="mx-auto mb-2 h-px w-6 bg-border" aria-hidden="true" />
-              ) : (
-                <p className="mb-1.5 px-3 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground/80 uppercase">
-                  {group.label}
-                </p>
-              ))}
+          layar pendek. Dulu itu jadi alasan label saat menciut memakai atribut
+          `title` bawaan browser - tooltip kustom biasa PASTI terpotong container
+          ini. Sekarang dipakai Tooltip Base UI yang mem-PORTAL popup-nya ke
+          <body>, jadi overflow di sini tidak menyentuhnya sama sekali.
+          Aksesibilitas tidak berkurang: label aslinya tetap ada di DOM (cuma
+          opacity-0) sebagai nama link untuk screen reader, dan Base UI
+          menambahkan aria-describedby ke tooltipnya.
 
-            <ul className="flex flex-col gap-0.5">
-              {group.items.map((item) => {
-                const active = isNavItemActive(pathname, item.href);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={onNavigate}
-                      title={collapsed ? item.label : undefined}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "group/item relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium",
-                        "transition-[background-color,color,box-shadow] duration-200 ease-out",
-                        collapsed && "justify-center px-0",
-                        active
-                          ? "bg-gradient-to-r from-indigo-500/90 to-violet-500/90 text-white shadow-md shadow-indigo-500/20"
-                          : "text-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
-                      )}
-                    >
-                      <item.icon
-                        className={cn("size-[18px] shrink-0", !active && "text-muted-foreground")}
-                        aria-hidden="true"
-                      />
-                      <span
-                        className={cn(
-                          "min-w-0 flex-1 truncate transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-                          collapsed && "pointer-events-none absolute -translate-x-2 opacity-0",
-                        )}
-                      >
-                        {item.label}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
-      </nav>
+          Provider membungkus seluruh daftar supaya delay-nya BERSAMA: begitu
+          satu tooltip terbuka, pindah ke item lain langsung tampil tanpa
+          menunggu ulang - persis perilaku menu di macOS. */}
+      <Tooltip.Provider delay={350} closeDelay={0}>
+        <nav className="no-scrollbar flex-1 overflow-y-auto px-3 pb-3">
+          {NAV_GROUPS.map((group, groupIndex) => (
+            <div key={group.label || "root"} className={cn(groupIndex > 0 && "mt-5")}>
+              {group.label &&
+                (collapsed ? (
+                  <div className="mx-auto mb-2 h-px w-6 bg-border" aria-hidden="true" />
+                ) : (
+                  <p className="mb-1.5 px-3 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground/80 uppercase">
+                    {group.label}
+                  </p>
+                ))}
+
+              <ul className="flex flex-col gap-0.5">
+                {group.items.map((item) => {
+                  const active = isNavItemActive(pathname, item.href);
+                  return (
+                    <li key={item.href}>
+                      {/* Dimatikan saat sidebar melebar - labelnya sudah terbaca
+                          di menu, tooltip cuma jadi gangguan. Pakai `disabled`,
+                          bukan render bersyarat, supaya <Link>-nya tidak
+                          di-remount tiap sidebar diciutkan/dilebarkan. */}
+                      <Tooltip.Root disabled={!collapsed}>
+                        <Tooltip.Trigger
+                          render={
+                            <Link
+                              href={item.href}
+                              onClick={onNavigate}
+                              aria-current={active ? "page" : undefined}
+                              className={cn(
+                                "group/item relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium",
+                                "transition-[background-color,color,box-shadow] duration-200 ease-out",
+                                collapsed && "justify-center px-0",
+                                active
+                                  ? "bg-gradient-to-r from-indigo-500/90 to-violet-500/90 text-white shadow-md shadow-indigo-500/20"
+                                  : "text-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
+                              )}
+                            >
+                              <item.icon
+                                className={cn("size-[18px] shrink-0", !active && "text-muted-foreground")}
+                                aria-hidden="true"
+                              />
+                              <span
+                                className={cn(
+                                  "min-w-0 flex-1 truncate transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                                  collapsed && "pointer-events-none absolute -translate-x-2 opacity-0",
+                                )}
+                              >
+                                {item.label}
+                              </span>
+                            </Link>
+                          }
+                        />
+                        <Tooltip.Portal>
+                          <Tooltip.Positioner side="right" sideOffset={10} className="z-50">
+                            <Tooltip.Popup
+                              className={cn(
+                                "glass-tooltip rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-foreground",
+                                "transition-[opacity,transform] duration-150 ease-out",
+                                "data-[starting-style]:-translate-x-1 data-[starting-style]:opacity-0",
+                                "data-[ending-style]:-translate-x-1 data-[ending-style]:opacity-0",
+                                // data-instant dipasang Base UI saat tooltip berpindah
+                                // antar item dalam satu grup - di situ animasi masuk
+                                // justru terasa lamban, bukan halus.
+                                "data-instant:duration-0",
+                                "motion-reduce:transition-none",
+                              )}
+                            >
+                              {item.label}
+                            </Tooltip.Popup>
+                          </Tooltip.Positioner>
+                        </Tooltip.Portal>
+                      </Tooltip.Root>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </Tooltip.Provider>
 
       {/* ===== Footer: identitas + keluar + tombol collapse ===== */}
       <div className="shrink-0 border-t border-border/60 p-3">

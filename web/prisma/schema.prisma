@@ -100,6 +100,16 @@ model User {
   name            String
   role            Role      @default(USER)
   emailVerifiedAt DateTime?
+  // Suspend akun. null = normal. Sengaja timestamp, bukan Boolean: "kapan
+  // di-banned" ikut terekam tanpa kolom tambahan (pola sama dengan
+  // emailVerifiedAt di atas & PasswordResetToken.usedAt).
+  //
+  // PENTING - kolom ini TIDAK cukup dibaca saat login saja. JWT di
+  // lib/auth.config.ts stateless dengan maxAge 8 jam, jadi sesi yang sudah
+  // terlanjur terbit tetap hidup setelah admin nge-ban. Semua jalur uang wajib
+  // lewat assertUserNotBanned() di lib/account/user-status.ts.
+  bannedAt        DateTime?
+  banReason       String?   @db.Text
   wallet          Wallet?
   orders          Order[]
   deposits        Deposit[]

@@ -8,13 +8,15 @@ import {
   updateMembershipTier,
   deleteMembershipTier,
   grantMembership,
+  previewTierPricing,
 } from "@/app/actions/admin-membership";
 import { TierForm } from "./tier-form";
 import { NewTierForm } from "./new-tier-form";
 import { GrantMembershipForm } from "./grant-form";
+import { TierPricePreview } from "./tier-price-preview";
 
 export default async function MembershipTiersPage() {
-  const [tiers, activeMembers] = await Promise.all([
+  const [tiers, activeMembers, categories] = await Promise.all([
     db.membershipTier.findMany({
       orderBy: { sortOrder: "asc" },
       include: { _count: { select: { memberships: true } } },
@@ -27,6 +29,7 @@ export default async function MembershipTiersPage() {
       include: { user: { select: { email: true, name: true } }, tier: { select: { name: true, badgeColor: true } } },
       take: 50,
     }),
+    db.category.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
   ]);
 
   return (
@@ -70,6 +73,17 @@ export default async function MembershipTiersPage() {
               deleteAction={deleteMembershipTier}
             />
           ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Preview Harga yang Didapat Member</h2>
+        <p className="text-xs text-muted-foreground">
+          Cek langsung berapa yang dibayar customer di tiap tier sebelum kamu mengumumkan paketnya.
+          Pilih kategori, lalu bandingkan harga per item dari tanpa tier sampai tier tertinggi.
+        </p>
+        <div className="rounded-lg border p-4">
+          <TierPricePreview categories={categories} previewAction={previewTierPricing} />
         </div>
       </section>
 

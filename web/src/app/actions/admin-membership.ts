@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { BENEFIT_CATALOG } from "@/lib/membership/benefits";
+import { effectivePrice, isFlashActive } from "@/lib/pricing/effective-price";
 
 export type ActionResult = { ok?: string; error?: string };
 
@@ -224,4 +225,84 @@ export async function grantMembership(formData: FormData): Promise<ActionResult>
   });
   revalidatePath("/admin/membership-tiers");
   return { ok: `Tier "${tier.name}" diberikan ke ${user.email} sampai ${expiresAt.toLocaleDateString("id-ID")}.` };
+}
+
+// ===== Preview harga per tier =====
+//
+// Menjawab pertanyaan yang sebenarnya dipakai admin saat menyetel diskon:
+// "kalau saya set Bronze 5%, customer bayar berapa untuk item ini?". Angkanya
+// WAJIB lewat effectivePrice() - satu-satunya penentu harga final di codebase
+// ini - supaya preview tidak pernah berbohong soal lantai memberPrice maupun
+// flash sale yang sedang jalan. Menghitung `harga - diskon` sendiri di sini
+// justru akan menampilkan angka yang beda dari yang benar-benar ditagih saat
+// checkout, dan itu lebih berbahaya daripada tidak punya preview sama sekali.
+
+export interface TierPricePreviewTier {
+  id: string;
+  name: string;
+  badgeColor: string;
+  discountPercent: number;
+}
+
+// BigInt tidak bisa menyeberangi batas server action, jadi semua nominal
+// dikirim sebagai string - pola yang sama dengan MarkupPreviewRowSerialized.
+export interface TierPricePreviewRow {
+  itemId: string;
+  productName: string;
+  itemName: string;
+  basePrice: string;
+  memberFloor: string;
+  flashActive: boolean;
+  /** Sejajar indeksnya dengan `tiers` pada hasil yang sama. */
+  tierPrices: string[];
+}
+
+export type TierPricePreviewResult = {
+  tiers?: TierPricePreviewTier[];
+  rows?: TierPricePreviewRow[];
+  error?: string;
+};
+
+const PREVIEW_ITEM_LIMIT = 150;
+
+export async function previewTierPricing(formData: FormData): Promise<TierPricePreviewResult> {
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const categoryId = String(formData.get("categoryId") ?? "");
+
+  const [tiers, items] = await Promise.all([
+    db.membershipTier.findMany({
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, name: true, badgeColor: true, discountPercent: true },
+    }),
+    db.productItem.findMany({
+      where: {
+        isActive: true,
+        product: { isActive: true, ...(categoryId ? { categoryId } : {}) },
+      },
+      include: { product: { select: { name: true } } },
+      orderBy: [{ product: { name: "asc" } }, { sortOrder: "asc" }],
+      take: PREVIEW_ITEM_LIMIT,
+    }),
+  ]);
+
+  if (tiers.length === 0) return { error: "Belum ada tier yang bisa dibandingkan. Buat tier dulu di atas." };
+
+  // Satu `now` untuk seluruh tabel, bukan Date baru per baris - kalau tidak,
+  // item yang flash sale-nya persis berakhir di tengah perhitungan bisa tampil
+  // tidak konsisten antar kolom di baris yang sama.
+  const now = new Date();
+
+  const rows: TierPricePreviewRow[] = items.map((item) => ({
+    itemId: item.id,
+    productName: item.product.name,
+    itemName: item.name,
+    basePrice: effectivePrice(item, { discountBp: 0, now }).toString(),
+    memberFloor: item.memberPrice.toString(),
+    flashActive: isFlashActive(item, now),
+    tierPrices: tiers.map((t) => effectivePrice(item, { discountBp: t.discountPercent, now }).toString()),
+  }));
+
+  return { tiers, rows };
 }
