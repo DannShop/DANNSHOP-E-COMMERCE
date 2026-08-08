@@ -97,7 +97,7 @@ export function MarkupForm({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="markup-member">Markup Harga Member (%)</Label>
+          <Label htmlFor="markup-member">Markup Harga Modal (%)</Label>
           <Input
             id="markup-member"
             inputMode="decimal"
@@ -147,7 +147,7 @@ export function MarkupForm({
                   <TableRow>
                     <TableHead>Item</TableHead>
                     <TableHead className="tabular-nums">Harga Jual</TableHead>
-                    <TableHead className="tabular-nums">Harga Member</TableHead>
+                    <TableHead className="tabular-nums">Harga Modal</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>

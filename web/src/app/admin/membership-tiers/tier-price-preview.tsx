@@ -108,7 +108,7 @@ export function TierPricePreview({
                           )}
                         </span>
                         <span className="text-[10px] text-muted-foreground">
-                          Lantai harga member {formatRupiah(BigInt(row.memberFloor))}
+                          Lantai harga modal {formatRupiah(BigInt(row.memberFloor))}
                         </span>
                       </TableCell>
                       <TableCell className="tabular-nums text-xs">
@@ -139,7 +139,7 @@ export function TierPricePreview({
                 lewat jalur harga yang sama, bukan perkiraan.
               </p>
               <p>
-                Diskon tier tidak pernah menembus <strong>lantai harga member</strong> tiap item. Kalau
+                Diskon tier tidak pernah menembus <strong>harga modal</strong> tiap item. Kalau
                 dua tier menampilkan angka yang sama, artinya keduanya sudah menyentuh lantai itu dan
                 menaikkan diskon lagi tidak akan mengubah apa pun.
               </p>

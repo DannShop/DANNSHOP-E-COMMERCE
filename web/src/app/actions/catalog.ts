@@ -339,7 +339,7 @@ export async function deleteProductItemGroup(formData: FormData): Promise<Action
 const bulkMarkupInputSchema = z.object({
   categoryId: z.string().optional().transform((v) => (v ? v : null)),
   sellingMarkupPercent: z.coerce.number().min(0, "Markup harga jual harus >= 0"),
-  memberMarkupPercent: z.coerce.number().min(0, "Markup harga member harus >= 0"),
+  memberMarkupPercent: z.coerce.number().min(0, "Markup harga modal harus >= 0"),
 });
 
 export interface MarkupPreviewRowSerialized {

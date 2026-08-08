@@ -291,7 +291,7 @@ function ItemRow({
             name="memberPrice"
             defaultValue={item.memberPrice}
             inputMode="numeric"
-            aria-label="Harga member"
+            aria-label="Harga modal"
             className="tabular-nums"
             required
           />
@@ -374,8 +374,15 @@ function AddItemForm({
           <Input id="new-item-selling" name="sellingPrice" inputMode="numeric" required placeholder="22000" />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="new-item-member">Harga member</Label>
+          <Label htmlFor="new-item-member">Harga modal</Label>
+          {/* Nama field-nya tetap `memberPrice` (kolom DB tidak diubah supaya
+              tidak perlu migrasi). Yang berubah cuma LABEL-nya, karena sejak
+              Fase B angka ini bukan lagi "harga untuk member" - dia batas bawah
+              yang tidak boleh ditembus diskon tier. Lihat effectivePrice(). */}
           <Input id="new-item-member" name="memberPrice" inputMode="numeric" required placeholder="21500" />
+          <p className="text-xs text-muted-foreground">
+            Batas bawah harga: diskon tier member tidak akan pernah menembus angka ini.
+          </p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="new-item-sort">Urutan</Label>
@@ -541,7 +548,7 @@ export function ProductItemsManager({
         <div className="hidden gap-3 border-b px-3 py-2 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_9rem_9rem_5rem_auto_auto]">
           <span>Nama</span>
           <span>Harga jual</span>
-          <span>Harga member</span>
+          <span>Harga modal</span>
           <span>Urutan</span>
           <span>Status</span>
           <span className="justify-self-end">Aksi</span>

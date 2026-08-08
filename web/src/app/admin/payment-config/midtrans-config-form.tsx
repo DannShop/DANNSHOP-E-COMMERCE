@@ -104,7 +104,8 @@ export function MidtransConfigForm({
               type="radio"
               name="integrationMode"
               value="core_api"
-              defaultChecked={status.integrationMode === "core_api"}
+              checked={!snapSelected}
+              onChange={() => setMode("core_api")}
               className="mt-0.5"
             />
             <span>
@@ -119,7 +120,8 @@ export function MidtransConfigForm({
               type="radio"
               name="integrationMode"
               value="snap"
-              defaultChecked={status.integrationMode === "snap"}
+              checked={snapSelected}
+              onChange={() => setMode("snap")}
               className="mt-0.5"
             />
             <span>
@@ -132,19 +134,36 @@ export function MidtransConfigForm({
           </label>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="midtrans-client-key">Client Key {status.integrationMode === "snap" && "(wajib untuk Snap)"}</Label>
+        {/* Muncul menonjol saat Snap dipilih; di mode Core API tetap ada tapi
+            diredupkan, supaya client key yang sudah tersimpan tidak hilang dari
+            pandangan (dan tidak ikut terhapus) cuma karena mode-nya dipindah. */}
+        <div className={`space-y-1.5 rounded-md p-2.5 transition-colors ${snapSelected ? "bg-primary/5 ring-1 ring-primary/30" : ""}`}>
+          <Label htmlFor="midtrans-client-key">
+            Client Key{" "}
+            {snapSelected ? (
+              <span className="text-primary">— wajib diisi untuk Snap</span>
+            ) : (
+              <span className="text-muted-foreground">(tidak dipakai di mode Core API)</span>
+            )}
+          </Label>
           <Input
             id="midtrans-client-key"
             name="clientKey"
             autoComplete="off"
             defaultValue={status.clientKey}
             placeholder="Mid-client-..."
+            required={snapSelected}
           />
           <p className="text-xs text-muted-foreground">
-            Hanya dipakai mode Snap — popup-nya dimuat di browser dan menolak jalan tanpa ini. Core API tidak
-            memerlukannya. Client key memang dirancang untuk publik, jadi tidak disembunyikan seperti server key.
+            {snapSelected
+              ? "Ambil di dashboard Midtrans → Settings → Access Keys, mode yang sama dengan server key. Popup Snap dimuat di browser dan menolak jalan tanpa ini."
+              : "Hanya dipakai mode Snap. Client key memang dirancang untuk publik, jadi tidak disembunyikan seperti server key."}
           </p>
+          {snapSelected && !status.clientKey && (
+            <p className="text-xs text-destructive">
+              Belum ada client key tersimpan — isi sekarang, kalau tidak penyimpanan akan ditolak.
+            </p>
+          )}
         </div>
 
         <div className="space-y-1.5">

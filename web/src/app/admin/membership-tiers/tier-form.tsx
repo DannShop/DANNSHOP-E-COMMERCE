@@ -116,7 +116,7 @@ export function TierForm({
             />
             <p className="text-xs text-muted-foreground">
               100 = 1%. Preview: item {formatRupiah(PREVIEW_PRICE)} → {formatRupiah(discountedPreview < 0n ? 0n : discountedPreview)}
-              {" "}(dilantai harga member per item, tidak akan lebih murah dari itu).
+              {" "}(dibatasi harga modal per item, tidak akan lebih murah dari itu).
             </p>
           </div>
           <div className="space-y-1.5">

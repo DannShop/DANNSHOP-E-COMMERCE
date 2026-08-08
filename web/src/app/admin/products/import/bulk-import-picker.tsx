@@ -139,7 +139,7 @@ export function BulkImportPicker({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="import-member-markup">Markup harga member (%)</Label>
+          <Label htmlFor="import-member-markup">Markup harga modal (%)</Label>
           <Input
             id="import-member-markup"
             type="number"

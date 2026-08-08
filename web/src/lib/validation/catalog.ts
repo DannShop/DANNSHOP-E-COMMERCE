@@ -68,7 +68,10 @@ export const productItemSchema = z
     productId: z.string().min(1),
     name: z.string().min(1, "Nama item wajib diisi"),
     sellingPrice: z.coerce.bigint().positive("Harga jual harus > 0"),
-    memberPrice: z.coerce.bigint().positive("Harga member harus > 0"),
+    // Nama field DB tetap `memberPrice` (mengubahnya menuntut migrasi tanpa
+    // manfaat perilaku). Yang dilabeli ke admin: "Harga modal" - sejak Fase B
+    // angka ini batas bawah harga, bukan harga khusus member.
+    memberPrice: z.coerce.bigint().positive("Harga modal harus > 0"),
     sortOrder: z.coerce.number().int().default(0),
     // Flash sale opsional per item - kosongkan ketiganya buat menonaktifkan.
     flashPrice: nullableBigIntField("Harga flash harus > 0"),
@@ -108,6 +111,6 @@ export const bulkImportSchema = z.object({
   brand: z.string().min(1, "Brand wajib dipilih"),
   slug: z.string().min(1, "Slug wajib diisi").regex(/^[a-z0-9-]+$/, "Slug hanya huruf kecil, angka, tanda hubung"),
   markupPercent: z.coerce.number().min(0, "Markup harga jual harus >= 0"),
-  memberMarkupPercent: z.coerce.number().min(0, "Markup harga member harus >= 0"),
+  memberMarkupPercent: z.coerce.number().min(0, "Markup harga modal harus >= 0"),
   skuCodes: z.array(z.string().min(1)).min(1, "Pilih minimal 1 produk untuk ditambahkan"),
 });

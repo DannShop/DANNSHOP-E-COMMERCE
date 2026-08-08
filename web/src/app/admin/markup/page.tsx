@@ -10,7 +10,7 @@ export default async function AdminMarkupPage() {
       <div>
         <h1 className="text-xl font-semibold">Markup Harga Massal</h1>
         <p className="text-sm text-muted-foreground">
-          Hitung ulang harga jual &amp; harga member sekaligus untuk banyak produk, berdasarkan persentase markup di
+          Hitung ulang harga jual &amp; harga modal sekaligus untuk banyak produk, berdasarkan persentase markup di
           atas harga modal provider. Selalu lihat preview dulu sebelum menerapkan.
         </p>
       </div>

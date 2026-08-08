@@ -32,6 +32,13 @@ export function isFlashActive(item: PricedItem, now: Date): boolean {
 // di bawah angka itu, supaya admin tidak perlu menghitung ulang floor per
 // tier per item satu-satu.
 //
+// PENAMAAN (2026-08-08): di seluruh panel admin field ini dilabeli
+// **"Harga modal"**, bukan lagi "Harga member" - nama lamanya menyesatkan
+// karena tidak ada seorang pun yang membayar angka ini. Kolom DB-nya SENGAJA
+// tetap `memberPrice`: menggantinya menuntut migrasi tanpa satu pun perubahan
+// perilaku. Kalau membaca kode ini sambil melihat panel, "memberPrice" di sini
+// = "Harga modal" di sana.
+//
 // Prioritas kalau beberapa berlaku sekaligus: flash > diskon tier (dilantai
 // memberPrice) > normal. Flash tetap menang di atas tier karena flash adalah
 // promosi bertenggat waktu yang sengaja mengalahkan semua diskon lain
