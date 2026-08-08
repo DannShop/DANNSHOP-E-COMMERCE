@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,57 +39,45 @@ export function PaymentMethodForm({
   const uploadFields = useMemo(() => ({ code: method.code }), [method.code]);
 
   return (
-    <div className="rounded-lg border p-4">
-      <form action={formAction} className="flex flex-col gap-4">
+    <div className="rounded-lg border p-3 sm:p-4">
+      <form action={formAction} className="flex flex-col gap-3">
         <input type="hidden" name="id" value={method.id} />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-            {method.code}
-          </span>
-          <div className="min-w-[10rem] flex-1 space-y-1.5">
-            <Label htmlFor={`label-${method.id}`} className="text-xs">Nama tampil</Label>
+        {/* Baris identitas. Kotak logo SELALU dirender (walau kosong) supaya tinggi
+            dan titik awal kolom baris ini identik di semua kartu - itu yang bikin
+            daftarnya terbaca rapi sebagai satu tabel, bukan kartu-kartu acak. */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="grid h-9 w-14 shrink-0 place-items-center overflow-hidden rounded border bg-muted/50">
+            {logoUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element -- URL arbitrer dari admin, tanpa domain whitelist */
+              <img src={logoUrl} alt="" className="size-full object-contain" />
+            ) : (
+              <span className="text-xs text-muted-foreground">—</span>
+            )}
+          </div>
+          <div className="min-w-[9rem] flex-1 space-y-1.5">
+            {/* Kode metode dipakai sebagai label input namanya sekaligus - satu
+                elemen, dua informasi, tanpa menambah tinggi baris. */}
+            <Label htmlFor={`label-${method.id}`} className="text-xs text-muted-foreground">
+              {method.code}
+            </Label>
             <Input id={`label-${method.id}`} name="label" defaultValue={method.label} required />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox name="isActive" defaultChecked={method.isActive} />
+              Aktif
+            </label>
+            <Button type="submit" size="sm" disabled={pending || uploading}>
+              {pending ? "..." : "Simpan"}
+            </Button>
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor={`logoUrl-${method.id}`} className="text-xs">Logo (URL manual)</Label>
-          <Input
-            id={`logoUrl-${method.id}`}
-            name="logoUrl"
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder="/payment-logos/bca.svg"
-          />
-          <ImageUploadField
-            id={`logoFile-${method.id}`}
-            label="atau upload file"
-            value={logoUrl}
-            onChange={setLogoUrl}
-            upload={uploadLogo}
-            uploadFields={uploadFields}
-            // Crop dengan rasio yang sama persis dengan kotak tampilnya (h-10
-            // w-16 = 16:10), supaya admin bisa memangkas ruang kosong/elemen lain
-            // di sekitar logo dari file sumber.
-            //
-            // Tetap TANPA maxDimension: dengan begitu processImage cuma memotong,
-            // TIDAK mengecilkan (skala tetap 1:1), jadi resolusi asli logo utuh -
-            // ketajaman di strip pembayaran tetap terjaga. Yang berubah cuma
-            // encode ulang ke WebP, dan itu memang tak terhindarkan begitu gambar
-            // dipotong. Logo SVG otomatis melewati dialog crop ini sepenuhnya
-            // (isProcessableImage menolak SVG) sehingga tetap vektor & tajam
-            // tanpa encode ulang sama sekali - jalur yang paling umum untuk logo bank.
-            aspect={16 / 10}
-            accept="image/png,image/jpeg,image/webp,image/svg+xml"
-            helpText="Disarankan sekitar 256×160px (rasio 16:10, latar transparan). Ukuran asli dipertahankan (tidak dikecilkan) biar tetap tajam; SVG diunggah apa adanya tanpa crop. Maks 5MB."
-            previewClassName="h-10 w-16 shrink-0 rounded border bg-muted/50"
-            previewFit="contain"
-            onUploadingChange={setUploading}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* Empat angka selalu dalam grid kolom sama rata: 2 kolom di ponsel,
+            4 kolom sejak tablet. Lebar kolom tidak lagi ditentukan panjang isi,
+            jadi label terpanjang pun tidak mendorong kolom sebelahnya. */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor={`feeFlat-${method.id}`} className="text-xs">Fee flat (Rp)</Label>
             <Input id={`feeFlat-${method.id}`} name="feeFlat" type="number" min={0} defaultValue={method.feeFlat} />
@@ -123,15 +112,56 @@ export function PaymentMethodForm({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox name="isActive" defaultChecked={method.isActive} />
-            Aktif
-          </label>
-          <Button type="submit" size="sm" disabled={pending || uploading}>
-            {pending ? "..." : "Simpan"}
-          </Button>
-        </div>
+        {/* Panel logo sengaja <details>, bukan render bersyarat: isinya tetap ada
+            di DOM (jadi input logoUrl tetap ikut terkirim saat disimpan) tapi
+            tidak dilayout/dilukis selama tertutup. Ini yang memangkas tinggi
+            halaman - dan tinggi halaman itulah yang bikin scroll tersendat,
+            karena blur 24px milik .glass-panel (sidebar & header) mahal di
+            perangkat ber-RAM kecil, persis seperti dicatat di globals.css. */}
+        <details className="group rounded-md border border-dashed">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors marker:content-none hover:text-foreground">
+            <ChevronRight
+              className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+            Ubah logo
+          </summary>
+          <div className="space-y-1.5 border-t border-dashed px-3 py-3">
+            <Label htmlFor={`logoUrl-${method.id}`} className="text-xs">Logo (URL manual)</Label>
+            <Input
+              id={`logoUrl-${method.id}`}
+              name="logoUrl"
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder="/payment-logos/bca.svg"
+            />
+            <ImageUploadField
+              id={`logoFile-${method.id}`}
+              label="atau upload file"
+              value={logoUrl}
+              onChange={setLogoUrl}
+              upload={uploadLogo}
+              uploadFields={uploadFields}
+              // Crop dengan rasio yang sama persis dengan kotak tampilnya (h-9
+              // w-14 = 16:10), supaya admin bisa memangkas ruang kosong/elemen lain
+              // di sekitar logo dari file sumber.
+              //
+              // Tetap TANPA maxDimension: dengan begitu processImage cuma memotong,
+              // TIDAK mengecilkan (skala tetap 1:1), jadi resolusi asli logo utuh -
+              // ketajaman di strip pembayaran tetap terjaga. Yang berubah cuma
+              // encode ulang ke WebP, dan itu memang tak terhindarkan begitu gambar
+              // dipotong. Logo SVG otomatis melewati dialog crop ini sepenuhnya
+              // (isProcessableImage menolak SVG) sehingga tetap vektor & tajam
+              // tanpa encode ulang sama sekali - jalur yang paling umum untuk logo bank.
+              aspect={16 / 10}
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              helpText="Disarankan sekitar 256×160px (rasio 16:10, latar transparan). Ukuran asli dipertahankan (tidak dikecilkan) biar tetap tajam; SVG diunggah apa adanya tanpa crop. Maks 5MB."
+              previewClassName="h-9 w-14 shrink-0 rounded border bg-muted/50"
+              previewFit="contain"
+              onUploadingChange={setUploading}
+            />
+          </div>
+        </details>
 
         {(state.ok || state.error) && (
           <p className={`text-xs ${state.error ? "text-destructive" : "text-emerald-700"}`}>
