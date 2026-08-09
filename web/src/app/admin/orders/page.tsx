@@ -7,7 +7,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ORDER_STATUS_LABEL } from "@/lib/order/status-labels";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import { parseBenefits, hasBenefit } from "@/lib/membership/benefits";
@@ -85,12 +84,9 @@ export default async function AdminOrdersPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Orders</h1>
-          <p className="text-sm text-muted-foreground">Daftar order, filter status, tanggal, dan pencarian.</p>
-        </div>
-        <RefreshButton />
+      <div>
+        <h1 className="text-xl font-semibold">Orders</h1>
+        <p className="text-sm text-muted-foreground">Daftar order, filter status, tanggal, dan pencarian.</p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

@@ -23,7 +23,7 @@ export function EmailTemplateEditor({
   meta: EmailTemplateMeta;
   initial: EmailTemplate;
   save: (formData: FormData) => Promise<ActionResult>;
-  reset: (key: EmailTemplateKey) => Promise<ActionResult>;
+  reset: (key: EmailTemplateKey) => Promise<ActionResult & { template?: { subject: string; body: string } }>;
   preview: (key: EmailTemplateKey, subject: string, body: string) => Promise<{ html?: string; error?: string }>;
 }) {
   const [state, formAction, pending] = useActionState(
@@ -34,6 +34,8 @@ export function EmailTemplateEditor({
   const [body, setBody] = useState(initial.body);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [resetFailed, setResetFailed] = useState(false);
   const [busy, startBusy] = useTransition();
 
   function insertPlaceholder(name: string) {
@@ -139,7 +141,15 @@ export function EmailTemplateEditor({
               onClick={() =>
                 startBusy(async () => {
                   const result = await reset(templateKey);
-                  if (result.ok) window.location.reload();
+                  // State editor ditimpa di tempat, bukan lewat reload halaman:
+                  // accordion yang sedang dibuka & posisi scroll tetap utuh.
+                  if (result.template) {
+                    setSubject(result.template.subject);
+                    setBody(result.template.body);
+                    setPreviewHtml(null);
+                  }
+                  setResetMessage(result.error ?? result.ok ?? null);
+                  setResetFailed(Boolean(result.error));
                 })
               }
             >
@@ -154,6 +164,11 @@ export function EmailTemplateEditor({
             </p>
           )}
           {previewError && <p className="text-xs text-destructive">{previewError}</p>}
+          {resetMessage && (
+            <p className={`text-xs ${resetFailed ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}>
+              {resetMessage}
+            </p>
+          )}
         </form>
 
         {previewHtml !== null && (

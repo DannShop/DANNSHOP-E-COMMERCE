@@ -3,7 +3,6 @@ import type { Prisma, ProviderKey } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ProviderApiLogEntryCard } from "@/components/admin/provider-api-log-entry";
 import { PROVIDER_API_FAILURE_OUTCOMES } from "@/lib/providers/api-log";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 
@@ -102,15 +101,12 @@ export default async function AdminProviderLogsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-        <h1 className="text-xl font-semibold">Log API Provider</h1>
-        <p className="text-sm text-muted-foreground">
-          Semua panggilan KELUAR ke API provider — request, respons mentah, status HTTP, dan durasi. Dipakai buat
-          menjawab kenapa sebuah order gagal, dan apakah sebabnya cuma order itu atau menimpa semuanya.
-        </p>
-        </div>
-        <RefreshButton />
+      <div>
+      <h1 className="text-xl font-semibold">Log API Provider</h1>
+      <p className="text-sm text-muted-foreground">
+        Semua panggilan KELUAR ke API provider — request, respons mentah, status HTTP, dan durasi. Dipakai buat
+        menjawab kenapa sebuah order gagal, dan apakah sebabnya cuma order itu atau menimpa semuanya.
+      </p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

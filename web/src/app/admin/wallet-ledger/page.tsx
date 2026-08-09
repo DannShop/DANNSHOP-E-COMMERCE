@@ -3,7 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import type { LedgerType } from "@prisma/client";
@@ -65,12 +64,9 @@ export default async function AdminWalletLedgerPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Mutasi Saldo</h1>
-          <p className="text-sm text-muted-foreground">Riwayat semua pergerakan saldo wallet member.</p>
-        </div>
-        <RefreshButton />
+      <div>
+        <h1 className="text-xl font-semibold">Mutasi Saldo</h1>
+        <p className="text-sm text-muted-foreground">Riwayat semua pergerakan saldo wallet member.</p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

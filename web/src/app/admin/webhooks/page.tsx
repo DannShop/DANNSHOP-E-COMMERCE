@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 
@@ -31,15 +30,12 @@ export default async function AdminWebhooksPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-        <h1 className="text-xl font-semibold">Log Callback/Webhook</h1>
-        <p className="text-sm text-muted-foreground">
-          Semua notifikasi masuk dari Midtrans dan provider — buat lacak pembayaran/status yang sepertinya tidak
-          nyambung.
-        </p>
-        </div>
-        <RefreshButton />
+      <div>
+      <h1 className="text-xl font-semibold">Log Callback/Webhook</h1>
+      <p className="text-sm text-muted-foreground">
+        Semua notifikasi masuk dari Midtrans dan provider — buat lacak pembayaran/status yang sepertinya tidak
+        nyambung.
+      </p>
       </div>
 
       <div className="flex flex-wrap gap-2">

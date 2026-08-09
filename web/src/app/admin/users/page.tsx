@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupiah, formatTanggal } from "@/lib/format";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 
@@ -84,15 +83,12 @@ export default async function AdminUsersPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Kontrol User</h1>
-          <p className="text-sm text-muted-foreground">
-            Daftar akun terdaftar, status tier, dan riwayat belanjanya. Klik email untuk detail lengkap,
-            penangguhan akun, dan reset password.
-          </p>
-        </div>
-        <RefreshButton />
+      <div>
+        <h1 className="text-xl font-semibold">Kontrol User</h1>
+        <p className="text-sm text-muted-foreground">
+          Daftar akun terdaftar, status tier, dan riwayat belanjanya. Klik email untuk detail lengkap,
+          penangguhan akun, dan reset password.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

@@ -2,7 +2,6 @@ import { db } from "@/lib/db";
 import { createCategory, updateCategory, deleteCategory } from "@/app/actions/categories";
 import { CategoryForm } from "./category-form";
 import { NewCategoryForm } from "./new-category-form";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 
@@ -24,14 +23,11 @@ export default async function CategoriesPage({
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Kategori</h1>
-          <p className="text-sm text-muted-foreground">
-            Kelola kategori yang tampil sebagai pills di storefront. Hapus hanya bisa kalau kategori tidak punya produk.
-          </p>
-        </div>
-        <RefreshButton />
+      <div>
+        <h1 className="text-xl font-semibold">Kategori</h1>
+        <p className="text-sm text-muted-foreground">
+          Kelola kategori yang tampil sebagai pills di storefront. Hapus hanya bisa kalau kategori tidak punya produk.
+        </p>
       </div>
 
       <div className="rounded-lg border p-4">

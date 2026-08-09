@@ -5,7 +5,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import { toggleProductActive } from "@/app/actions/catalog";
@@ -50,7 +49,6 @@ export default async function AdminProductsPage({
           </p>
         </div>
         <div className="flex gap-2">
-          <RefreshButton />
           <Link href="/admin/products/import" className={buttonVariants({ variant: "outline" })}>
             Tambah dari Digiflazz
           </Link>

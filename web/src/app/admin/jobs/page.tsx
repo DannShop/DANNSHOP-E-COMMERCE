@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import type { JobStatus } from "@prisma/client";
@@ -59,10 +58,7 @@ export default async function AdminJobsPage({
             Job background (sync harga, cek status order, expire order/deposit, cek saldo provider, rollup analytics, dsb).
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <PageSizeSelect value={pageSize} />
-          <RefreshButton />
-        </div>
+        <PageSizeSelect value={pageSize} />
       </div>
 
       {(countByStatus.get("FAILED") ?? 0) > 0 && (

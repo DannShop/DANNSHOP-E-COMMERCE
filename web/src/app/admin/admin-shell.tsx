@@ -1,43 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Menu, Sun, Moon, ChevronRight, RefreshCw } from "lucide-react";
+import { Menu, Sun, Moon, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { withThemeTransition } from "@/lib/theme-transition";
+import { RefreshButton } from "@/components/admin/refresh-button";
 import { AdminSidebar } from "./admin-sidebar";
 import { resolvePageTitle } from "./nav-config";
 
 const COLLAPSE_STORAGE_KEY = "dannshop.admin.sidebarCollapsed";
-
-// Panel admin sengaja mengunci scroll dokumen (h-dvh + overflow-hidden +
-// overscroll-behavior:none, lihat useEffect di AdminShell) supaya overscroll
-// tidak menyingkap <body> polos di balik shell. Efek sampingnya: **pull-to-refresh
-// bawaan browser ikut mati di mobile** - tarik-ke-bawah tidak me-refresh apa pun,
-// dan halaman admin penuh data yang cepat basi (status order, saldo provider, log).
-//
-// Tombol ini mengembalikan kemampuan itu tanpa membongkar penguncian scroll.
-// Memakai router.refresh(), bukan location.reload(): server component di-fetch
-// ulang tanpa memuat ulang seluruh dokumen - lebih cepat, dan posisi scroll serta
-// state komponen (sidebar, form yang sedang diisi) tidak hilang.
-function RefreshButton() {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-
-  return (
-    <button
-      type="button"
-      onClick={() => startTransition(() => router.refresh())}
-      disabled={pending}
-      aria-label="Muat ulang data halaman"
-      title="Muat ulang data halaman"
-      className="grid size-9 place-items-center rounded-xl border border-border/60 bg-foreground/[0.04] text-muted-foreground transition-[background-color,color,transform] duration-200 ease-out hover:bg-foreground/[0.08] hover:text-foreground active:scale-95 disabled:opacity-60"
-    >
-      <RefreshCw className={cn("size-4", pending && "animate-spin")} />
-    </button>
-  );
-}
 
 function ThemeSwitch() {
   const { resolvedTheme, setTheme } = useTheme();

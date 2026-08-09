@@ -120,15 +120,26 @@ export async function saveEmailTemplateAction(formData: FormData): Promise<Actio
   return { ok: "Template email tersimpan." };
 }
 
-export async function resetEmailTemplateAction(key: EmailTemplateKey): Promise<ActionResult> {
+// Mengembalikan isi template bawaannya ke pemanggil, bukan cuma pesan sukses.
+//
+// Editor di klien menyimpan subjek & badan sebagai state lokal yang diinisialisasi
+// dari prop - jadi memuat ulang data server saja TIDAK cukup, textarea-nya akan
+// tetap menampilkan isi lama. Sebelumnya itu diakali dengan location.reload(),
+// yang memuat ulang seluruh dokumen dan menutup semua accordion sekaligus
+// melempar admin kembali ke atas halaman. Dengan isinya dikembalikan di sini,
+// klien cukup menimpa state-nya sendiri di tempat.
+export async function resetEmailTemplateAction(
+  key: EmailTemplateKey,
+): Promise<ActionResult & { template?: { subject: string; body: string } }> {
   const admin = await requireAdmin();
   if ("error" in admin) return admin;
   if (!EMAIL_TEMPLATE_KEYS.includes(key)) return { error: "Template tidak dikenal." };
 
-  await saveEmailTemplate(key, defaultTemplate(key));
+  const fallback = defaultTemplate(key);
+  await saveEmailTemplate(key, fallback);
   await logAdmin(admin.adminId, "invoice.reset_email_template", { template: key });
   revalidatePath("/admin/invoice");
-  return { ok: "Template dikembalikan ke bawaan." };
+  return { ok: "Template dikembalikan ke bawaan.", template: fallback };
 }
 
 // Merender pratinjau dari isi editor yang BELUM disimpan - admin bisa melihat

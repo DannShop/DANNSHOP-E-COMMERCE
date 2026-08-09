@@ -1,7 +1,6 @@
 import { getTrafficSummary, getConversionSummary } from "@/lib/analytics/query";
 import { startOfDay, endOfDay } from "@/lib/reports/sales";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshButton } from "@/components/admin/refresh-button";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LivePanel } from "./live-panel";
@@ -91,15 +90,12 @@ export default async function AdminAnalyticsPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Analytics</h1>
-          <p className="text-sm text-muted-foreground">
-            Trafik pengunjung dan konversi ke transaksi. Panel &quot;Langsung&quot; di bawah memperbarui dirinya sendiri
-            tiap 10 detik tanpa perlu me-refresh browser.
-          </p>
-        </div>
-        <RefreshButton label="Muat ulang rekap" />
+      <div>
+        <h1 className="text-xl font-semibold">Analytics</h1>
+        <p className="text-sm text-muted-foreground">
+          Trafik pengunjung dan konversi ke transaksi. Panel &quot;Langsung&quot; di bawah memperbarui dirinya sendiri
+          tiap 10 detik tanpa perlu me-refresh browser — sisanya pakai tombol refresh di header.
+        </p>
       </div>
 
       <LivePanel />
