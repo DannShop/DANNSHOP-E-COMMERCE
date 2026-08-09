@@ -1,6 +1,8 @@
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { FloatingSupportButton } from "@/components/floating-support-button";
+import { AnalyticsTracker } from "@/components/analytics-tracker";
+import { StorefrontCustomCss } from "@/components/storefront-theme";
 import { getSiteSettings } from "@/lib/site-settings";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
@@ -14,10 +16,15 @@ export default async function PublicLayout({ children }: { children: React.React
   // sebenarnya terlihat.
   return (
     <div className="flex min-h-dvh flex-col">
+      <StorefrontCustomCss />
       <SiteHeader />
       <main className="mx-auto w-full max-w-screen-2xl flex-1 px-4 py-8">{children}</main>
       <SiteFooter />
       <FloatingSupportButton whatsappCs={whatsappCs} telegramCs={telegramCs} />
+      {/* Hanya dipasang di layout PUBLIK - panel admin sengaja tidak ikut
+          terhitung, kalau tidak statistik "pengunjung" akan didominasi oleh
+          admin sendiri yang membuka-buka panelnya seharian. */}
+      <AnalyticsTracker />
     </div>
   );
 }

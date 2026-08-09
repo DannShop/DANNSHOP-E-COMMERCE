@@ -7,6 +7,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ORDER_STATUS_LABEL } from "@/lib/order/status-labels";
+import { RefreshButton } from "@/components/admin/refresh-button";
+import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
+import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import { parseBenefits, hasBenefit } from "@/lib/membership/benefits";
 import type { OrderStatus } from "@prisma/client";
 
@@ -23,13 +26,16 @@ function formatRupiah(amount: bigint): string {
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; per?: string; from?: string; to?: string }>;
 }) {
-  const { tab: rawTab, q } = await searchParams;
+  const { tab: rawTab, q, page: rawPage, per, from: rawFrom, to: rawTo } = await searchParams;
   const activeTab = TABS.find((t) => t.key === rawTab) ?? TABS[0];
+  const pageSize = parsePageSize(per);
+  const range = parseDateRange(rawFrom, rawTo);
 
   const where = {
     ...(activeTab.statuses ? { status: { in: activeTab.statuses } } : {}),
+    ...createdAtFilter(range),
     ...(q
       ? {
           OR: [
@@ -41,10 +47,13 @@ export default async function AdminOrdersPage({
       : {}),
   };
 
+  const total = await db.order.count({ where });
+  const pagination = buildPagination(total, parsePage(rawPage), pageSize);
   const orders = await db.order.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    take: 50,
+    skip: pagination.skip,
+    take: pagination.pageSize,
   });
 
   // Lencana prioritas (benefit "priority_badge") - batch query, bukan N+1 per
@@ -76,9 +85,12 @@ export default async function AdminOrdersPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Orders</h1>
-        <p className="text-sm text-muted-foreground">Daftar order, filter status, dan pencarian.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Orders</h1>
+          <p className="text-sm text-muted-foreground">Daftar order, filter status, tanggal, dan pencarian.</p>
+        </div>
+        <RefreshButton />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -95,9 +107,15 @@ export default async function AdminOrdersPage({
         </div>
         <form action="/admin/orders" className="flex gap-2">
           <input type="hidden" name="tab" value={activeTab.key} />
+          <input type="hidden" name="per" value={pageSize} />
           <Input name="q" defaultValue={q ?? ""} placeholder="Cari nomor order / email / HP" className="w-64" />
           <Button type="submit" variant="outline">Cari</Button>
         </form>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter from={rawFrom ?? ""} to={rawTo ?? ""} />
+        <PageSizeSelect value={pageSize} />
       </div>
 
       <div className="rounded-xl ring-1 ring-foreground/10">
@@ -150,6 +168,7 @@ export default async function AdminOrdersPage({
             )}
           </TableBody>
         </Table>
+        <Pagination info={pagination} />
       </div>
     </div>
   );

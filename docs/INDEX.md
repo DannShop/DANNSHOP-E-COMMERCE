@@ -15,6 +15,7 @@ Dokumentasi teknis lengkap untuk project **DannShop** — platform PPOB/digital 
 | 04 | [INTEGRASI-PAYMENT-PPOB](./04-INTEGRASI-PAYMENT-PPOB.md) | Integrasi Midtrans (payment) & Digiflazz (provider PPOB), alur transaksi lengkap step-by-step | Mau paham/ubah apa pun soal pembayaran atau pengiriman produk digital |
 | 05 | [CARA-TAMBAH-FITUR](./05-CARA-TAMBAH-FITUR.md) | Panduan step-by-step: tambah produk, metode bayar, halaman, endpoint, field database | Mau menambah sesuatu yang baru |
 | 06 | [TROUBLESHOOTING-DEPLOY](./06-TROUBLESHOOTING-DEPLOY.md) | Cara run lokal, cara deploy, solusi masalah yang sudah pernah benar-benar terjadi | Ada error, atau mau deploy |
+| 09 | [FITUR-SESI-2026-08-09](./09-FITUR-SESI-2026-08-09.md) | Notifikasi Telegram, invoice/email/struk, kustomisasi storefront, analytics, cek ID game, produk manual | Mau paham 7 fitur terbaru & keputusan desain di baliknya |
 
 ## Urutan Baca yang Disarankan
 
@@ -34,7 +35,7 @@ Beberapa hal mendasar yang perlu diketahui sebelum baca dokumen mana pun, supaya
 2. **`web/src/proxy.ts` adalah middleware-nya** — Next.js versi ini sudah tidak memakai nama file `middleware.ts` lagi (lihat `docs/01-ARSITEKTUR.md` §1).
 3. **Ada dua jenis "backend"**: Server Action (`web/src/app/actions/`, dipanggil langsung dari form) dan API Route (`web/src/app/api/`, cuma untuk webhook/polling/cron). Kebanyakan logic ada di Server Action, bukan API Route.
 4. **Migrasi database TIDAK otomatis di deploy Vercel** — ini sudah pernah menyebabkan insiden nyata, WAJIB dijalankan manual tiap kali ada perubahan skema (lihat `docs/05-CARA-TAMBAH-FITUR.md` §5 dan `docs/06-TROUBLESHOOTING-DEPLOY.md` §2.3).
-5. **Banyak konten yang dulunya hardcode di kode sekarang bisa diedit lewat panel admin** (`/admin/settings`) — FAQ, Syarat & Ketentuan, Kebijakan Privasi, logo, favicon, kontak CS, konfigurasi email. Kalau isi salah satu halaman itu perlu diubah, **cek dulu apakah itu bisa diedit lewat admin sebelum mengedit file kode**.
+5. **Banyak konten yang dulunya hardcode di kode sekarang bisa diedit lewat panel admin** — FAQ, Syarat & Ketentuan, Kebijakan Privasi, logo, favicon, kontak CS, konfigurasi email, dan notifikasi Telegram di `/admin/settings`; identitas dokumen & template email di `/admin/invoice`; tema, CSS kustom, dan slot HTML storefront di `/admin/appearance` (lihat dokumen 09). Kalau isi salah satu halaman itu perlu diubah, **cek dulu apakah itu bisa diedit lewat admin sebelum mengedit file kode**.
 6. **Harga produk punya 3 tingkat prioritas**: harga flash sale (kalau sedang aktif) > harga member (kalau pembeli login) > harga normal — semua dihitung SATU tempat (`web/src/lib/pricing/effective-price.ts`), tidak pernah dihitung ulang berbeda-beda di banyak tempat.
 7. **Provider PPOB yang sudah benar-benar berfungsi cuma Digiflazz** — 3 provider lain (`OkeConnect`, `QiosPay`, `Serpul`) baru terdaftar sebagai pilihan (enum) di database, arsitekturnya sudah siap menambahkan provider baru, tapi belum ada kode adapter-nya.
 

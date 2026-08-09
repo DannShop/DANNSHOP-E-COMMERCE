@@ -55,8 +55,24 @@ export default async function AdminOrderDetailPage({
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold">{order.orderNumber}</h1>
           <Badge variant="muted">{ORDER_STATUS_LABEL[order.status] ?? order.status}</Badge>
+          {order.fulfillmentMode === "MANUAL" && <Badge variant="warning">Manual</Badge>}
         </div>
       </div>
+
+      {/* Order manual yang sudah dibayar TIDAK akan bergerak sendiri - tidak ada
+          provider yang mengirimkannya dan tidak ada job yang akan menyelesaikannya.
+          Tanpa panel ini, order sehat yang cuma menunggu admin terlihat sama
+          persis dengan order yang macet karena rusak. */}
+      {order.fulfillmentMode === "MANUAL" && ["PAID", "PROCESSING"].includes(order.status) && (
+        <div className="rounded-xl border-2 border-amber-500/40 bg-amber-500/5 p-4">
+          <p className="text-sm font-semibold">Produk manual — menunggu kamu kirim</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pembayaran sudah diterima dan pesanan ini <strong>tidak</strong> diteruskan ke provider mana pun. Kirim
+            produknya ke pembeli, lalu pakai <strong>Tandai Selesai Manual</strong> di bawah dan isi data akun/SN-nya —
+            data itu yang akan muncul di invoice dan email pembeli.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="md:col-span-2 flex flex-col gap-4">

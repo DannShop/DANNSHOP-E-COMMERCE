@@ -6,6 +6,7 @@ import { CatalogTabs } from "./catalog-tabs";
 import { BannerCarousel } from "@/components/banner-carousel";
 import { TrendingSection } from "@/components/trending-section";
 import { getTrendingProducts } from "@/lib/catalog/trending";
+import { StorefrontSlot } from "@/components/storefront-slot";
 
 // Dinamis (bukan statis/ISR) supaya "mulai dari Rp X" di kartu katalog
 // selalu akurat terhadap jadwal flash sale (mulai/berakhir per item) tanpa
@@ -22,6 +23,7 @@ export default async function HomePage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <StorefrontSlot name="home_top" />
       {banners.length > 0 && (
         <BannerCarousel
           banners={banners.map((b) => ({
@@ -36,6 +38,7 @@ export default async function HomePage() {
       <Suspense>
         <CatalogTabs categories={categories} />
       </Suspense>
+      <StorefrontSlot name="home_bottom" />
     </div>
   );
 }

@@ -16,6 +16,10 @@ import {
   Activity,
   Crown,
   Users,
+  Palette,
+  ReceiptText,
+  BarChart3,
+  ScanSearch,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
@@ -70,6 +74,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Storefront",
     items: [
       { href: "/admin/banners", label: "Banner", icon: GalleryHorizontalEnd },
+      { href: "/admin/appearance", label: "Tampilan & Tema", icon: Palette },
+      { href: "/admin/invoice", label: "Invoice & Struk", icon: ReceiptText },
       { href: "/admin/settings", label: "Pengaturan Situs", icon: Settings },
     ],
   },
@@ -79,13 +85,17 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/payment-config", label: "Konfigurasi Payment", icon: KeyRound },
       { href: "/admin/payment-methods", label: "Metode Pembayaran", icon: CreditCard },
       { href: "/admin/providers", label: "Providers", icon: Server },
+      { href: "/admin/id-check", label: "Cek ID Game", icon: ScanSearch },
       { href: "/admin/webhooks", label: "Log Callback", icon: Webhook },
       { href: "/admin/provider-logs", label: "Log API Provider", icon: Radio },
     ],
   },
   {
     label: "Sistem",
-    items: [{ href: "/admin/jobs", label: "Monitoring Job", icon: Activity }],
+    items: [
+      { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/admin/jobs", label: "Monitoring Job", icon: Activity },
+    ],
   },
 ];
 

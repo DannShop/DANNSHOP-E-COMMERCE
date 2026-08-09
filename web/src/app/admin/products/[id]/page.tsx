@@ -99,6 +99,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             description: product.description,
             inputFields: product.inputFields,
             nicknameCheckKey: product.nicknameCheckKey,
+            idCheckEnabled: product.idCheckEnabled,
+            fulfillmentMode: product.fulfillmentMode,
             isTrending: product.isTrending,
           }}
         />

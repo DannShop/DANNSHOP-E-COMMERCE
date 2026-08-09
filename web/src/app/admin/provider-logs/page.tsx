@@ -3,6 +3,9 @@ import type { Prisma, ProviderKey } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ProviderApiLogEntryCard } from "@/components/admin/provider-api-log-entry";
 import { PROVIDER_API_FAILURE_OUTCOMES } from "@/lib/providers/api-log";
+import { RefreshButton } from "@/components/admin/refresh-button";
+import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
+import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 
 // Riwayat panggilan API provider LINTAS order.
 //
@@ -53,9 +56,13 @@ function FilterLinks({
 export default async function AdminProviderLogsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ provider?: string; status?: string; q?: string }>;
+  searchParams: Promise<{
+    provider?: string; status?: string; q?: string; page?: string; per?: string; from?: string; to?: string;
+  }>;
 }) {
-  const { provider: rawProvider, status: rawStatus, q: rawQ } = await searchParams;
+  const { provider: rawProvider, status: rawStatus, q: rawQ, page: rawPage, per, from: rawFrom, to: rawTo } =
+    await searchParams;
+  const pageSize = parsePageSize(per);
   const provider = PROVIDERS.includes(rawProvider as (typeof PROVIDERS)[number])
     ? (rawProvider as (typeof PROVIDERS)[number])
     : "all";
@@ -70,9 +77,17 @@ export default async function AdminProviderLogsPage({
         ? { outcome: { in: PROVIDER_API_FAILURE_OUTCOMES } }
         : { outcome: status }),
     ...(q ? { OR: [{ orderNumber: { contains: q } }, { ourRefId: { contains: q } }, { message: { contains: q } }] } : {}),
+    ...createdAtFilter(parseDateRange(rawFrom, rawTo)),
   };
 
-  const logs = await db.providerApiLog.findMany({ where, orderBy: { createdAt: "desc" }, take: 100 });
+  const total = await db.providerApiLog.count({ where });
+  const pagination = buildPagination(total, parsePage(rawPage), pageSize);
+  const logs = await db.providerApiLog.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip: pagination.skip,
+    take: pagination.pageSize,
+  });
 
   const buildHref = (next: { provider?: string; status?: string }) => {
     const sp = new URLSearchParams();
@@ -87,12 +102,20 @@ export default async function AdminProviderLogsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
         <h1 className="text-xl font-semibold">Log API Provider</h1>
         <p className="text-sm text-muted-foreground">
           Semua panggilan KELUAR ke API provider — request, respons mentah, status HTTP, dan durasi. Dipakai buat
           menjawab kenapa sebuah order gagal, dan apakah sebabnya cuma order itu atau menimpa semuanya.
         </p>
+        </div>
+        <RefreshButton />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter from={rawFrom ?? ""} to={rawTo ?? ""} />
+        <PageSizeSelect value={pageSize} />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -131,8 +154,12 @@ export default async function AdminProviderLogsPage({
         </ul>
       )}
 
+      <div className="rounded-xl ring-1 ring-foreground/10">
+        <Pagination info={pagination} />
+      </div>
+
       <p className="text-xs text-muted-foreground">
-        Menampilkan maksimal 100 panggilan terbaru. Log berumur lebih dari 30 hari dibersihkan otomatis oleh job{" "}
+        Log berumur lebih dari 30 hari dibersihkan otomatis oleh job{" "}
         <span className="font-mono">cleanup-provider-api-logs</span>. Data lengkap dalam bentuk JSON tersedia di{" "}
         <span className="font-mono">/api/admin/provider-logs</span>.
       </p>

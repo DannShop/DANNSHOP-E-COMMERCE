@@ -1,31 +1,45 @@
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RefreshButton } from "@/components/admin/refresh-button";
+import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
+import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 
 const SOURCES = ["all", "midtrans", "digiflazz", "okeconnect", "qiospay", "serpul"] as const;
 
 export default async function AdminWebhooksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string }>;
+  searchParams: Promise<{ source?: string; page?: string; per?: string; from?: string; to?: string }>;
 }) {
-  const { source: rawSource } = await searchParams;
+  const { source: rawSource, page: rawPage, per, from: rawFrom, to: rawTo } = await searchParams;
   const activeSource = SOURCES.includes(rawSource as (typeof SOURCES)[number]) ? (rawSource as (typeof SOURCES)[number]) : "all";
+  const pageSize = parsePageSize(per);
 
+  const where = {
+    ...(activeSource === "all" ? {} : { source: activeSource }),
+    ...createdAtFilter(parseDateRange(rawFrom, rawTo)),
+  };
+  const total = await db.webhookEvent.count({ where });
+  const pagination = buildPagination(total, parsePage(rawPage), pageSize);
   const events = await db.webhookEvent.findMany({
-    where: activeSource === "all" ? {} : { source: activeSource },
+    where,
     orderBy: { createdAt: "desc" },
-    take: 50,
+    skip: pagination.skip,
+    take: pagination.pageSize,
   });
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
         <h1 className="text-xl font-semibold">Log Callback/Webhook</h1>
         <p className="text-sm text-muted-foreground">
           Semua notifikasi masuk dari Midtrans dan provider — buat lacak pembayaran/status yang sepertinya tidak
           nyambung.
         </p>
+        </div>
+        <RefreshButton />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -38,6 +52,11 @@ export default async function AdminWebhooksPage({
             {s}
           </a>
         ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter from={rawFrom ?? ""} to={rawTo ?? ""} />
+        <PageSizeSelect value={pageSize} />
       </div>
 
       <div className="rounded-xl ring-1 ring-foreground/10">
@@ -88,6 +107,7 @@ export default async function AdminWebhooksPage({
             )}
           </TableBody>
         </Table>
+        <Pagination info={pagination} />
       </div>
     </div>
   );

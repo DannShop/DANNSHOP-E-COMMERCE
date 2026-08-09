@@ -3,7 +3,8 @@ import { getTransactionStatus, type MidtransStatusResult } from "@/lib/midtrans/
 import { mapMidtransStatus } from "@/lib/midtrans/status-mapping";
 import { getMidtransCreds } from "@/lib/payment/gateway-config";
 import { dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
-import { sendTelegramAlert } from "@/lib/notify/telegram";
+import { formatDepositPaidMessage, formatOrderPaidMessage, notifyTelegram } from "@/lib/notify/telegram";
+import { describeOrderTarget } from "@/lib/order/customer-no";
 
 // Logika settlement pembayaran Midtrans - dipindahkan ke sini dari
 // api/webhooks/midtrans/route.ts karena sekarang punya DUA pemanggil:
@@ -52,6 +53,25 @@ async function settleOrder(
       await db.orderStatusHistory.create({
         data: { orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", note: "Midtrans settlement" },
       });
+      // Dikirim SEBELUM dispatch supaya admin tetap tahu uangnya masuk walau
+      // pengiriman ke provider setelah ini gagal total. Event ini default MATI
+      // (lihat DEFAULT_ENABLED_EVENTS) - toko ramai tidak mau satu notifikasi
+      // per pembayaran, tapi toko baru biasanya justru mau.
+      const paidOrder = await db.order.findUnique({ where: { id: order.id } });
+      if (paidOrder) {
+        await notifyTelegram(
+          "order_paid",
+          formatOrderPaidMessage({
+            orderNumber: paidOrder.orderNumber,
+            productName: paidOrder.productName,
+            itemName: paidOrder.itemName,
+            total: paidOrder.total,
+            target: describeOrderTarget(paidOrder.target),
+            buyerLabel: paidOrder.buyerEmail,
+            paymentMethod: paidOrder.paymentMethod,
+          }),
+        );
+      }
       await dispatchFulfillment(order.id);
     } else {
       // Order sudah bukan PENDING_PAYMENT lagi - kemungkinan webhook retry
@@ -70,7 +90,8 @@ async function settleOrder(
           "settleOrder: settlement 'paid' datang setelah order tidak lagi PENDING_PAYMENT/PAID - perlu investigasi manual",
           { orderId: order.id, statusSaatIni: current?.status, orderNumber: order.orderNumber },
         );
-        await sendTelegramAlert(
+        await notifyTelegram(
+          "system_anomaly",
           `⚠️ Order ${order.orderNumber} settlement Midtrans datang setelah status jadi "${current?.status}" (bukan PENDING_PAYMENT/PAID) - order TIDAK diproses otomatis, perlu investigasi manual.`,
         );
       }
@@ -102,7 +123,8 @@ async function settleDeposit(
     console.error("settleDeposit: nominal settlement tidak cocok, saldo TIDAK dikredit", {
       depositId: deposit.id, expected: deposit.totalPaid.toString(), received: confirmed.grossAmount,
     });
-    await sendTelegramAlert(
+    await notifyTelegram(
+      "system_anomaly",
       `⚠️ Deposit ${deposit.id} nominal settlement TIDAK COCOK (expected Rp ${deposit.totalPaid.toString()}, diterima ${confirmed.grossAmount}) - saldo TIDAK dikredit, perlu investigasi manual.`,
     );
     return "amount_mismatch";
@@ -147,6 +169,29 @@ async function settleDeposit(
       throw e;
     }
 
+    // Notifikasi dibaca ulang SETELAH transaksi ditutup, bukan dikumpulkan di
+    // dalamnya: panggilan jaringan ke Telegram tidak boleh menahan transaksi
+    // yang sedang memegang kunci baris wallet. Hanya dikirim kalau klaim ini
+    // yang berhasil - notifikasi duplikat dari webhook retry tidak diinginkan.
+    if (claimedCount > 0) {
+      const settled = await db.deposit.findUnique({
+        where: { id: deposit.id },
+        select: { amount: true, bonusAmount: true, user: { select: { name: true, email: true, wallet: { select: { balance: true } } } } },
+      });
+      if (settled) {
+        await notifyTelegram(
+          "deposit_paid",
+          formatDepositPaidMessage({
+            depositId: deposit.id,
+            userLabel: `${settled.user.name} <${settled.user.email}>`,
+            amount: settled.amount,
+            bonusAmount: settled.bonusAmount,
+            balanceAfter: settled.user.wallet?.balance ?? 0n,
+          }),
+        );
+      }
+    }
+
     if (claimedCount === 0) {
       // Deposit sudah bukan PENDING lagi saat settlement "paid" ini masuk.
       // Cek status terkini: kalau sudah PAID, ini cuma notifikasi duplikat
@@ -159,7 +204,8 @@ async function settleDeposit(
           "settleDeposit: settlement 'paid' datang setelah deposit tidak lagi PENDING - saldo BELUM dikredit, perlu investigasi manual",
           { depositId: deposit.id, statusSaatIni: current?.status },
         );
-        await sendTelegramAlert(
+        await notifyTelegram(
+          "system_anomaly",
           `⚠️ Deposit ${deposit.id} settlement Midtrans datang setelah status jadi "${current?.status}" (bukan PENDING) - saldo BELUM dikredit, perlu investigasi manual.`,
         );
         return "paid_but_not_pending";

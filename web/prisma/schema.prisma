@@ -57,6 +57,22 @@ enum FulfillmentStatus {
   FAILED
 }
 
+// Cara sebuah produk dipenuhi setelah pembayaran diterima.
+//
+// AUTO   = dikirim otomatis ke provider (Digiflazz dkk) - perilaku lama, tetap default.
+// MANUAL = tidak ada provider yang bisa mengirimkannya (mis. akun aplikasi premium);
+//          uang tetap ditagih & diterima lewat jalur normal, tapi barangnya
+//          dikirim admin sendiri lalu diselesaikan lewat "Tandai Selesai Manual".
+//
+// Sengaja BUKAN nilai baru di OrderStatus: order manual melewati rangkaian
+// status yang sama persis (PAID -> PROCESSING -> COMPLETED), yang berbeda cuma
+// SIAPA yang menuntaskannya. Menambah status baru berarti menyentuh setiap
+// switch/label/filter status yang sudah ada tanpa memberi informasi tambahan.
+enum FulfillmentMode {
+  AUTO
+  MANUAL
+}
+
 enum LedgerType {
   DEPOSIT
   ORDER_PAYMENT
@@ -284,7 +300,22 @@ model Product {
   isActive         Boolean       @default(false)
   isTrending       Boolean       @default(false)
   inputFields      Json // contoh ML: [{"name":"user_id","label":"User ID"},{"name":"zone_id","label":"Zone ID"}]
+  // Kode game yang disubstitusikan ke placeholder {game} pada URL template cek
+  // ID (lihat lib/catalog/id-check.ts). Nilainya ditentukan oleh penyedia API
+  // yang dipakai admin, bukan oleh kita - mis. "mobile-legends" / "ml" / "8".
+  //
+  // Kolom ini sudah ada sejak awal tapi TIDAK pernah dibaca kode mana pun;
+  // sekarang dipakai sebagaimana namanya menjanjikan.
   nicknameCheckKey String?
+  // Dua kontrol terpisah dengan sengaja (pola sama dengan
+  // MembershipTier.depositBonusPercent + benefit "deposit_bonus"): admin bisa
+  // mengisi kode game dan mengetesnya lebih dulu, baru menyalakannya untuk
+  // pembeli - dan bisa mematikannya saat API penyedia sedang bermasalah tanpa
+  // kehilangan konfigurasi yang sudah benar.
+  idCheckEnabled   Boolean       @default(false)
+  // Cara produk ini dipenuhi. MANUAL dipakai produk yang dikirim admin sendiri
+  // (App Premium dsb) - lihat enum FulfillmentMode.
+  fulfillmentMode  FulfillmentMode @default(AUTO)
   items            ProductItem[]
   itemGroups       ProductItemGroup[]
   createdAt        DateTime      @default(now())
@@ -415,6 +446,13 @@ model Order {
   expiredAt     DateTime?
   completedAt   DateTime?
   manualSn      String?              @db.Text // SN/kode voucher diisi admin lewat "Tandai Selesai Manual" - dipakai invoice kalau tidak ada OrderFulfillment SUCCESS
+  // SNAPSHOT Product.fulfillmentMode saat order dibuat (pola sama dengan
+  // productName/sellingPrice di atas). Dibaca ulang dari produk akan salah:
+  // kalau admin mengubah sebuah produk dari MANUAL ke AUTO, order lama yang
+  // belum tuntas mendadak akan dicoba dikirim ke provider yang tidak punya
+  // SKU-nya, dan sebaliknya order AUTO yang sudah terkirim akan terlihat
+  // seperti masih menunggu dikirim admin.
+  fulfillmentMode FulfillmentMode    @default(AUTO)
   payment       OrderPayment?
   fulfillments  OrderFulfillment[]
   statusHistory OrderStatusHistory[]
@@ -550,6 +588,58 @@ model RateLimit {
   count       Int      @default(1)
 
   @@index([windowStart])
+}
+
+// ===== Blok 5: Analytics pengunjung =====
+
+// Satu baris = satu kali halaman publik dibuka. Ditulis dari endpoint beacon
+// (api/track), BUKAN dari middleware - middleware jalan untuk setiap aset,
+// prefetch, dan permintaan bot juga, dan menulis satu baris DB untuk masing-
+// masing akan menenggelamkan biaya database jauh sebelum memberi data berguna.
+//
+// TIDAK menyimpan alamat IP mentah. Yang disimpan `visitorHash`, yaitu SHA-256
+// dari (IP + user agent + garam harian) - cukup untuk menghitung pengunjung
+// unik per hari, tapi tidak bisa dibalik jadi identitas orang, dan otomatis
+// berbeda tiap hari sehingga tidak bisa dipakai melacak seseorang antar-hari.
+// Ini juga yang membuatnya sejalan dengan halaman Kebijakan Privasi kita.
+//
+// Tabel ini SEMENTARA: job cron "rollup-analytics" meringkasnya jadi
+// AnalyticsDaily lalu membuang baris yang lebih tua dari retensi. Tanpa itu,
+// toko yang ramai akan menumpuk jutaan baris yang tak pernah dibaca lagi.
+model PageView {
+  id           String   @id @default(cuid())
+  path         String   @db.VarChar(255)
+  visitorHash  String   @db.VarChar(64)
+  sessionId    String   @db.VarChar(64)
+  referrerHost String?  @db.VarChar(191)
+  device       String   @db.VarChar(16) // "mobile" | "tablet" | "desktop"
+  // Diisi kalau pengunjungnya sedang login - memungkinkan corong
+  // "kunjungan -> order" dihitung per member, bukan cuma agregat anonim.
+  userId       String?  @db.VarChar(64)
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([path, createdAt])
+}
+
+// Ringkasan harian permanen. Dibuat job rollup dari PageView sebelum baris
+// mentahnya dibuang, supaya grafik jangka panjang (bulanan/tahunan) tetap ada
+// tanpa menyimpan data mentahnya selamanya.
+//
+// Rincian (halaman terpopuler, referrer, perangkat) disimpan sebagai Json
+// alih-alih tabel anak: isinya selalu dibaca utuh sebagai satu blok untuk satu
+// tanggal, tidak pernah di-query per baris, jadi tabel terpisah cuma menambah
+// join tanpa manfaat.
+model AnalyticsDaily {
+  date         DateTime @id @db.Date
+  pageviews    Int      @default(0)
+  visitors     Int      @default(0)
+  sessions     Int      @default(0)
+  topPaths     Json
+  topReferrers Json
+  devices      Json
+  computedAt   DateTime @default(now())
 }
 
 model AdminActionLog {

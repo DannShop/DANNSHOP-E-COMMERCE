@@ -5,6 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupiah, formatTanggal } from "@/lib/format";
+import { RefreshButton } from "@/components/admin/refresh-button";
+import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
+import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 
 const TABS = [
   { key: "all", label: "Semua" },
@@ -12,16 +15,15 @@ const TABS = [
   { key: "banned", label: "Ditangguhkan" },
 ] as const;
 
-const PAGE_SIZE = 50;
-
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; per?: string }>;
 }) {
-  const { tab: rawTab, q } = await searchParams;
+  const { tab: rawTab, q, page: rawPage, per } = await searchParams;
   const activeTab = TABS.find((t) => t.key === rawTab) ?? TABS[0];
   const now = new Date();
+  const pageSize = parsePageSize(per);
 
   const where = {
     ...(activeTab.key === "banned" ? { bannedAt: { not: null } } : {}),
@@ -31,10 +33,13 @@ export default async function AdminUsersPage({
     ...(q ? { OR: [{ email: { contains: q } }, { name: { contains: q } }] } : {}),
   };
 
+  const total = await db.user.count({ where });
+  const pagination = buildPagination(total, parsePage(rawPage), pageSize);
   const users = await db.user.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    take: PAGE_SIZE,
+    skip: pagination.skip,
+    take: pagination.pageSize,
     include: {
       wallet: { select: { balance: true } },
       _count: { select: { orders: true } },
@@ -79,12 +84,15 @@ export default async function AdminUsersPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Kontrol User</h1>
-        <p className="text-sm text-muted-foreground">
-          Daftar akun terdaftar, status tier, dan riwayat belanjanya. Klik email untuk detail lengkap,
-          penangguhan akun, dan reset password.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Kontrol User</h1>
+          <p className="text-sm text-muted-foreground">
+            Daftar akun terdaftar, status tier, dan riwayat belanjanya. Klik email untuk detail lengkap,
+            penangguhan akun, dan reset password.
+          </p>
+        </div>
+        <RefreshButton />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -104,8 +112,13 @@ export default async function AdminUsersPage({
         <form action="/admin/users" className="flex gap-2">
           <input type="hidden" name="tab" value={activeTab.key} />
           <Input name="q" defaultValue={q ?? ""} placeholder="Cari email / nama" className="w-56" />
+          <input type="hidden" name="per" value={pageSize} />
           <Button type="submit" variant="outline">Cari</Button>
         </form>
+      </div>
+
+      <div className="flex justify-end">
+        <PageSizeSelect value={pageSize} />
       </div>
 
       <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
@@ -178,13 +191,8 @@ export default async function AdminUsersPage({
             )}
           </TableBody>
         </Table>
+        <Pagination info={pagination} />
       </div>
-
-      {users.length === PAGE_SIZE && (
-        <p className="text-xs text-muted-foreground">
-          Menampilkan {PAGE_SIZE} user terbaru. Pakai pencarian untuk menemukan akun tertentu.
-        </p>
-      )}
     </div>
   );
 }

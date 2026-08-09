@@ -1,6 +1,6 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type FulfillmentMode } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { checkoutSchema, extractTargetFromFormData } from "@/lib/validation/checkout";
@@ -16,6 +16,8 @@ import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 import { getActiveProviders } from "@/lib/providers/registry";
 import { sendOrderCreatedEmail } from "@/lib/notify/email";
+import { formatOrderCreatedMessage, formatOrderPaidMessage, notifyTelegram } from "@/lib/notify/telegram";
+import { describeOrderTarget } from "@/lib/order/customer-no";
 import { effectivePrice } from "@/lib/pricing/effective-price";
 import { getMembershipContext, type MembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
@@ -102,8 +104,15 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   // diskon otomatis sejak Fase B, harus punya tier yang dibeli.
   const price = effectivePrice(item, { discountBp: membership.discountBp, now });
 
-  const decision = selectFulfillmentSku({ sellingPrice: price }, item.providerSkus, activeProviders);
-  if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
+  // Cek ketersediaan SKU provider HANYA berlaku untuk produk otomatis. Produk
+  // manual memang sengaja tidak punya ProviderSku sama sekali - menjalankan
+  // gerbang ini padanya akan menolak setiap checkout dengan alasan "sedang
+  // tidak tersedia", padahal barangnya justru selalu tersedia (dikirim admin).
+  const isManual = item.product.fulfillmentMode === "MANUAL";
+  if (!isManual) {
+    const decision = selectFulfillmentSku({ sellingPrice: price }, item.providerSkus, activeProviders);
+    if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
+  }
 
   if (parsed.data.paymentMethod !== "balance") {
     const method = await db.paymentMethodConfig.findUnique({ where: { code: parsed.data.paymentMethod } });
@@ -111,6 +120,10 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   }
 
   const orderNumber = generateOrderNumber(now);
+
+  // Disnapshot ke order, bukan dibaca ulang dari produk saat fulfillment -
+  // lihat komentar Order.fulfillmentMode di schema.prisma.
+  const fulfillmentMode = item.product.fulfillmentMode;
 
   if (parsed.data.paymentMethod === "balance") {
     return createBalanceOrder({
@@ -121,6 +134,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
       target: parsed.data.target,
       buyerEmail: parsed.data.buyerEmail,
       buyerPhone: parsed.data.buyerPhone,
+      fulfillmentMode,
     });
   }
 
@@ -135,6 +149,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     now,
     paymentMethodCode: parsed.data.paymentMethod,
     membership,
+    fulfillmentMode,
   });
 }
 
@@ -146,6 +161,7 @@ async function createBalanceOrder(input: {
   target: Record<string, string>;
   buyerEmail: string;
   buyerPhone?: string;
+  fulfillmentMode: FulfillmentMode;
 }): Promise<CheckoutResult> {
   const order = await createOrderWithRetry({
     orderNumber: input.orderNumber,
@@ -161,6 +177,7 @@ async function createBalanceOrder(input: {
     sellingPrice: input.price,
     total: input.price,
     paymentMethod: "balance",
+    fulfillmentMode: input.fulfillmentMode,
     payment: { create: { method: "balance", status: "PENDING" } },
   });
   await db.orderStatusHistory.create({
@@ -205,6 +222,21 @@ async function createBalanceOrder(input: {
     throw e;
   }
 
+  // Bayar saldo tidak lewat settlement.ts (tidak ada webhook Midtrans yang
+  // datang), jadi notifikasi "pembayaran diterima" harus dikirim dari sini -
+  // kalau tidak, seluruh order berbayar-saldo tidak akan pernah terlihat admin.
+  await notifyTelegram(
+    "order_paid",
+    formatOrderPaidMessage({
+      orderNumber: order.orderNumber,
+      productName: order.productName,
+      itemName: order.itemName,
+      total: order.total,
+      target: describeOrderTarget(order.target),
+      buyerLabel: order.buyerEmail,
+      paymentMethod: "Saldo",
+    }),
+  );
   await dispatchFulfillment(order.id);
   await sendOrderCreatedEmail(order, null);
   return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
@@ -221,6 +253,7 @@ async function createMidtransOrder(input: {
   now: Date;
   paymentMethodCode: string;
   membership: MembershipContext;
+  fulfillmentMode: FulfillmentMode;
 }): Promise<CheckoutResult> {
   const [method, rules] = await Promise.all([
     db.paymentMethodConfig.findUnique({ where: { code: input.paymentMethodCode } }),
@@ -262,6 +295,7 @@ async function createMidtransOrder(input: {
     total,
     paymentMethod: method.code,
     expiredAt,
+    fulfillmentMode: input.fulfillmentMode,
     payment: { create: { method: method.code, status: "PENDING", expiredAt } },
   });
   // Ditembak duluan, di-await belakangan bareng orderPayment.update — history
@@ -319,5 +353,17 @@ async function createMidtransOrder(input: {
   }
 
   await sendOrderCreatedEmail(order, chargedActions);
+  await notifyTelegram(
+    "order_created",
+    formatOrderCreatedMessage({
+      orderNumber: order.orderNumber,
+      productName: order.productName,
+      itemName: order.itemName,
+      total: order.total,
+      target: describeOrderTarget(order.target),
+      buyerLabel: order.buyerEmail,
+      paymentMethod: order.paymentMethod,
+    }),
+  );
   return { ok: "Order dibuat.", orderNumber: order.orderNumber, publicToken: order.publicToken };
 }

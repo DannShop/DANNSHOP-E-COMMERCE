@@ -3,6 +3,13 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadToBlob } from "@/lib/blob-upload";
 import { saveEmailProviderConfig } from "@/lib/notify/email-config";
+import {
+  getTelegramNotifyConfig,
+  saveTelegramNotifyConfig,
+  TELEGRAM_EVENT_KEYS,
+  type TelegramEvent,
+} from "@/lib/notify/telegram-config";
+import { sendTelegramAlert } from "@/lib/notify/telegram";
 import { changeUserPassword } from "@/lib/account/change-password";
 import { z } from "zod";
 
@@ -293,6 +300,72 @@ export async function saveEmailConfig(formData: FormData): Promise<ActionResult>
   await logAdmin(admin.adminId, "site_setting.save_email_config", { kind: parsed.data.kind });
   revalidatePath("/admin/settings");
   return { ok: "Konfigurasi email tersimpan." };
+}
+
+const telegramConfigSchema = z.object({
+  // Boleh kosong KALAU sudah pernah tersimpan - form tidak pernah menampilkan
+  // token lama, jadi memaksa mengisinya tiap kali menyimpan berarti admin harus
+  // mencari ulang token cuma untuk mengubah satu centang event.
+  botToken: z.string().optional().transform((v) => (v ?? "").trim()),
+  chatId: z.string().optional().transform((v) => (v ?? "").trim()),
+  enabled: z.string().nullish().transform((v) => v === "on"),
+});
+
+export async function saveTelegramConfig(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = telegramConfigSchema.safeParse({
+    botToken: formData.get("botToken"),
+    chatId: formData.get("chatId"),
+    enabled: formData.get("enabled"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const existing = await getTelegramNotifyConfig();
+  const botToken = parsed.data.botToken || existing?.botToken || "";
+  const chatId = parsed.data.chatId || existing?.chatId || "";
+  if (!botToken) return { error: "Bot token wajib diisi." };
+  if (!chatId) return { error: "Chat ID wajib diisi." };
+
+  const events = Object.fromEntries(
+    TELEGRAM_EVENT_KEYS.map((e) => [e, formData.get(`event.${e}`) === "on"]),
+  ) as Record<TelegramEvent, boolean>;
+
+  await saveTelegramNotifyConfig({ botToken, chatId, enabled: parsed.data.enabled, events });
+  // Token TIDAK pernah masuk log admin - pola sama dengan saveEmailConfig.
+  await logAdmin(admin.adminId, "site_setting.save_telegram_config", {
+    enabled: parsed.data.enabled,
+    aktif: TELEGRAM_EVENT_KEYS.filter((e) => events[e]),
+  });
+  revalidatePath("/admin/settings");
+  return { ok: "Konfigurasi notifikasi Telegram tersimpan." };
+}
+
+// Mengirim pesan uji ke chat yang dikonfigurasi. Sengaja memakai
+// sendTelegramAlert (bukan notifyTelegram): tes harus tetap terkirim walau
+// saklar induk sedang mati - justru itu cara admin memastikan tokennya benar
+// SEBELUM menyalakannya.
+export async function sendTelegramTest(): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const config = await getTelegramNotifyConfig();
+  if (!config) return { error: "Bot token/chat ID belum diisi. Simpan konfigurasinya dulu." };
+
+  const sent = await sendTelegramAlert(
+    `🔔 Tes notifikasi DannShop berhasil.\nKalau pesan ini sampai, notifikasi admin sudah tersambung dengan benar.\nWaktu: ${new Date().toLocaleString("id-ID")}`,
+    config,
+  );
+  await logAdmin(admin.adminId, "site_setting.telegram_test", { sent });
+  return sent
+    ? { ok: "Pesan tes terkirim. Cek chat Telegram-mu." }
+    : {
+        error:
+          "Gagal mengirim. Cek: (1) token benar, (2) chat ID benar, (3) bot sudah pernah di-/start atau sudah dimasukkan ke grup tujuan. Detail teknis ada di log runtime.",
+      };
 }
 
 // Gate requireAdmin sengaja dijalankan SEBELUM password diubah - sesudahnya

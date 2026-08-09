@@ -408,3 +408,41 @@
       0 16px 40px -16px rgba(0, 0, 0, 0.8);
   }
 }
+/* ===== Cetak struk =====
+   Halaman struk memakai kertas termal 58/80 mm, yang lebih sempit dari apa pun
+   yang pernah dirancang untuk layar. Aturan di bawah membuang seluruh kromnya
+   (latar bergradasi, tombol, navigasi) dan menyisakan lembar struknya sendiri
+   pada posisi kiri-atas kertas.
+
+   `print-color-adjust: exact` diperlukan karena browser secara default membuang
+   warna latar saat mencetak - tanpa itu, header berwarna pada struk A4 keluar
+   sebagai kotak putih kosong. */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt-sheet,
+  .receipt-sheet * {
+    visibility: visible;
+  }
+
+  .receipt-sheet {
+    position: absolute;
+    top: 0;
+    left: 0;
+    margin: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

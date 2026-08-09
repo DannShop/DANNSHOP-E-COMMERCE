@@ -27,6 +27,8 @@ export const productSchema = z.object({
   // dan .optional() Zod cuma menerima `undefined` - lihat catatan lengkap di
   // actions/payment-config.ts.
   isTrending: z.string().nullish(),
+  idCheckEnabled: z.string().nullish(),
+  fulfillmentMode: z.enum(["AUTO", "MANUAL"]).default("AUTO"),
 });
 
 // Kosong -> null (bukan undefined, biar Prisma benar-benar menghapus nilai

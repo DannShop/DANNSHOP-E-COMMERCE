@@ -2,14 +2,42 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RefreshButton } from "@/components/admin/refresh-button";
+import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
+import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import { toggleProductActive } from "@/app/actions/catalog";
 import { ProductToggleForm } from "./product-toggle-form";
 
-export default async function AdminProductsPage() {
+export default async function AdminProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; per?: string; q?: string; cat?: string }>;
+}) {
+  const { page: rawPage, per, q, cat } = await searchParams;
+  const pageSize = parsePageSize(per);
+
+  const where = {
+    ...(q ? { OR: [{ name: { contains: q } }, { slug: { contains: q } }] } : {}),
+    ...(cat ? { categoryId: cat } : {}),
+  };
+
+  // count dijalankan bersama findMany, bukan setelahnya - keduanya tidak saling
+  // bergantung, jadi menunggunya berurutan cuma menggandakan latensi halaman.
+  const [total, categories] = await Promise.all([
+    db.product.count({ where }),
+    db.category.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
+  ]);
+  const pagination = buildPagination(total, parsePage(rawPage), pageSize);
+
   const products = await db.product.findMany({
+    where,
     include: { category: true, _count: { select: { items: true } } },
     orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
+    skip: pagination.skip,
+    take: pagination.pageSize,
   });
 
   return (
@@ -22,6 +50,7 @@ export default async function AdminProductsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <RefreshButton />
           <Link href="/admin/products/import" className={buttonVariants({ variant: "outline" })}>
             Tambah dari Digiflazz
           </Link>
@@ -31,6 +60,32 @@ export default async function AdminProductsPage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <form action="/admin/products" className="flex items-center gap-2">
+          <Input name="q" defaultValue={q ?? ""} placeholder="Cari nama / slug produk" className="h-8 w-56 text-sm" />
+          <select
+            name="cat"
+            defaultValue={cat ?? ""}
+            className="h-8 rounded-md border bg-transparent px-2 text-sm"
+            aria-label="Filter kategori"
+          >
+            <option value="">Semua kategori</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          {/* per ikut dibawa supaya pilihan jumlah baris tidak hilang tiap kali
+              admin mencari sesuatu. */}
+          <input type="hidden" name="per" value={pageSize} />
+          <Button type="submit" variant="outline" size="sm">
+            Cari
+          </Button>
+        </form>
+        <PageSizeSelect value={pageSize} />
+      </div>
+
       <div className="rounded-xl ring-1 ring-foreground/10">
         <Table>
           <TableHeader>
@@ -38,6 +93,7 @@ export default async function AdminProductsPage() {
               <TableHead>Nama</TableHead>
               <TableHead>Kategori</TableHead>
               <TableHead className="text-right">Jumlah item</TableHead>
+              <TableHead>Pengiriman</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
@@ -45,8 +101,8 @@ export default async function AdminProductsPage() {
           <TableBody>
             {products.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                  Belum ada produk. Klik &quot;+ Produk baru&quot; untuk menambah.
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  {q || cat ? "Tidak ada produk yang cocok." : 'Belum ada produk. Klik "+ Produk baru" untuk menambah.'}
                 </TableCell>
               </TableRow>
             )}
@@ -60,6 +116,13 @@ export default async function AdminProductsPage() {
                 </TableCell>
                 <TableCell>{product.category.name}</TableCell>
                 <TableCell className="text-right tabular-nums">{product._count.items}</TableCell>
+                <TableCell>
+                  {product.fulfillmentMode === "MANUAL" ? (
+                    <Badge variant="warning">Manual</Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Otomatis</span>
+                  )}
+                </TableCell>
                 <TableCell>
                   <Badge variant={product.isActive ? "success" : "muted"}>
                     {product.isActive ? "Aktif" : "Nonaktif"}
@@ -85,6 +148,7 @@ export default async function AdminProductsPage() {
             ))}
           </TableBody>
         </Table>
+        <Pagination info={pagination} />
       </div>
     </div>
   );

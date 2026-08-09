@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RefreshButton } from "@/components/admin/refresh-button";
+import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
+import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import type { JobStatus } from "@prisma/client";
 
 const STATUS_BADGE_VARIANT: Record<JobStatus, "success" | "muted" | "warning" | "destructive"> = {
@@ -27,16 +30,21 @@ const TABS = [
 export default async function AdminJobsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; page?: string; per?: string }>;
 }) {
-  const { tab: rawTab } = await searchParams;
+  const { tab: rawTab, page: rawPage, per } = await searchParams;
   const activeTab = TABS.find((t) => t.key === rawTab) ?? TABS[0];
+  const pageSize = parsePageSize(per);
 
+  const where = activeTab.status ? { status: activeTab.status } : {};
+  const total = await db.job.count({ where });
+  const pagination = buildPagination(total, parsePage(rawPage), pageSize);
   const [jobs, counts] = await Promise.all([
     db.job.findMany({
-      where: activeTab.status ? { status: activeTab.status } : {},
+      where,
       orderBy: { runAt: "desc" },
-      take: 50,
+      skip: pagination.skip,
+      take: pagination.pageSize,
     }),
     db.job.groupBy({ by: ["status"], _count: true }),
   ]);
@@ -44,11 +52,17 @@ export default async function AdminJobsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Monitoring Job/Cron</h1>
-        <p className="text-sm text-muted-foreground">
-          Job background (sync harga, cek status order, expire order/deposit, cek saldo provider, dsb).
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Monitoring Job/Cron</h1>
+          <p className="text-sm text-muted-foreground">
+            Job background (sync harga, cek status order, expire order/deposit, cek saldo provider, rollup analytics, dsb).
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <PageSizeSelect value={pageSize} />
+          <RefreshButton />
+        </div>
       </div>
 
       {(countByStatus.get("FAILED") ?? 0) > 0 && (
@@ -109,6 +123,7 @@ export default async function AdminJobsPage({
             )}
           </TableBody>
         </Table>
+        <Pagination info={pagination} />
       </div>
     </div>
   );

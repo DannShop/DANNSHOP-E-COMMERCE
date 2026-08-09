@@ -2,7 +2,10 @@
 
 import { AuthError } from "next-auth";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
+import { sendWelcomeEmail } from "@/lib/notify/email";
+import { formatUserRegisteredMessage, notifyTelegram } from "@/lib/notify/telegram";
 import type { ResetPasswordResult } from "@/lib/account/reset-password";
 import { requestPasswordReset, resetPasswordWithToken } from "@/lib/account/reset-password";
 import { signIn, signOut } from "@/lib/auth";
@@ -82,6 +85,24 @@ export async function registerAction(
         },
       });
       await tx.wallet.create({ data: { userId: user.id } });
+    });
+
+    // after() - BUKAN await. Fungsi ini sengaja dibuat impas waktunya antara
+    // cabang "email baru" dan "email sudah ada" (lihat TIMING_DUMMY_PASSWORD di
+    // atas) supaya orang luar tidak bisa menebak email mana yang terdaftar dari
+    // selisih waktu respons. Menunggu kiriman email + Telegram di sini akan
+    // menambah ratusan milidetik HANYA pada cabang email baru, yang justru
+    // membocorkan persis apa yang susah payah ditutup itu.
+    //
+    // after() juga bukan sekadar promise yang dilepas begitu saja: di runtime
+    // serverless, promise yang tidak ditunggu bisa mati saat respons dikirim.
+    // after() menjamin tugasnya tetap dijalankan sampai selesai setelahnya.
+    after(async () => {
+      await sendWelcomeEmail({ name: parsed.data.name, email: parsed.data.email });
+      await notifyTelegram(
+        "user_registered",
+        formatUserRegisteredMessage({ name: parsed.data.name, email: parsed.data.email }),
+      );
     });
   } else {
     await hashPassword(TIMING_DUMMY_PASSWORD);

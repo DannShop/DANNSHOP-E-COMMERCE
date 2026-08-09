@@ -6,7 +6,7 @@ import { getAdapter } from "@/lib/providers/registry";
 import type { TopupProviderAdapter } from "@/lib/providers/types";
 import { decideBalanceAlertTransition } from "@/lib/providers/balance-alert";
 import { buildCustomerNo } from "@/lib/order/customer-no";
-import { formatBalanceAlertMessage, sendTelegramAlert } from "@/lib/notify/telegram";
+import { formatBalanceAlertMessage, notifyTelegram } from "@/lib/notify/telegram";
 
 export type JobHandler = (payload: unknown) => Promise<string | void>;
 
@@ -130,7 +130,8 @@ export const handlers: Record<string, JobHandler> = {
         // Kalau kirim gagal (jaringan/token salah), status DB TIDAK diubah supaya
         // siklus job berikutnya (1 jam lagi) otomatis mencoba ulang alert yang sama
         // (state machine mengevaluasi ulang dari status lama, konsisten).
-        const sent = await sendTelegramAlert(
+        const outcome = await notifyTelegram(
+          "provider_balance",
           formatBalanceAlertMessage({
             displayName: provider.displayName,
             balance,
@@ -138,7 +139,11 @@ export const handlers: Record<string, JobHandler> = {
             recovered: transition.alert === "recovered",
           }),
         );
-        if (sent) {
+        // "disabled" (admin sengaja mematikan kategori notifikasi ini) ikut
+        // dianggap tuntas - hanya "failed" yang menahan transisi untuk dicoba
+        // ulang. Kalau tidak dibedakan, mematikan notifikasi saldo akan
+        // membekukan state machine-nya selamanya di status lama.
+        if (outcome !== "failed") {
           // CAS: cuma tulis kalau status belum diubah proses lain sejak dibaca -
           // menutup race yang sangat jarang antar-invocation job yang tumpang tindih.
           await db.providerConfig.updateMany({
@@ -193,6 +198,90 @@ export const handlers: Record<string, JobHandler> = {
       data: { type: "cleanup-provider-api-logs", payload: {}, runAt: new Date(Date.now() + 6 * 60 * 60_000) },
     });
     return `deleted=${deleted.count}`;
+  },
+
+  // Meringkas PageView jadi satu baris AnalyticsDaily per hari, lalu membuang
+  // baris mentah yang lebih tua dari retensi.
+  //
+  // Ini yang membuat statistik pengunjung tidak berubah jadi tabel terbesar di
+  // database. Satu toko yang ramai bisa menghasilkan puluhan ribu baris per
+  // hari, sementara yang benar-benar dibutuhkan setelah beberapa minggu cuma
+  // ringkasannya. Rollup dijalankan untuk hari-hari yang SUDAH SELESAI saja -
+  // meringkas hari yang masih berjalan akan menghasilkan angka yang salah dan
+  // membeku di situ.
+  "rollup-analytics": async () => {
+    const RETENTION_DAYS = 30;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    // Hari yang punya data mentah tapi belum (atau belum tuntas) diringkas.
+    const days = await db.$queryRaw<{ d: Date }[]>`
+      SELECT DISTINCT DATE(createdAt) AS d
+      FROM PageView
+      WHERE createdAt < ${startOfToday}
+      ORDER BY d ASC
+      LIMIT 40
+    `;
+
+    let rolled = 0;
+    for (const { d } of days) {
+      const dayStart = new Date(d);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000 - 1);
+
+      const [pageviews, visitorRows, sessionRows, pathRows, referrerRows, deviceRows] = await Promise.all([
+        db.pageView.count({ where: { createdAt: { gte: dayStart, lte: dayEnd } } }),
+        db.pageView.groupBy({ by: ["visitorHash"], where: { createdAt: { gte: dayStart, lte: dayEnd } } }),
+        db.pageView.groupBy({ by: ["sessionId"], where: { createdAt: { gte: dayStart, lte: dayEnd } } }),
+        db.pageView.groupBy({
+          by: ["path"],
+          where: { createdAt: { gte: dayStart, lte: dayEnd } },
+          _count: true,
+          orderBy: { _count: { path: "desc" } },
+          take: 20,
+        }),
+        db.pageView.groupBy({
+          by: ["referrerHost"],
+          where: { createdAt: { gte: dayStart, lte: dayEnd }, referrerHost: { not: null } },
+          _count: true,
+          orderBy: { _count: { referrerHost: "desc" } },
+          take: 15,
+        }),
+        db.pageView.groupBy({ by: ["device"], where: { createdAt: { gte: dayStart, lte: dayEnd } }, _count: true }),
+      ]);
+
+      const data = {
+        pageviews,
+        visitors: visitorRows.length,
+        sessions: sessionRows.length,
+        topPaths: pathRows.map((r) => ({ path: r.path, views: r._count })),
+        topReferrers: referrerRows.map((r) => ({ host: r.referrerHost ?? "", views: r._count })),
+        devices: deviceRows.map((r) => ({ device: r.device, views: r._count })),
+        computedAt: new Date(),
+      };
+      // upsert, bukan create: job ini boleh jalan berkali-kali untuk hari yang
+      // sama (retry, jadwal tumpang tindih) tanpa menggandakan atau gagal.
+      await db.analyticsDaily.upsert({ where: { date: dayStart }, update: data, create: { date: dayStart, ...data } });
+      rolled++;
+    }
+
+    // Baru dibuang SETELAH diringkas. Dibatasi per eksekusi supaya penghapusan
+    // pertama di tabel besar tidak bikin request cron timeout - pola sama
+    // dengan cleanup-provider-api-logs di atas.
+    const pruneThreshold = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60_000);
+    const stale = await db.pageView.findMany({
+      where: { createdAt: { lt: pruneThreshold } },
+      select: { id: true },
+      take: 2000,
+    });
+    const deleted = stale.length
+      ? await db.pageView.deleteMany({ where: { id: { in: stale.map((r) => r.id) } } })
+      : { count: 0 };
+
+    await db.job.create({
+      data: { type: "rollup-analytics", payload: {}, runAt: new Date(Date.now() + 6 * 60 * 60_000) },
+    });
+    return `rolled=${rolled} pruned=${deleted.count}`;
   },
 
   "recheck-fulfillment": async (payload) => {
@@ -351,6 +440,22 @@ export async function ensureRecurringJobs(): Promise<void> {
   });
   if (!existingCleanupApiLogs) {
     await db.job.create({ data: { type: "cleanup-provider-api-logs", payload: {}, runAt: new Date() } });
+  }
+
+  // Guard basi yang sama seperti dua job pembersihan di atas.
+  const ROLLUP_ANALYTICS_RUNNING_STALE_MINUTES = 10;
+  const rollupAnalyticsRunningFreshAfter = new Date(Date.now() - ROLLUP_ANALYTICS_RUNNING_STALE_MINUTES * 60_000);
+  const existingRollupAnalytics = await db.job.findFirst({
+    where: {
+      type: "rollup-analytics",
+      OR: [
+        { status: "PENDING" },
+        { status: "RUNNING", updatedAt: { gt: rollupAnalyticsRunningFreshAfter } },
+      ],
+    },
+  });
+  if (!existingRollupAnalytics) {
+    await db.job.create({ data: { type: "rollup-analytics", payload: {}, runAt: new Date() } });
   }
 }
 

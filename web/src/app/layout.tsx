@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
 import { getSiteSettings } from "@/lib/site-settings";
+import { StorefrontTheme } from "@/components/storefront-theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -50,6 +51,12 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${baloo2.variable} h-full antialiased`}
     >
+      <head>
+        {/* Variabel tema disuntikkan di <head> supaya sudah berlaku pada cat
+            pertama - kalau di <body>, halaman sempat berkedip memakai warna
+            bawaan lebih dulu sebelum warna toko masuk. */}
+        <StorefrontTheme />
+      </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <QueryProvider>{children}</QueryProvider>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { LoginForm } from "./login-form";
+import { StorefrontSlot } from "@/components/storefront-slot";
 
 export const metadata: Metadata = { title: "Masuk" };
 
@@ -29,6 +30,7 @@ export default async function LoginPage({
       }
     >
       <LoginForm justRegistered={justRegistered} />
+      <StorefrontSlot name="login_note" className="mt-4 text-sm text-muted-foreground" />
     </AuthLayout>
   );
 }

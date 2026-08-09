@@ -1,12 +1,21 @@
 import { db } from "@/lib/db";
-import type { ProviderKey, ProviderSkuStatus } from "@prisma/client";
+import type { FulfillmentMode, ProviderKey, ProviderSkuStatus } from "@prisma/client";
 import { getActiveProviders } from "@/lib/providers/registry";
 import { effectivePrice, isFlashActive, type PricedItem } from "@/lib/pricing/effective-price";
+import { getIdCheckConfig } from "@/lib/catalog/id-check";
 
+// Ketersediaan produk MANUAL tidak ditentukan provider mana pun - barangnya
+// dikirim admin sendiri, jadi tidak pernah ada ProviderSku yang bisa dicek.
+// `fulfillmentMode` wajib ikut dipertimbangkan di SEMUA titik yang menilai
+// "item ini bisa dibeli atau tidak": kalau tidak, produk manual tampil abu-abu
+// di katalog dan ditolak saat checkout, keduanya tanpa sebab yang terlihat.
+// Titik lain yang setara ada di actions/checkout.ts (gerbang selectFulfillmentSku).
 export function isItemPurchasable(
   providerSkus: { provider: ProviderKey; status: ProviderSkuStatus }[],
   activeProviders: Set<ProviderKey>,
+  fulfillmentMode: FulfillmentMode = "AUTO",
 ): boolean {
+  if (fulfillmentMode === "MANUAL") return true;
   return providerSkus.some(
     (s) => s.provider === "DIGIFLAZZ" && s.status === "ACTIVE" && activeProviders.has(s.provider),
   );
@@ -159,6 +168,9 @@ export interface ProductForCheckout {
   iconUrl: string | null;
   banner: string | null;
   inputFields: { name: string; label: string }[];
+  fulfillmentMode: FulfillmentMode;
+  /** Sudah memperhitungkan saklar induk - klien tidak perlu tahu dua sumbernya. */
+  idCheckEnabled: boolean;
   items: {
     id: string;
     name: string;
@@ -182,7 +194,7 @@ export async function getProductForCheckout(
   discountBp: number,
 ): Promise<ProductForCheckout | null> {
   const now = new Date();
-  const [product, activeProviders] = await Promise.all([
+  const [product, activeProviders, idCheck] = await Promise.all([
     db.product.findFirst({
       where: { slug: productSlug, isActive: true, category: { slug: categorySlug } },
       include: {
@@ -196,8 +208,10 @@ export async function getProductForCheckout(
       },
     }),
     getActiveProviders(),
+    getIdCheckConfig(),
   ]);
   if (!product) return null;
+  const idCheckOn = idCheck.enabled && idCheck.urlTemplate !== "";
 
   // Termurah (harga efektif yang beneran dibayar) duluan; sortOrder cuma
   // pemecah seri kalau ada dua nominal dengan harga efektif sama persis.
@@ -215,7 +229,7 @@ export async function getProductForCheckout(
     isFlashActive: isFlashActive(item, now),
     groupName: item.group?.name ?? null,
     groupSortOrder: item.group?.sortOrder ?? null,
-    purchasable: isItemPurchasable(item.providerSkus, activeProviders),
+    purchasable: isItemPurchasable(item.providerSkus, activeProviders, product.fulfillmentMode),
   }));
 
   return {
@@ -226,6 +240,11 @@ export async function getProductForCheckout(
     iconUrl: product.iconUrl,
     banner: product.banner,
     inputFields: product.inputFields as { name: string; label: string }[],
+    // Dikirim ke klien supaya halaman produk bisa memberi tahu pembeli bahwa
+    // produk ini dikirim manual SEBELUM dia membayar - bukan baru ketahuan
+    // saat invoice tidak kunjung berubah jadi "Berhasil".
+    fulfillmentMode: product.fulfillmentMode,
+    idCheckEnabled: product.idCheckEnabled && idCheckOn,
     items,
   };
 }

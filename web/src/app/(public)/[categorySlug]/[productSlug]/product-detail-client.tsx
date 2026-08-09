@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { QrCode, Wallet, Zap } from "lucide-react";
+import { QrCode, ScanSearch, Wallet, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { TrustBadges } from "@/components/trust-badges";
 import { createCheckoutOrder, type CheckoutResult } from "@/app/actions/checkout";
+import { checkGameId } from "@/app/actions/id-check";
 import { hasSufficientBalance } from "@/lib/wallet/decisions";
 import type { ProductForCheckout } from "@/lib/catalog/public";
 
@@ -149,11 +150,14 @@ export function ProductDetailClient({
   session,
   paymentMethods,
   pricing,
+  checkoutNoteHtml,
 }: {
   product: ProductForCheckout;
   session: { email: string; walletBalance: bigint } | null;
   paymentMethods: { code: string; label: string; logoUrl: string | null; feeFlat: string; feePercent: number }[];
   pricing: CheckoutPricingContext;
+  /** Slot HTML admin - SUDAH tersaring daftar-izin di lib/storefront/appearance.ts. */
+  checkoutNoteHtml: string;
 }) {
   const purchasableItems = product.items.filter((i) => i.purchasable);
   const [selectedItemId, setSelectedItemId] = useState(purchasableItems[0]?.id ?? "");
@@ -163,6 +167,21 @@ export function ProductDetailClient({
 
   const router = useRouter();
   const [state, formAction, pending] = useActionState(withPrevState(createCheckoutOrder), INITIAL_STATE);
+
+  // Nilai field jadi state terkendali (sebelumnya uncontrolled) karena cek ID
+  // perlu membacanya sebelum form dikirim. Form tetap mengirimkannya lewat
+  // atribut `name` seperti biasa - alur checkout tidak berubah sama sekali.
+  const [targetValues, setTargetValues] = useState<Record<string, string>>({});
+  const [idCheck, setIdCheck] = useState<{ nickname?: string; error?: string } | null>(null);
+  const [checkingId, startIdCheck] = useTransition();
+  const allTargetsFilled = product.inputFields.every((f) => (targetValues[f.name] ?? "").trim() !== "");
+
+  function runIdCheck() {
+    startIdCheck(async () => {
+      setIdCheck(null);
+      setIdCheck(await checkGameId(product.id, targetValues));
+    });
+  }
 
   useEffect(() => {
     if (state.publicToken) router.push(`/invoice/${state.publicToken}`);
@@ -240,10 +259,58 @@ export function ProductDetailClient({
           {product.inputFields.map((field) => (
             <div key={field.name} className="flex flex-col gap-2">
               <Label htmlFor={`target-${field.name}`}>{field.label}</Label>
-              <Input id={`target-${field.name}`} name={`target.${field.name}`} required className="h-11 text-base" />
+              <Input
+                id={`target-${field.name}`}
+                name={`target.${field.name}`}
+                required
+                className="h-11 text-base"
+                value={targetValues[field.name] ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setTargetValues((prev) => ({ ...prev, [field.name]: value }));
+                  // Hasil cek yang lama dibuang begitu datanya diubah - nickname
+                  // yang tertinggal di layar untuk ID yang sudah bukan itu lagi
+                  // justru meyakinkan pembeli bahwa ID barunya sudah benar.
+                  setIdCheck(null);
+                }}
+              />
             </div>
           ))}
+
+          {product.idCheckEnabled && (
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={checkingId || !allTargetsFilled}
+                onClick={runIdCheck}
+                className="self-start"
+              >
+                <ScanSearch className="size-4" aria-hidden="true" />
+                {checkingId ? "Mengecek..." : "Cek ID"}
+              </Button>
+              {idCheck && (
+                <p
+                  aria-live="polite"
+                  className={`rounded-md px-3 py-2 text-sm ${
+                    idCheck.nickname
+                      ? "bg-success text-success-foreground"
+                      : "bg-destructive/10 text-destructive"
+                  }`}
+                >
+                  {idCheck.nickname ? `Akun ditemukan: ${idCheck.nickname}` : idCheck.error}
+                </p>
+              )}
+            </div>
+          )}
         </div>
+
+        {product.fulfillmentMode === "MANUAL" && (
+          <div className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
+            <strong>Produk ini dikirim manual oleh admin.</strong> Setelah pembayaran berhasil, kamu akan diarahkan
+            untuk konfirmasi ke admin — pengirimannya tidak otomatis dalam hitungan detik seperti produk topup biasa.
+          </div>
+        )}
 
         <div className="flex flex-col gap-4 border-t pt-6">
           <StepHeader n={2} title="Pilih Nominal" />
@@ -393,6 +460,14 @@ export function ProductDetailClient({
               </p>
             )}
           </div>
+        )}
+
+        {/* Slot HTML admin. Sudah disaring daftar-izin dua kali di lapisan
+            appearance (saat disimpan & saat dibaca) - lihat catatan panjang di
+            lib/storefront/sanitize-html.ts kenapa penyaringan itu wajib untuk
+            markup yang tampil satu halaman dengan tombol pembayaran. */}
+        {checkoutNoteHtml && (
+          <div className="storefront-slot text-sm" dangerouslySetInnerHTML={{ __html: checkoutNoteHtml }} />
         )}
 
         {state.error && <p className="text-sm text-danger-foreground">{state.error}</p>}

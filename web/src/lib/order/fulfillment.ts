@@ -6,7 +6,14 @@ import { buildCustomerNo } from "@/lib/order/customer-no";
 import { generateRefId } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { decideRefundDestination } from "@/lib/wallet/decisions";
-import { formatOrderAlertMessage, formatFulfillmentFailureMessage, sendTelegramAlert } from "@/lib/notify/telegram";
+import {
+  formatOrderAlertMessage,
+  formatFulfillmentFailureMessage,
+  formatManualOrderMessage,
+  formatOrderSuccessMessage,
+  notifyTelegram,
+} from "@/lib/notify/telegram";
+import { describeOrderTarget } from "@/lib/order/customer-no";
 import { diagnoseFailure } from "@/lib/order/failure-reason";
 import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 import { decideFulfillmentRetry } from "@/lib/order/retry-decision";
@@ -43,6 +50,35 @@ export async function dispatchFulfillment(orderId: string): Promise<void> {
   await db.orderStatusHistory.create({
     data: { orderId: order.id, fromStatus: "PAID", toStatus: "PROCESSING" },
   });
+
+  // Produk manual (App Premium dsb): uangnya sudah masuk, tapi tidak ada
+  // provider yang bisa mengirimkannya. Berhenti di PROCESSING dan panggil admin.
+  //
+  // Kalau ini diteruskan ke selectAndSend seperti order biasa, hasilnya pasti
+  // NEEDS_REVIEW "Tidak ada provider SKU tersedia" - order yang sebenarnya
+  // sehat akan menumpuk di antrean masalah dan tidak bisa dibedakan dari order
+  // yang benar-benar rusak.
+  if (order.fulfillmentMode === "MANUAL") {
+    await db.orderStatusHistory.create({
+      data: {
+        orderId: order.id,
+        toStatus: "PROCESSING",
+        note: truncateNote("Produk manual - menunggu dikirim admin"),
+      },
+    });
+    await notifyTelegram(
+      "order_manual",
+      formatManualOrderMessage({
+        orderNumber: order.orderNumber,
+        productName: order.productName,
+        itemName: order.itemName,
+        total: order.total,
+        target: describeOrderTarget(order.target),
+        buyerLabel: order.buyerEmail,
+      }),
+    );
+    return;
+  }
 
   await selectAndSend(order, item, 1);
 }
@@ -96,7 +132,11 @@ export async function escalateOrder(params: {
   }
 
   if (params.alertOnFailure ?? true) {
-    await sendTelegramAlert(
+    // REFUND_PENDING dipetakan ke event "order_failed" (bukan event tersendiri):
+    // dari sudut pandang admin itu satu kejadian yang sama - order gagal dan
+    // uangnya harus dibalikin - cuma beda cara pengembaliannya.
+    await notifyTelegram(
+      params.toStatus === "NEEDS_REVIEW" ? "order_needs_review" : "order_failed",
       formatOrderAlertMessage({ orderNumber: params.orderNumber, status: params.toStatus, reason: params.note }),
     );
   }
@@ -211,7 +251,21 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
       data: { orderId: fulfillment.orderId, toStatus: "COMPLETED", note: truncateNote(`SN: ${result.sn ?? "-"}`) },
     });
     const completedOrder = await db.order.findUnique({ where: { id: fulfillment.orderId } });
-    if (completedOrder) await sendOrderCompletedEmail(completedOrder, result.sn ?? null);
+    if (completedOrder) {
+      await sendOrderCompletedEmail(completedOrder, result.sn ?? null);
+      await notifyTelegram(
+        "order_success",
+        formatOrderSuccessMessage({
+          orderNumber: completedOrder.orderNumber,
+          productName: completedOrder.productName,
+          itemName: completedOrder.itemName,
+          total: completedOrder.total,
+          target: describeOrderTarget(completedOrder.target),
+          buyerLabel: completedOrder.buyerEmail,
+          sn: result.sn ?? null,
+        }),
+      );
+    }
   } else if (status === "FAILED") {
     const order = await db.order.findUniqueOrThrow({ where: { id: fulfillment.orderId } });
 
@@ -258,7 +312,8 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
         // Auto-refund yang BERHASIL pun tetap harus memberi tahu admin. Refund
         // menyelamatkan uang pelanggan, tapi tidak memperbaiki sebabnya - dan
         // sebab yang sistemik akan menggagalkan semua order berikutnya juga.
-        await sendTelegramAlert(
+        await notifyTelegram(
+          "order_failed",
           formatFulfillmentFailureMessage({
             orderNumber: order.orderNumber,
             productName: order.productName,
@@ -299,7 +354,8 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
         alertOnFailure: false,
       });
       if (escalated.claimed) {
-        await sendTelegramAlert(
+        await notifyTelegram(
+          "order_failed",
           formatFulfillmentFailureMessage({
             orderNumber: order.orderNumber,
             productName: order.productName,

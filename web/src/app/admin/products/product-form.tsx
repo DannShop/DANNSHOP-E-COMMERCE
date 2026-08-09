@@ -34,6 +34,8 @@ export interface ProductFormInitial {
   description: string | null;
   inputFields: unknown;
   nicknameCheckKey: string | null;
+  idCheckEnabled: boolean;
+  fulfillmentMode: "AUTO" | "MANUAL";
   isTrending: boolean;
 }
 
@@ -183,14 +185,49 @@ export function ProductForm({
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="nicknameCheckKey">Nickname check key (opsional)</Label>
-        <Input
-          id="nicknameCheckKey"
-          name="nicknameCheckKey"
-          defaultValue={initial?.nicknameCheckKey ?? ""}
-          placeholder="Kunci field untuk cek nickname otomatis, jika didukung provider"
-        />
+      <div className="space-y-3 rounded-lg border p-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="nicknameCheckKey">Kode game (cek ID)</Label>
+          <Input
+            id="nicknameCheckKey"
+            name="nicknameCheckKey"
+            defaultValue={initial?.nicknameCheckKey ?? ""}
+            placeholder="mobile-legends"
+            className="font-mono text-xs"
+          />
+          <p className="text-xs text-muted-foreground">
+            Mengisi placeholder <code className="font-mono">{"{game}"}</code> pada URL penyedia. Nilainya mengikuti
+            penyedia yang kamu pakai — lihat Admin → Cek ID Game.
+          </p>
+        </div>
+        <div className="flex items-start gap-2">
+          <Checkbox id="idCheckEnabled" name="idCheckEnabled" defaultChecked={initial?.idCheckEnabled ?? false} className="mt-0.5" />
+          <Label htmlFor="idCheckEnabled" className="font-normal">
+            Aktifkan cek ID untuk produk ini
+            <span className="block text-xs text-muted-foreground">
+              Tetap tidak muncul kalau saklar induk di halaman Cek ID Game masih mati.
+            </span>
+          </Label>
+        </div>
+      </div>
+
+      <div className="space-y-1.5 rounded-lg border p-3">
+        <Label htmlFor="fulfillmentMode">Mode pengiriman</Label>
+        <Select name="fulfillmentMode" defaultValue={initial?.fulfillmentMode ?? "AUTO"}>
+          <SelectTrigger id="fulfillmentMode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="AUTO">Otomatis — dikirim provider (Digiflazz dll)</SelectItem>
+            <SelectItem value="MANUAL">Manual — dikirim admin sendiri (App Premium dsb)</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          <strong>Manual</strong>: pembeli tetap membayar lewat jalur normal, tapi pesanannya tidak diteruskan ke
+          provider — berhenti di status &quot;Diproses&quot; sampai kamu menandainya selesai. Pembeli mendapat tombol
+          konfirmasi WhatsApp/Telegram di halaman invoice, dan kamu dapat notifikasi Telegram. Produk manual tidak
+          perlu punya SKU provider sama sekali.
+        </p>
       </div>
 
       <div className="flex items-center gap-2">

@@ -1,5 +1,6 @@
 import { getSiteSettings } from "@/lib/site-settings";
 import { getEmailProviderStatus } from "@/lib/notify/email-config";
+import { getTelegramNotifyStatus } from "@/lib/notify/telegram-config";
 import {
   saveLogo,
   saveTrendingMode,
@@ -12,6 +13,8 @@ import {
   saveMaintenanceMode,
   saveContactSettings,
   saveEmailConfig,
+  saveTelegramConfig,
+  sendTelegramTest,
   changeAdminPassword,
 } from "@/app/actions/settings";
 import { ChangePasswordForm } from "@/components/change-password-form";
@@ -23,9 +26,14 @@ import { ContentPageForm } from "./content-page-form";
 import { MaintenanceModeForm } from "./maintenance-mode-form";
 import { ContactForm } from "./contact-form";
 import { EmailConfigForm } from "./email-config-form";
+import { TelegramConfigForm } from "./telegram-config-form";
 
 export default async function SiteSettingsPage() {
-  const [settings, emailStatus] = await Promise.all([getSiteSettings(), getEmailProviderStatus()]);
+  const [settings, emailStatus, telegramStatus] = await Promise.all([
+    getSiteSettings(),
+    getEmailProviderStatus(),
+    getTelegramNotifyStatus(),
+  ]);
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -71,6 +79,14 @@ export default async function SiteSettingsPage() {
           initial={{ whatsappCs: settings.whatsappCs, telegramCs: settings.telegramCs, csHours: settings.csHours }}
           action={saveContactSettings}
         />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Notifikasi Telegram (Admin)</h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Bot yang mengirimkan kabar transaksi ke kamu: order gagal, refund, saldo provider menipis, dan lainnya.
+        </p>
+        <TelegramConfigForm status={telegramStatus} action={saveTelegramConfig} testAction={sendTelegramTest} />
       </div>
 
       <div className="rounded-lg border p-4">

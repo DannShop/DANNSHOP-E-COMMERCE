@@ -6,6 +6,8 @@ import { getMembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
 import { getPaymentRules } from "@/lib/payment/rules";
 import { ProductDetailClient } from "./product-detail-client";
+import { StorefrontSlot } from "@/components/storefront-slot";
+import { getStorefrontAppearance } from "@/lib/storefront/appearance";
 
 export default async function ProductDetailPage({
   params,
@@ -33,8 +35,16 @@ export default async function ProductDetailPage({
     session = { email: authSession.user.email ?? "", walletBalance: wallet?.balance ?? 0n };
   }
 
+  // Slot checkout diambil di sini lalu diteruskan sebagai prop: form pemesanan
+  // adalah komponen KLIEN, jadi <StorefrontSlot> (Server Component) tidak bisa
+  // dipasang di dalamnya. HTML-nya sudah tersaring di lapisan appearance.
+  const appearance = await getStorefrontAppearance();
+
   return (
+    <>
+    <StorefrontSlot name="product_detail_top" className="mx-auto mb-6 max-w-2xl" />
     <ProductDetailClient
+      checkoutNoteHtml={appearance.slots.checkout_note}
       product={product}
       session={session}
       paymentMethods={paymentMethods.map((m) => ({
@@ -59,5 +69,7 @@ export default async function ProductDetailPage({
         uniqueCodeEnabled: rules.uniqueCodeOrder,
       }}
     />
+    <StorefrontSlot name="product_detail_bottom" className="mx-auto mt-6 max-w-2xl" />
+    </>
   );
 }

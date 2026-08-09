@@ -3,6 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { RefreshButton } from "@/components/admin/refresh-button";
+import { DateRangeFilter, PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
+import { buildPagination, createdAtFilter, parseDateRange, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import type { LedgerType } from "@prisma/client";
 
 const TYPE_LABEL: Record<LedgerType, string> = {
@@ -39,26 +42,35 @@ function formatRupiah(amount: bigint): string {
 export default async function AdminWalletLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; per?: string; from?: string; to?: string }>;
 }) {
-  const { tab: rawTab, q } = await searchParams;
+  const { tab: rawTab, q, page: rawPage, per, from: rawFrom, to: rawTo } = await searchParams;
   const activeTab = TABS.find((t) => t.key === rawTab) ?? TABS[0];
+  const pageSize = parsePageSize(per);
 
+  const where = {
+    ...(activeTab.type ? { type: activeTab.type } : {}),
+    ...(q ? { wallet: { user: { email: { contains: q } } } } : {}),
+    ...createdAtFilter(parseDateRange(rawFrom, rawTo)),
+  };
+  const total = await db.walletLedger.count({ where });
+  const pagination = buildPagination(total, parsePage(rawPage), pageSize);
   const entries = await db.walletLedger.findMany({
-    where: {
-      ...(activeTab.type ? { type: activeTab.type } : {}),
-      ...(q ? { wallet: { user: { email: { contains: q } } } } : {}),
-    },
+    where,
     include: { wallet: { include: { user: { select: { email: true } } } } },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    skip: pagination.skip,
+    take: pagination.pageSize,
   });
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Mutasi Saldo</h1>
-        <p className="text-sm text-muted-foreground">Riwayat semua pergerakan saldo wallet member.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Mutasi Saldo</h1>
+          <p className="text-sm text-muted-foreground">Riwayat semua pergerakan saldo wallet member.</p>
+        </div>
+        <RefreshButton />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -78,6 +90,11 @@ export default async function AdminWalletLedgerPage({
           <Input name="q" defaultValue={q ?? ""} placeholder="Cari email member" className="w-56" />
           <Button type="submit" variant="outline">Cari</Button>
         </form>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter from={rawFrom ?? ""} to={rawTo ?? ""} />
+        <PageSizeSelect value={pageSize} />
       </div>
 
       <div className="rounded-xl ring-1 ring-foreground/10">
@@ -125,6 +142,7 @@ export default async function AdminWalletLedgerPage({
             )}
           </TableBody>
         </Table>
+        <Pagination info={pagination} />
       </div>
     </div>
   );
