@@ -29,6 +29,11 @@ export async function POST(request: Request) {
   const body = parsed.body as { category?: unknown; product?: unknown };
 
   try {
+    // TANPA skip/take: endpoint ini sengaja mengembalikan katalog UTUH. Mitra
+    // diharapkan memanggilnya sesekali lalu men-cache hasilnya, jadi memaginasi
+    // di sini justru memaksa mereka menulis loop halaman untuk mendapatkan hal
+    // yang sama. Halaman Katalog di portal memaginasi karena masalahnya berbeda:
+    // di sana yang mahal adalah mengirim seluruh katalog ke BROWSER.
     const list = await buildPartnerPriceList(auth.partner.userId, {
       categorySlug: typeof body.category === "string" ? body.category.trim() : undefined,
       productSlug: typeof body.product === "string" ? body.product.trim() : undefined,
@@ -40,7 +45,7 @@ export async function POST(request: Request) {
       // Harga di sini SUDAH termasuk diskon tier partner. Disebutkan supaya
       // partner tidak menghitung ulang diskonnya sendiri dan salah ambil margin.
       tier: list.tier,
-      total_product: list.products.length,
+      total_product: list.total,
       products: list.products,
     });
   } catch (e) {

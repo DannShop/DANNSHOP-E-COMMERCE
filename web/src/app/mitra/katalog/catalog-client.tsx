@@ -1,13 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Copy, Search } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { formatRupiah } from "@/lib/format";
 import type { PartnerPriceProduct } from "@/lib/partner/price-list";
-
-const SELECT_CLASS = "h-9 w-full rounded-md border bg-transparent px-3 text-sm sm:w-56";
 
 function SkuCell({ sku }: { sku: string }) {
   const [copied, setCopied] = useState(false);
@@ -37,105 +34,53 @@ function SkuCell({ sku }: { sku: string }) {
 }
 
 /**
- * Katalog versi browser.
+ * Penyaji katalog untuk satu halaman hasil.
  *
- * Difilter di klien, bukan lewat request ke server per ketikan: seluruh katalog
- * sudah ikut terkirim bersama halaman (jumlahnya ratusan baris, bukan puluhan
- * ribu), jadi pencarian per huruf tanpa satu pun request tambahan justru jauh
- * lebih ringan daripada memanggil endpoint tiap ketikan.
+ * Pencarian, filter kategori, dan paginasi SUDAH dikerjakan server (lihat
+ * page.tsx) — komponen ini sengaja tidak menyentuhnya lagi. Satu-satunya filter
+ * yang tersisa di sini adalah "sembunyikan yang kosong", dan itu memang HARUS
+ * di klien: `available` bukan kolom database, melainkan hasil hitungan
+ * selectFulfillmentSku() atas harga modal & status provider saat itu. Tidak ada
+ * cara memfilternya lewat query tanpa menarik seluruh katalog — persis hal yang
+ * sedang kita hindari.
+ *
+ * Karena itu labelnya menyebut "di halaman ini" secara eksplisit: filter yang
+ * diam-diam cuma berlaku sebagian jauh lebih menyesatkan daripada filter yang
+ * jujur tentang cakupannya.
  */
-export function CatalogClient({ products, tier }: { products: PartnerPriceProduct[]; tier: string | null }) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("");
+export function CatalogClient({ products }: { products: PartnerPriceProduct[] }) {
   const [onlyAvailable, setOnlyAvailable] = useState(false);
 
-  const categories = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of products) map.set(p.category, p.category_name);
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [products]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  const shown = useMemo(() => {
+    if (!onlyAvailable) return products;
     return products
-      .filter((p) => (category ? p.category === category : true))
-      .map((p) => ({
-        ...p,
-        items: p.items.filter((item) => {
-          if (onlyAvailable && !item.available) return false;
-          if (!q) return true;
-          // SKU ikut dicari: mitra yang sedang mendiagnosis rc 14 datang ke sini
-          // membawa SKU dari lognya, bukan nama produknya.
-          return (
-            item.name.toLowerCase().includes(q) ||
-            item.sku.toLowerCase().includes(q) ||
-            p.product_name.toLowerCase().includes(q) ||
-            (p.publisher ?? "").toLowerCase().includes(q)
-          );
-        }),
-      }))
+      .map((p) => ({ ...p, items: p.items.filter((i) => i.available) }))
       .filter((p) => p.items.length > 0);
-  }, [products, query, category, onlyAvailable]);
+  }, [products, onlyAvailable]);
 
-  const totalItems = filtered.reduce((sum, p) => sum + p.items.length, 0);
+  const hiddenCount = products.length - shown.length;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="glass-card flex flex-col gap-3 rounded-2xl p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari nama produk, nominal, atau SKU..."
-              className="h-9 pl-9"
-              aria-label="Cari katalog"
-            />
-          </div>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className={SELECT_CLASS}
-            aria-label="Filter kategori"
-          >
-            <option value="">Semua kategori</option>
-            {categories.map(([slug, name]) => (
-              <option key={slug} value={slug}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </div>
+    <div className="flex flex-col gap-3">
+      <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={onlyAvailable}
+          onChange={(e) => setOnlyAvailable(e.target.checked)}
+          className="size-3.5"
+        />
+        Sembunyikan yang kosong <span className="opacity-70">(hanya di halaman ini)</span>
+        {onlyAvailable && hiddenCount > 0 && (
+          <span className="opacity-70">— {hiddenCount} produk disembunyikan</span>
+        )}
+      </label>
 
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={onlyAvailable}
-            onChange={(e) => setOnlyAvailable(e.target.checked)}
-            className="size-3.5"
-          />
-          Hanya yang tersedia
-        </label>
-
-        <p className="text-xs text-muted-foreground">
-          {totalItems} SKU ditampilkan · harga sudah termasuk diskon tier{" "}
-          <strong className="text-foreground">{tier ?? "Free"}</strong> kamu
-          {tier ? "" : " (tanpa tier, harganya sama dengan harga retail)"}.
-        </p>
-      </div>
-
-      {filtered.length === 0 && (
+      {shown.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Tidak ada SKU yang cocok dengan pencarian itu.
+          Semua produk di halaman ini sedang kosong. Coba halaman berikutnya atau hilangkan centangnya.
         </p>
-      )}
-
-      <div className="flex flex-col gap-3">
-        {filtered.map((product) => (
+      ) : (
+        shown.map((product) => (
           <section key={product.product} className="glass-card overflow-hidden rounded-2xl">
             <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-border/60 px-4 py-3">
               <h2 className="font-heading text-sm font-bold">{product.product_name}</h2>
@@ -177,8 +122,8 @@ export function CatalogClient({ products, tier }: { products: PartnerPriceProduc
               </table>
             </div>
           </section>
-        ))}
-      </div>
+        ))
+      )}
     </div>
   );
 }

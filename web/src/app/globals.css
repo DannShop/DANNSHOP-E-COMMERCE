@@ -139,11 +139,26 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* `overflow-x-clip`, BUKAN `overflow-x-hidden` - jangan dikembalikan.
+
+     Keduanya sama-sama mencegah scroll mendatar, tapi `hidden` menjadikan
+     elemennya SCROLL CONTAINER: menurut spesifikasi, kalau satu sumbu `hidden`
+     dan sumbu lainnya `visible`, yang `visible` dipaksa jadi `auto`. Akibatnya
+     <body> jadi scroll container, dan setiap `position: sticky` di dalamnya
+     berlabuh ke <body> - padahal yang benar-benar menggulung adalah viewport.
+     Hasilnya sticky diam-diam MATI: elemennya ikut tergulung seperti elemen
+     biasa, tanpa satu pun error.
+
+     Itu yang terjadi pada sidebar portal (/mitra dan /account sama-sama kena;
+     di /account tidak pernah ketahuan cuma karena halamannya pendek).
+
+     `clip` memberi efek visual yang sama persis TANPA membuat scroll container,
+     jadi sticky tetap hidup. */
   body {
-    @apply bg-background text-foreground overflow-x-hidden;
+    @apply bg-background text-foreground overflow-x-clip;
   }
   html {
-    @apply font-sans overflow-x-hidden;
+    @apply font-sans overflow-x-clip;
   }
   /* Scrollbar utama window ikut disembunyikan (scroll-nya sendiri tetap jalan
      normal, termasuk wheel/keyboard/touch). Utility .no-scrollbar di bawah cuma

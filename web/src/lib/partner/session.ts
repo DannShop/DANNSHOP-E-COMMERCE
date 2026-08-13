@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -28,8 +29,16 @@ export interface PartnerSession {
  * bukan mitra. Mitra yang dinonaktifkan admin harus tetap bisa masuk untuk
  * melihat riwayat dan alasannya; mengunci mereka di luar hanya menghasilkan
  * tiket "portal saya hilang" yang tidak menjelaskan apa pun.
+ *
+ * DIBUNGKUS `cache()` — WAJIB, bukan optimasi kosmetik. Layout portal DAN setiap
+ * halaman di bawahnya sama-sama memanggil fungsi ini, jadi tanpa dedup setiap
+ * kali membuka satu halaman berarti dua kali `auth()` + dua kali query
+ * `partnerAccount` ke TiDB Cloud. Round-trip ke database lintas region adalah
+ * biaya termahal di setiap halaman ini, dan menggandakannya persis di jalur
+ * kritis adalah pemborosan yang paling terasa oleh mitra. Pola yang sama sudah
+ * dipakai `getSiteSettings()` di lib/site-settings.ts.
  */
-export async function getPartnerSession(): Promise<PartnerSession | null> {
+export const getPartnerSession = cache(async function getPartnerSession(): Promise<PartnerSession | null> {
   const session = await auth();
   if (!session?.user?.id) return null;
 
@@ -63,4 +72,4 @@ export async function getPartnerSession(): Promise<PartnerSession | null> {
     lastUsedAt: account.lastUsedAt,
     createdAt: account.createdAt,
   };
-}
+});
