@@ -102,6 +102,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             idCheckEnabled: product.idCheckEnabled,
             fulfillmentMode: product.fulfillmentMode,
             isTrending: product.isTrending,
+            partnerVisible: product.partnerVisible,
           }}
         />
       </section>

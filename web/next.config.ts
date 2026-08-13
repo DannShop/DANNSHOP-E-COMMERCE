@@ -34,6 +34,14 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Halaman /mitra/dokumentasi membaca src/content/api-partner.md dari disk saat
+  // request. File yang cuma dirujuk lewat path string tidak terlihat oleh
+  // penelusuran dependensi Next.js, jadi tanpa baris ini file-nya TIDAK ikut
+  // terbawa ke bundle serverless - halaman mulus di lokal lalu 500 di produksi,
+  // kelas kegagalan senyap yang sudah beberapa kali menggigit repo ini.
+  outputFileTracingIncludes: {
+    "/mitra/dokumentasi": ["src/content/**"],
+  },
   experimental: {
     serverActions: {
       // Default Next.js untuk body Server Action cuma 1MB - berlaku di level

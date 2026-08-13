@@ -20,6 +20,14 @@ const RATE_LIMITS: { match: (pathname: string) => boolean; method?: string; key:
   // limit 120 (bukan 30) - halaman invoice polling tiap 3000ms (~20 req/menit per tab), dua tab/dua
   // customer di NAT yang sama sebelumnya cukup untuk trip limit 30/menit dan merusak layar tunggu bayar.
   { match: (p) => /^\/api\/orders\/[^/]+\/status$/.test(p), key: "order-status", limit: 120, windowMs: 60_000 },
+  // API partner (H2H). Ini LANTAI anti-DoS berbasis IP, bukan kuota partner yang
+  // sesungguhnya - kuota per-partner ada di authenticatePartner() dan di-key ke
+  // username, supaya satu partner yang mengamuk tidak mematikan partner lain yang
+  // kebetulan sekantor/se-NAT. Batas di sini sengaja longgar: yang harus dihentikan
+  // di lapisan ini cuma banjir dari satu sumber, dan menahan request SEBELUM
+  // menyentuh DB adalah satu-satunya hal yang bisa dilakukan sebelum kita tahu
+  // pemanggilnya siapa.
+  { match: (p) => p.startsWith("/api/v1/"), key: "partner-api", limit: 300, windowMs: 60_000 },
 ];
 
 export default auth(async (req) => {
@@ -69,14 +77,31 @@ export default auth(async (req) => {
     }
   }
 
+  // Portal mitra: di lapisan ini cukup "sudah login". Apakah user ini benar-benar
+  // punya akun partner diperiksa di app/mitra/layout.tsx, yang bisa membedakan
+  // "bukan mitra" (diantar ke formulir pengajuan) dari "mitra nonaktif" (tetap
+  // boleh membaca portalnya). Middleware tidak punya konteks untuk membedakan
+  // keduanya tanpa query DB kedua, dan jawabannya bukan sekadar tolak/terima.
+  if (nextUrl.pathname.startsWith("/mitra")) {
+    if (!user) {
+      return Response.redirect(new URL("/login", nextUrl));
+    }
+  }
+
   // Maintenance mode: tutup storefront publik, tapi /admin tetap harus bisa
   // diakses (buat matiin lagi) dan /login tetap harus bisa diakses (kalau
   // sesi admin kadaluwarsa persis pas maintenance nyala, jangan sampai
   // admin ikut terkunci keluar). Rewrite (bukan redirect) supaya URL asli
   // di address bar tidak berubah begitu maintenance dimatikan lagi.
+  // /mitra ikut dikecualikan: mode maintenance menutup TOKO, sementara
+  // /api/v1/* (yang juga dikecualikan lewat /api) tetap melayani mitra. Menutup
+  // portalnya sementara API-nya jalan berarti mitra kehilangan satu-satunya
+  // tempat melihat saldo dan log callback justru saat transaksinya tetap
+  // berjalan — tidak koheren.
   const isExemptFromMaintenance =
     nextUrl.pathname === "/maintenance" ||
     nextUrl.pathname.startsWith("/admin") ||
+    nextUrl.pathname.startsWith("/mitra") ||
     nextUrl.pathname.startsWith("/api") ||
     nextUrl.pathname === "/login";
   if (!isExemptFromMaintenance && (await isMaintenanceModeOn())) {
@@ -86,7 +111,7 @@ export default auth(async (req) => {
 
 export const config = {
   matcher: [
-    "/admin/:path*", "/account/:path*", "/login", "/register", "/api/:path*",
+    "/admin/:path*", "/account/:path*", "/mitra/:path*", "/login", "/register", "/api/:path*",
     "/((?!api|admin|_next/static|_next/image|favicon.ico).*)",
   ],
 };

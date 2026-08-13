@@ -19,7 +19,29 @@ Semua route ini menerima/mengembalikan HTTP biasa (bisa dites lewat `curl`).
 | POST | `/api/webhooks/midtrans` | `web/src/app/api/webhooks/midtrans/route.ts` | Notifikasi status pembayaran dari Midtrans. Lihat `docs/04-INTEGRASI-PAYMENT-PPOB.md` §2.6 untuk alur lengkap. | Body dibatasi 16.000 byte; signature diverifikasi (`verifyMidtransSignature`) SEBELUM sentuh database; idempotent lewat `WebhookEvent.eventKey`. |
 | POST | `/api/webhooks/digiflazz` | `web/src/app/api/webhooks/digiflazz/route.ts` | Notifikasi status pengiriman produk dari Digiflazz (pelengkap job polling, opsional). Lihat `docs/04-INTEGRASI-PAYMENT-PPOB.md` §3.7. | Sama polanya dengan webhook Midtrans (verifikasi signature dulu, idempotent). **Menolak semua request kalau `webhookSecret` belum dikonfigurasi admin** (fail-closed). |
 
-Route `/login` (POST), `/register` (POST), `/api/webhooks/midtrans`, `/api/cron/tick`, dan `/api/orders/[token]/status` juga di-rate-limit berbasis IP lewat `web/src/proxy.ts` sebelum sampai ke route handler-nya — lihat `docs/01-ARSITEKTUR.md` §5.4.
+Route `/login` (POST), `/register` (POST), `/api/webhooks/midtrans`, `/api/cron/tick`, `/api/orders/[token]/status`, dan `/api/v1/*` juga di-rate-limit berbasis IP lewat `web/src/proxy.ts` sebelum sampai ke route handler-nya — lihat `docs/01-ARSITEKTUR.md` §5.4.
+
+### 2.1 API Partner (`/api/v1/*`) — satu-satunya API untuk pihak luar
+
+Jalur H2H reseller. **Spesifikasi lengkap yang dikirim ke partner ada di `web/src/content/api-partner.md`, dirender untuk mitra di `/mitra/dokumentasi`** — dokumen itu ditulis untuk pembaca di luar tim, jangan menaruh detail internal di sana. Yang di bawah ini catatan sisi kita.
+
+| Method | URL | File | Fungsi | Proteksi |
+|---|---|---|---|---|
+| POST | `/api/v1/cek-saldo` | `web/src/app/api/v1/cek-saldo/route.ts` | Sisa saldo prabayar partner. | `username` + `sign` = md5(username+apiKey+`depo`). 60/menit per username. |
+| POST | `/api/v1/price-list` | `web/src/app/api/v1/price-list/route.ts` | Katalog + harga yang berlaku untuk partner itu. | Salt `pricelist`. 12/menit — sengaja ketat, satu panggilan membaca seluruh katalog. |
+| POST | `/api/v1/transaction` | `web/src/app/api/v1/transaction/route.ts` | Buat transaksi, debit saldo, kirim ke provider. | Salt = `ref_id`. 120/menit. |
+| POST | `/api/v1/transaction/status` | `web/src/app/api/v1/transaction/status/route.ts` | Cek status transaksi partner. | Salt = `ref_id`. 240/menit. |
+
+Hal-hal yang perlu diketahui sebelum menyentuh jalur ini:
+
+- **Gerbang tunggalnya `authenticatePartner()`** (`web/src/lib/partner/auth.ts`). Urutan pemeriksaannya disengaja: rate limit → lookup partner → **whitelist IP → signature** → status ban akun. IP diperiksa sebelum signature supaya partner yang lupa mendaftarkan IP tidak menerima pesan "signature salah" yang menyesatkan.
+- **`apiKey` disimpan TERENKRIPSI (AES-256-GCM), bukan di-hash.** Skema md5 mengharuskan server menghitung ulang hash yang sama, jadi key aslinya harus bisa dibaca kembali. Pola & alasannya sama persis dengan kredensial Digiflazz di `ProviderConfig.credentials`.
+- **Partner = `User` biasa + baris `PartnerAccount`.** Saldo, ledger, debit atomik, auto-refund, dan halaman `/admin/wallet-ledger` semuanya dipakai ulang apa adanya. Partner juga mengisi saldo lewat `/account/deposit` yang sudah ada — nol kode top-up baru.
+- **Harga partner = harga jual − diskon tier akunnya**, lewat `effectivePrice()` yang sama dengan storefront. Tidak ada tabel harga partner terpisah; admin cukup memberi akun partner sebuah tier.
+- **`@@unique([partnerId, partnerRefId])` adalah penjamin idempotensi.** Jangan pernah dilepas. `ref_id` yang sama dengan isi request yang sama mengembalikan order aslinya (`replayed: true`); dengan isi berbeda ditolak `rc 21`.
+- **Produk `fulfillmentMode: MANUAL` ditolak** di price list maupun transaksi — order manual berhenti menunggu admin dan dari sisi partner tampak menggantung tanpa batas.
+- **Callback keluar lewat job `partner-callback`** (`web/src/lib/partner/callback.ts`), ditandatangani HMAC-SHA256 dengan `callbackSecret`. Retry/backoff-nya memakai mesin generik `runDueJobs`. Dipicu dari 4 titik status final: dua di `lib/order/fulfillment.ts` (sukses & auto-refund), dua di `actions/orders.ts` (tandai selesai manual & tandai refunded).
+- **`toPartnerStatus()`** (`web/src/lib/partner/response.ts`) adalah satu-satunya penerjemah 9 `OrderStatus` internal → 3 status partner. Status yang belum dikenal jatuh ke `Pending`, bukan `Gagal` — supaya partner tidak merefund customer untuk transaksi yang masih berjalan.
 
 ## 3. Server Actions (`web/src/app/actions/*.ts`)
 

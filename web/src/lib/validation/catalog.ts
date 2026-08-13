@@ -28,6 +28,7 @@ export const productSchema = z.object({
   // actions/payment-config.ts.
   isTrending: z.string().nullish(),
   idCheckEnabled: z.string().nullish(),
+  partnerVisible: z.string().nullish(),
   fulfillmentMode: z.enum(["AUTO", "MANUAL"]).default("AUTO"),
 });
 

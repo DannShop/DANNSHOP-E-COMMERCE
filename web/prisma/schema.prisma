@@ -132,6 +132,8 @@ model User {
   adminActionLogs AdminActionLog[]
   passwordResetTokens PasswordResetToken[]
   memberships     UserMembership[]
+  partnerAccount  PartnerAccount?
+  partnerApplications PartnerApplication[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -316,6 +318,16 @@ model Product {
   // Cara produk ini dipenuhi. MANUAL dipakai produk yang dikirim admin sendiri
   // (App Premium dsb) - lihat enum FulfillmentMode.
   fulfillmentMode  FulfillmentMode @default(AUTO)
+  // Boleh dijual ke mitra H2H lewat /api/v1/*? Terpisah dari isActive dengan
+  // sengaja: keduanya menjawab pertanyaan yang berbeda - isActive = "tayang di
+  // storefront untuk pembeli akhir", partnerVisible = "boleh ditarik reseller".
+  // Produk yang marginnya tipis, stoknya terbatas, atau eksklusif storefront
+  // bisa dimatikan di sini tanpa menghilang dari toko.
+  //
+  // Default `true` supaya migrasi ini NOL perubahan perilaku saat deploy -
+  // seluruh produk yang sekarang muncul di price list partner tetap muncul.
+  // Pola yang sama dipakai PaymentMethodConfig.expiryMinutes.
+  partnerVisible   Boolean       @default(true)
   items            ProductItem[]
   itemGroups       ProductItemGroup[]
   createdAt        DateTime      @default(now())
@@ -453,14 +465,29 @@ model Order {
   // SKU-nya, dan sebaliknya order AUTO yang sudah terkirim akan terlihat
   // seperti masih menunggu dikirim admin.
   fulfillmentMode FulfillmentMode    @default(AUTO)
+  // ===== Jalur API Partner (H2H) =====
+  // Terisi HANYA untuk order yang masuk lewat POST /api/v1/transaction. Order
+  // storefront biasa selalu null di kedua kolom.
+  //
+  // partnerRefId = nomor referensi milik SISTEM PARTNER (bukan kita). Dipasangkan
+  // dengan @@unique di bawah, kolom ini adalah SATU-SATUNYA penjamin idempotensi
+  // API partner: partner yang mengirim ulang ref_id yang sama (timeout jaringan,
+  // retry otomatis di sisi mereka) akan menabrak unique constraint alih-alih
+  // membuat order kedua dan mendebit saldonya dua kali. Jangan pernah menghapus
+  // constraint itu "biar partner bisa order ulang" - itu lubang double-charge.
+  partnerId     String?
+  partner       PartnerAccount?      @relation(fields: [partnerId], references: [id])
+  partnerRefId  String?
   payment       OrderPayment?
   fulfillments  OrderFulfillment[]
   statusHistory OrderStatusHistory[]
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
+  @@unique([partnerId, partnerRefId])
   @@index([status, createdAt])
   @@index([publicToken])
+  @@index([partnerId, createdAt])
 }
 
 model PaymentMethodConfig {
@@ -712,4 +739,140 @@ model ProviderApiLog {
   @@index([orderId])
   @@index([ourRefId])
   @@index([provider, outcome, createdAt])
+}
+
+// ===== Blok 9: API Partner (H2H reseller) =====
+
+// Kredensial & konfigurasi satu partner reseller yang memesan lewat
+// POST /api/v1/* (lihat web/src/content/api-partner.md).
+//
+// SENGAJA menempel pada User yang sudah ada, BUKAN tabel akun terpisah. Alasannya
+// bukan sekadar hemat kolom: partner membayar dari SALDO PRABAYAR, dan seluruh
+// mesin saldo yang sudah teruji - Wallet, WalletLedger (double-entry + idempotencyKey),
+// debit atomik `updateMany(balance: { gte: total })` di checkout, auto-refund ke saldo
+// saat fulfillment gagal, halaman /admin/wallet-ledger - semuanya sudah berbasis
+// userId. Membuat "saldo partner" tersendiri berarti menulis ulang semua itu di
+// jalur uang kedua yang tidak pernah dites sekeras yang pertama. Efek sampingnya
+// juga menguntungkan: partner bisa isi saldo lewat /account/deposit yang sudah ada
+// (QRIS/VA), tanpa satu baris kode top-up baru.
+model PartnerAccount {
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id])
+  // Identitas yang dikirim partner di body request. Terpisah dari email login
+  // supaya kredensial API bisa dicabut/diganti tanpa menyentuh akun loginnya.
+  username String @unique
+  // API key DIENKRIPSI (AES-256-GCM lewat lib/crypto.ts), BUKAN di-hash.
+  //
+  // Ini keputusan yang perlu dibaca sebelum "diperbaiki": skema tanda tangan
+  // md5(username + apiKey + ref_id) mengharuskan server menghitung ulang hash
+  // yang sama, jadi kita WAJIB bisa membaca kembali apiKey aslinya - hash satu
+  // arah (bcrypt/SHA) mustahil dipakai di sini. Ini persis situasi & pola yang
+  // sama dengan kredensial Digiflazz di ProviderConfig.credentials.
+  apiKeyEnc      String    @db.Text
+  // URL callback partner. Kosong = partner memilih polling status sendiri.
+  callbackUrl    String?   @db.Text
+  // Secret HMAC-SHA256 untuk menandatangani body callback KELUAR, supaya partner
+  // bisa membuktikan callback benar-benar dari kita. Terenkripsi, alasan sama
+  // seperti apiKeyEnc (kita harus bisa membacanya untuk menandatangani).
+  callbackSecretEnc String? @db.Text
+  // Daftar IP yang boleh memanggil, dipisah koma. NULL/kosong = semua IP boleh.
+  // Sengaja opsional: partner di shared hosting punya IP tetap dan sebaiknya
+  // mengunci, tapi partner di cloud (IP berganti-ganti) akan terkunci keluar
+  // permanen kalau kolom ini wajib - persis masalah rc 45 Digiflazz yang sudah
+  // kita alami sendiri dari sisi sebaliknya (lihat docs/08-IP-TETAP-DIGIFLAZZ.md).
+  ipWhitelist    String?   @db.Text
+  isActive       Boolean   @default(true)
+  // Jejak pemakaian terakhir - dipakai admin untuk melihat partner yang tidak
+  // pernah benar-benar mengintegrasikan, tanpa harus menggali tabel Order.
+  lastUsedAt     DateTime?
+  orders         Order[]
+  // Pengajuan yang melahirkan akun ini. NULL untuk partner yang dibuat admin
+  // langsung lewat /admin/partners (jalur lama, tetap dipertahankan untuk
+  // kasus darurat/demo).
+  applicationId  String?   @unique
+  application    PartnerApplication? @relation(fields: [applicationId], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+enum PartnerApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Bentuk badan usaha pemohon. Daftarnya mengikuti form pendaftaran H2H yang
+// sudah jadi standar di industri ini (Perorangan vs Badan Hukum), dipecah
+// sedikit lebih halus supaya admin bisa membedakan CV/PT tanpa membuka lampiran.
+enum PartnerBusinessType {
+  PERORANGAN
+  CV
+  PT
+  KOPERASI
+  LAINNYA
+}
+
+/// Pengajuan bergabung jadi mitra H2H.
+///
+/// Kemitraan di sini SENGAJA tidak terbuka untuk publik: formnya hanya bisa
+/// diakses dari dalam panel user (/account/mitra), jadi pemohon wajib sudah
+/// jadi member DannShop yang emailnya terverifikasi lewat alur register biasa.
+/// Itu memberi kita identitas awal gratis dan mencegah price list - yang pada
+/// dasarnya adalah struktur harga dan margin kita - ditarik oleh orang yang
+/// belum pernah kita kenal sama sekali.
+///
+/// Kolom teknis (serverIps/callbackUrl/platform) dikumpulkan DI SINI, bukan
+/// ditanyakan lagi setelah disetujui, karena nilainya langsung disalin ke
+/// PartnerAccount saat approve. Field "IP Center" adalah pola yang dipakai
+/// distributor H2H besar dan alasannya sama dengan yang sudah kita alami dari
+/// sisi sebaliknya: partner yang lupa mendaftarkan IP akan tertahan rc 12 di
+/// panggilan pertamanya, dan itu momen terburuk untuk menemukan masalah.
+model PartnerApplication {
+  id     String                   @id @default(cuid())
+  userId String
+  user   User                     @relation(fields: [userId], references: [id])
+  status PartnerApplicationStatus @default(PENDING)
+
+  // ===== Data usaha =====
+  businessName String
+  businessType PartnerBusinessType @default(PERORANGAN)
+  businessCity String
+  websiteUrl   String?             @db.Text
+
+  // ===== PIC (penanggung jawab) =====
+  // Nomor WhatsApp wajib: kalau integrasi partner mengamuk (retry tanpa henti,
+  // saldo habis di tengah malam), email tidak cukup cepat.
+  picName  String
+  picPhone String
+  picRole  String?
+
+  // ===== Data teknis =====
+  // Software/platform yang dipakai partner. Menentukan seberapa banyak bantuan
+  // integrasi yang perlu disiapkan - "sistem sendiri" beda jauh dari "aplikasi
+  // H2H pihak ketiga" yang formatnya sudah dipatok vendor mereka.
+  platform    String?
+  // Calon isi PartnerAccount.ipWhitelist. Dipisah koma, sama persis formatnya.
+  serverIps   String? @db.Text
+  callbackUrl String? @db.Text
+
+  // ===== Skala & motivasi =====
+  // Disimpan sebagai String (bukan enum) supaya rentangnya bisa diubah kapan
+  // saja tanpa migrasi; daftar nilainya dikunci zod di lib/partner/application.ts.
+  monthlyVolume String
+  notes         String? @db.Text
+
+  // ===== Tinjauan admin =====
+  reviewedById String?
+  reviewedAt   DateTime?
+  // Alasan penolakan. DITAMPILKAN ke pemohon, jadi isinya harus layak dibaca
+  // orang luar - bukan catatan internal.
+  reviewNote   String?   @db.Text
+
+  partnerAccount PartnerAccount?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }

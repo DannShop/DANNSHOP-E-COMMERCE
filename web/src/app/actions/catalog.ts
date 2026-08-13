@@ -104,6 +104,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
     nicknameCheckKey: formData.get("nicknameCheckKey") ?? "",
     isTrending: formData.get("isTrending"),
     idCheckEnabled: formData.get("idCheckEnabled"),
+    partnerVisible: formData.get("partnerVisible"),
     fulfillmentMode: formData.get("fulfillmentMode") === "MANUAL" ? "MANUAL" : "AUTO",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -122,6 +123,10 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
       idCheckEnabled: parsed.data.idCheckEnabled === "on",
       fulfillmentMode: parsed.data.fulfillmentMode,
       isTrending: parsed.data.isTrending === "on",
+      // Checkbox tak tercentang = tidak dikirim sama sekali, jadi ini benar-benar
+      // berarti "admin mencentang untuk membukanya ke mitra". Form memberi
+      // defaultChecked=true untuk produk baru supaya cocok dengan default kolomnya.
+      partnerVisible: parsed.data.partnerVisible === "on",
       isActive: false,
     },
   });
@@ -150,6 +155,7 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
     nicknameCheckKey: formData.get("nicknameCheckKey") ?? "",
     isTrending: formData.get("isTrending"),
     idCheckEnabled: formData.get("idCheckEnabled"),
+    partnerVisible: formData.get("partnerVisible"),
     fulfillmentMode: formData.get("fulfillmentMode") === "MANUAL" ? "MANUAL" : "AUTO",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -169,6 +175,10 @@ export async function updateProduct(formData: FormData): Promise<ActionResult> {
       idCheckEnabled: parsed.data.idCheckEnabled === "on",
       fulfillmentMode: parsed.data.fulfillmentMode,
       isTrending: parsed.data.isTrending === "on",
+      // Checkbox tak tercentang = tidak dikirim sama sekali, jadi ini benar-benar
+      // berarti "admin mencentang untuk membukanya ke mitra". Form memberi
+      // defaultChecked=true untuk produk baru supaya cocok dengan default kolomnya.
+      partnerVisible: parsed.data.partnerVisible === "on",
     },
   });
   await logAdmin(admin.adminId, "catalog.update_product", id);

@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { getSalesSummary, startOfDay, endOfDay } from "@/lib/reports/sales";
+import { CRON_STALE_MINUTES, getCronHealth } from "@/lib/jobs/heartbeat";
+
+const DATE_FMT = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" });
 
 function formatRupiah(amount: bigint): string {
   return new Intl.NumberFormat("id-ID", {
@@ -68,15 +71,23 @@ const QUICK_LINKS = [
 export default async function AdminDashboardPage() {
   const today = new Date();
 
-  const [todaySummary, needsReviewCount, refundPendingCount, lowBalanceProviders] = await Promise.all([
-    getSalesSummary(startOfDay(today), endOfDay(today)),
-    db.order.count({ where: { status: "NEEDS_REVIEW" } }),
-    db.order.count({ where: { status: "REFUND_PENDING" } }),
-    db.providerConfig.findMany({
-      where: { balanceAlertStatus: "LOW", isActive: true },
-      select: { displayName: true, balance: true },
-    }),
-  ]);
+  const [todaySummary, needsReviewCount, refundPendingCount, lowBalanceProviders, cronHealth, overdueJobs] =
+    await Promise.all([
+      getSalesSummary(startOfDay(today), endOfDay(today)),
+      db.order.count({ where: { status: "NEEDS_REVIEW" } }),
+      db.order.count({ where: { status: "REFUND_PENDING" } }),
+      db.providerConfig.findMany({
+        where: { balanceAlertStatus: "LOW", isActive: true },
+        select: { displayName: true, balance: true },
+      }),
+      getCronHealth(today),
+      // Job yang jatuh tempo lebih dari ambang basi. Angka ini yang menerjemahkan
+      // "cron mati" jadi kerugian yang konkret bagi admin: sekian pekerjaan
+      // menumpuk dan tidak ada yang mengerjakannya.
+      db.job.count({
+        where: { status: "PENDING", runAt: { lt: new Date(today.getTime() - CRON_STALE_MINUTES * 60_000) } },
+      }),
+    ]);
 
   const hasAlerts = needsReviewCount > 0 || refundPendingCount > 0 || lowBalanceProviders.length > 0;
 
@@ -88,6 +99,61 @@ export default async function AdminDashboardPage() {
           Ringkasan performa toko hari ini.
         </p>
       </div>
+
+      {/* ===== Cron mati =====
+          Ditaruh DI ATAS panel peringatan biasa dan dengan gaya sendiri, bukan
+          sebagai satu baris di dalamnya, karena akibatnya beda kelas: kalau cron
+          mati, order berhenti auto-expire, callback mitra tidak pernah terkirim,
+          dan order yang sudah sukses di provider bisa nyangkut "Diproses"
+          selamanya. Sinyalnya sengaja dipicu oleh admin yang membuka panel ini —
+          jadi tidak bergantung pada cron yang justru sedang mati. */}
+      {cronHealth.stale && (
+        <div className="glass-card overflow-hidden rounded-2xl border-destructive/40 bg-destructive/[0.04] p-5">
+          <p className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <span className="grid size-8 place-items-center rounded-lg bg-destructive/10 ring-1 ring-destructive/20">
+              <TriangleAlert className="size-4" aria-hidden="true" />
+            </span>
+            Cron tidak berjalan
+          </p>
+          <p className="mt-2.5 text-sm text-foreground/80">
+            {cronHealth.neverSeen ? (
+              <>
+                Belum pernah ada satu pun panggilan <code className="rounded bg-foreground/10 px-1">/api/cron/tick</code>{" "}
+                yang tercatat.
+              </>
+            ) : (
+              <>
+                Panggilan terakhir <strong className="text-destructive">{cronHealth.minutesSinceLastTick} menit lalu</strong>{" "}
+                ({cronHealth.lastTickAt ? DATE_FMT.format(cronHealth.lastTickAt) : "—"}). Seharusnya tiap menit.
+              </>
+            )}{" "}
+            Selama ini berlangsung: order tidak auto-expire, harga tidak tersinkron, callback mitra tidak terkirim, dan
+            order yang sudah sukses di provider bisa nyangkut &quot;Diproses&quot;.
+            {overdueJobs > 0 && (
+              <>
+                {" "}
+                <strong className="text-destructive">{overdueJobs} job</strong> sudah menumpuk lewat jadwalnya.
+              </>
+            )}
+          </p>
+          <p className="mt-2.5 text-xs text-muted-foreground">
+            Cron proyek ini <strong className="text-foreground">eksternal</strong> (cPanel Rumahweb →{" "}
+            <code className="rounded bg-foreground/10 px-1">POST /api/cron/tick</code>), bukan cron Vercel. Periksa
+            berurutan: <strong className="text-foreground">(1)</strong> URL di cron eksternal masih menunjuk domain yang
+            hidup sekarang — domain Vercel lama akan menjawab 404 tiap menit tanpa gejala apa pun;{" "}
+            <strong className="text-foreground">(2)</strong> panggil endpoint-nya manual — sejak sekarang balasan 401
+            menyertakan <code className="rounded bg-foreground/10 px-1">reason</code> yang menyebutkan apakah{" "}
+            <code className="rounded bg-foreground/10 px-1">CRON_SECRET</code> belum terpasang atau secretnya tidak
+            cocok.
+          </p>
+          <Link
+            href="/admin/jobs"
+            className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-destructive underline-offset-4 hover:underline"
+          >
+            Buka Monitoring Job <ArrowUpRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
+      )}
 
       {/* Panel peringatan hanya muncul kalau memang ada yang perlu ditangani -
           bukan kartu kosong permanen yang lama-lama diabaikan. */}

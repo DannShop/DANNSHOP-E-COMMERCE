@@ -18,6 +18,7 @@ import { diagnoseFailure } from "@/lib/order/failure-reason";
 import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 import { decideFulfillmentRetry } from "@/lib/order/retry-decision";
 import { truncateNote } from "@/lib/order/status-note";
+import { enqueuePartnerCallback } from "@/lib/partner/callback";
 
 // Status order yang TIDAK BOLEH ditimpa oleh proses otomatis (webhook, job
 // recheck-fulfillment, job runner). Begitu order mencapai salah satu status ini,
@@ -266,6 +267,9 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
         }),
       );
     }
+    // Order lewat API partner: beri tahu sistem mereka. No-op untuk order
+    // storefront biasa (dijaga di dalam enqueuePartnerCallback).
+    await enqueuePartnerCallback(fulfillment.orderId);
   } else if (status === "FAILED") {
     const order = await db.order.findUniqueOrThrow({ where: { id: fulfillment.orderId } });
 
@@ -324,6 +328,10 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
             refunded: "wallet",
           }),
         );
+        // Partner WAJIB diberi tahu kegagalan, bukan cuma keberhasilan: saldonya
+        // sudah dikembalikan di sini, dan kalau mereka tidak tahu, customer
+        // mereka menunggu barang yang tidak akan pernah datang.
+        await enqueuePartnerCallback(order.id);
       } catch (e) {
         if (e instanceof Error && e.message === "ORDER_ALREADY_TERMINAL") {
           // Transaksi sudah di-rollback oleh Prisma (kredit wallet & ledger TIDAK jadi ditulis) -
@@ -532,6 +540,7 @@ export async function retryOrderRefund(orderId: string): Promise<{ ok: true } | 
     await db.orderStatusHistory.create({
       data: { orderId: order.id, toStatus: "REFUNDED", note: "Refund ke saldo diulang manual oleh admin" },
     });
+    await enqueuePartnerCallback(order.id);
     return { ok: true };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {

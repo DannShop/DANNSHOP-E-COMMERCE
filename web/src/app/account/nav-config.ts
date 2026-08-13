@@ -1,4 +1,4 @@
-import { House, PlusCircle, ReceiptText, Wallet, Settings } from "lucide-react";
+import { House, PlusCircle, ReceiptText, Wallet, Handshake, Settings } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 // Tipe ikon ditulis manual (bukan `LucideIcon`) supaya file ini tidak terikat
@@ -15,16 +15,34 @@ export interface AccountNavItem {
 // Satu-satunya sumber kebenaran menu panel user - dipakai sidebar desktop,
 // tab bar mobile, DAN judul di header.
 //
-// Jumlahnya sengaja dijaga di angka lima. Tab bar iOS mulai terasa sesak lewat
-// dari itu, dan urutannya mengikuti seberapa sering dipakai: isi saldo dan
-// riwayat transaksi jauh lebih sering dibuka daripada pengaturan.
+// Urutannya mengikuti seberapa sering dipakai: isi saldo dan riwayat transaksi
+// jauh lebih sering dibuka daripada pengaturan.
+//
+// "Mitra" ditaruh di menu utama, bukan disembunyikan di dalam Pengaturan, dan
+// itu keputusan yang disengaja: program mitra H2H hanya terbuka untuk member
+// terdaftar, jadi SATU-SATUNYA cara orang tahu program ini ada adalah dengan
+// melihatnya di sini. Menyembunyikannya berarti membuat pintu masuk yang tidak
+// pernah ditemukan siapa pun.
 export const ACCOUNT_NAV: AccountNavItem[] = [
   { href: "/account", label: "Beranda", icon: House },
   { href: "/account/deposit", label: "Isi Saldo", icon: PlusCircle },
   { href: "/account/orders", label: "Transaksi", icon: ReceiptText },
   { href: "/account/deposits", label: "Deposit", icon: Wallet },
+  { href: "/account/mitra", label: "Mitra", icon: Handshake },
   { href: "/account/settings", label: "Pengaturan", icon: Settings },
 ];
+
+/**
+ * Kelas grid tab bar mobile, diturunkan dari panjang menu.
+ *
+ * Ditulis sebagai peta literal karena Tailwind memindai kelas secara statis —
+ * `grid-cols-${n}` tidak akan pernah ikut ter-compile dan tab bar-nya jadi satu
+ * kolom menumpuk. Dibatasi sampai 6: lewat dari itu labelnya tidak lagi terbaca
+ * di layar 360px dan menunya harus dipangkas, bukan digencet lagi.
+ */
+export const ACCOUNT_NAV_GRID_CLASS: string =
+  ({ 4: "grid-cols-4", 5: "grid-cols-5", 6: "grid-cols-6" } as Record<number, string>)[ACCOUNT_NAV.length] ??
+  "grid-cols-5";
 
 /**
  * `/account` adalah prefix dari SEMUA route panel, jadi khusus dia dicocokkan

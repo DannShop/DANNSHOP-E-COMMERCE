@@ -7,6 +7,7 @@ import type { TopupProviderAdapter } from "@/lib/providers/types";
 import { decideBalanceAlertTransition } from "@/lib/providers/balance-alert";
 import { buildCustomerNo } from "@/lib/order/customer-no";
 import { formatBalanceAlertMessage, notifyTelegram } from "@/lib/notify/telegram";
+import { sendPartnerCallback } from "@/lib/partner/callback";
 
 export type JobHandler = (payload: unknown) => Promise<string | void>;
 
@@ -44,6 +45,18 @@ export const handlers: Record<string, JobHandler> = {
       },
     });
     return `updated=${result.updated} missing=${result.missing}`;
+  },
+
+  // payload: { orderId }
+  //
+  // Pemberitahuan hasil transaksi ke server partner (H2H). Sengaja TIDAK
+  // menangkap error sendiri: kegagalan dilempar apa adanya supaya runDueJobs
+  // memakai backoff & maxAttempts generiknya — server partner yang sedang mati
+  // beberapa menit akan tersusul sendiri tanpa kode retry khusus di sini.
+  "partner-callback": async (payload) => {
+    const { orderId } = payload as { orderId: string };
+    await sendPartnerCallback(orderId);
+    return `callback terkirim untuk order ${orderId}`;
   },
 
   "expire-order": async (payload) => {

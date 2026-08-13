@@ -37,6 +37,7 @@ export interface ProductFormInitial {
   idCheckEnabled: boolean;
   fulfillmentMode: "AUTO" | "MANUAL";
   isTrending: boolean;
+  partnerVisible: boolean;
 }
 
 export function ProductForm({
@@ -235,6 +236,24 @@ export function ProductForm({
         <Label htmlFor="isTrending" className="font-normal">
           Trending (tampil di section 🔥 Trending kalau mode manual)
         </Label>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          {/* Default true untuk produk baru — sama dengan default kolomnya, jadi
+              perilaku katalog mitra tidak berubah diam-diam saat admin membuat
+              produk tanpa menyentuh centang ini. */}
+          <Checkbox id="partnerVisible" name="partnerVisible" defaultChecked={initial?.partnerVisible ?? true} />
+          <Label htmlFor="partnerVisible" className="font-normal">
+            Boleh dijual ke mitra H2H lewat API
+          </Label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Terpisah dari status Aktif. Matikan kalau produk ini eksklusif storefront atau marginnya terlalu tipis untuk
+          dijual reseller — produk tetap tayang di toko, tapi hilang dari{" "}
+          <code className="rounded bg-foreground/10 px-1">/api/v1/price-list</code> dan transaksinya ditolak. Produk
+          mode MANUAL tidak pernah muncul di katalog mitra apa pun centangnya.
+        </p>
       </div>
 
       <div className="flex items-center gap-3">

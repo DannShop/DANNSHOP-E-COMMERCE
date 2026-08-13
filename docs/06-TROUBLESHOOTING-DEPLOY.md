@@ -45,7 +45,37 @@ Buka `http://localhost:3000`.
 
 - **Aplikasi:** Vercel (Next.js). Konfigurasi region di `web/vercel.json` — di-pin ke `sin1` (Singapura) supaya dekat dengan database (mengurangi latency checkout).
 - **Database:** MySQL-compatible (production pakai TiDB Cloud Serverless — wire-protocol kompatibel MySQL, jadi tidak perlu ubah apa pun di Prisma).
-- **Cron:** **BUKAN** cron bawaan Vercel — dipanggil dari layanan cron eksternal (proyek ini pakai Hostinger cron) yang memanggil `POST https://domainmu.com/api/cron/tick` tiap menit dengan header `x-cron-secret: <nilai CRON_SECRET>`. Kalau cron eksternal ini berhenti berjalan, semua job background (expire order/deposit, sinkronisasi harga, dll.) juga berhenti — lihat `docs/01-ARSITEKTUR.md` §6.
+- **Cron:** **BUKAN** cron bawaan Vercel — dipanggil dari layanan cron eksternal (proyek ini pakai cron cPanel Rumahweb) yang memanggil `POST https://domainmu.com/api/cron/tick` tiap menit dengan header `x-cron-secret: <nilai CRON_SECRET>`. Kalau cron eksternal ini berhenti berjalan, semua job background (expire order/deposit, sinkronisasi harga, callback mitra, dll.) juga berhenti — lihat `docs/01-ARSITEKTUR.md` §6.
+
+  > #### ⚠️ Jebakan #1 cron eksternal: URL-nya menunjuk domain Vercel yang sudah mati
+  >
+  > **Ini sudah benar-benar terjadi di proyek ini — cron mati 4 hari tanpa satu pun gejala.**
+  >
+  > URL cron disimpan di panel cPanel, **di luar repo**, jadi tidak ikut berubah saat domain Vercel berganti (rename project, hapus-buat ulang, ganti domain kustom). Domain Vercel yang sudah tidak dipakai **tetap menjawab** — dengan `HTTP 404` + header `X-Vercel-Error: DEPLOYMENT_NOT_FOUND`. Bukan DNS error, bukan timeout: sebuah balasan HTTP yang rapi dan cepat. Kebanyakan layanan cron menganggap itu "berhasil dipanggil" dan tidak pernah memberi tahu siapa pun.
+  >
+  > **Cara memeriksanya dalam 5 detik** — jalankan untuk URL yang PERSIS tertulis di cron cPanel:
+  > ```bash
+  > curl -s -o /dev/null -w "%{http_code}\n" -X POST https://URL-YANG-DI-CPANEL/api/cron/tick
+  > ```
+  > - `401` → **domainnya benar** (endpoint hidup, cuma menolak karena tidak dikirimi secret). Lanjut ke jebakan #2.
+  > - `404` → **domainnya salah/mati.** Ini penyebabnya. Ganti URL di cron cPanel ke domain yang sekarang.
+  >
+  > #### ⚠️ Jebakan #2: `CRON_SECRET` belum terpasang vs secretnya salah
+  >
+  > Dulu keduanya membalas `401` yang identik sehingga mustahil dibedakan dari luar. **Sejak sekarang balasan 401 menyertakan `reason` + `message`** (`lib/jobs/cron-auth.ts`):
+  > ```bash
+  > curl -s -X POST https://domainmu.com/api/cron/tick | jq
+  > # {"error":"Unauthorized","reason":"secret_not_configured","message":"CRON_SECRET belum dipasang ... lalu REDEPLOY"}
+  > # {"error":"Unauthorized","reason":"no_secret_sent",...}
+  > # {"error":"Unauthorized","reason":"secret_mismatch",...}
+  > ```
+  > Membocorkan alasan ini aman — tidak ada nilai rahasia yang ikut keluar, dan endpoint tetap fail-closed. Ada test regresinya di `tests/cron-auth.test.ts`.
+  >
+  > **Ingat:** menambah/mengubah env di Vercel **tidak berlaku untuk deployment yang sudah jalan** — wajib **redeploy** sesudahnya.
+  >
+  > #### 🔔 Sekarang matinya cron tidak lagi senyap
+  >
+  > Tiap tick yang lolos autentikasi mencatat detak ke `SiteSetting["cron_last_tick_at"]` (`lib/jobs/heartbeat.ts`), dan **dashboard admin menampilkan banner merah kalau detak terakhir lebih dari 15 menit lalu** — lengkap dengan jumlah job yang menumpuk. Pemicunya admin membuka panel, jadi peringatan ini **tidak bergantung pada cron yang justru sedang mati**. Kalau lihat banner itu, kerjakan dua jebakan di atas berurutan.
 - **File storage:** Vercel Blob (untuk semua gambar upload).
 
 ### 2.2 Environment variables yang wajib diset di Vercel

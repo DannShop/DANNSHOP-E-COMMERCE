@@ -16,6 +16,9 @@ Dokumentasi teknis lengkap untuk project **DannShop** — platform PPOB/digital 
 | 05 | [CARA-TAMBAH-FITUR](./05-CARA-TAMBAH-FITUR.md) | Panduan step-by-step: tambah produk, metode bayar, halaman, endpoint, field database | Mau menambah sesuatu yang baru |
 | 06 | [TROUBLESHOOTING-DEPLOY](./06-TROUBLESHOOTING-DEPLOY.md) | Cara run lokal, cara deploy, solusi masalah yang sudah pernah benar-benar terjadi | Ada error, atau mau deploy |
 | 09 | [FITUR-SESI-2026-08-09](./09-FITUR-SESI-2026-08-09.md) | Notifikasi Telegram, invoice/email/struk, kustomisasi storefront, analytics, cek ID game, produk manual | Mau paham 7 fitur terbaru & keputusan desain di baliknya |
+| — | [api-partner](../web/src/content/api-partner.md) | **Dokumen untuk pihak luar.** Spesifikasi API H2H reseller: autentikasi md5, 4 endpoint, callback, kode `rc`, contoh PHP | Ada partner yang mau integrasi — mitra membacanya sendiri di `/mitra/dokumentasi` |
+
+> **Kenapa `api-partner.md` tinggal di `web/src/content/`, bukan di `docs/`:** file itu **dirender langsung** oleh halaman `/mitra/dokumentasi`, dengan `username` dan URL milik mitra yang sedang login sudah tersubstitusi ke contoh kodenya. Menyimpan salinan kedua di `docs/` berarti dua versi yang pasti melenceng, dan mitra akan membaca yang salah. Satu file, satu sumber kebenaran.
 
 ## Urutan Baca yang Disarankan
 
@@ -37,7 +40,8 @@ Beberapa hal mendasar yang perlu diketahui sebelum baca dokumen mana pun, supaya
 4. **Migrasi database TIDAK otomatis di deploy Vercel** — ini sudah pernah menyebabkan insiden nyata, WAJIB dijalankan manual tiap kali ada perubahan skema (lihat `docs/05-CARA-TAMBAH-FITUR.md` §5 dan `docs/06-TROUBLESHOOTING-DEPLOY.md` §2.3).
 5. **Banyak konten yang dulunya hardcode di kode sekarang bisa diedit lewat panel admin** — FAQ, Syarat & Ketentuan, Kebijakan Privasi, logo, favicon, kontak CS, konfigurasi email, dan notifikasi Telegram di `/admin/settings`; identitas dokumen & template email di `/admin/invoice`; tema, CSS kustom, dan slot HTML storefront di `/admin/appearance` (lihat dokumen 09). Kalau isi salah satu halaman itu perlu diubah, **cek dulu apakah itu bisa diedit lewat admin sebelum mengedit file kode**.
 6. **Harga produk punya 3 tingkat prioritas**: harga flash sale (kalau sedang aktif) > harga member (kalau pembeli login) > harga normal — semua dihitung SATU tempat (`web/src/lib/pricing/effective-price.ts`), tidak pernah dihitung ulang berbeda-beda di banyak tempat.
-7. **Provider PPOB yang sudah benar-benar berfungsi cuma Digiflazz** — 3 provider lain (`OkeConnect`, `QiosPay`, `Serpul`) baru terdaftar sebagai pilihan (enum) di database, arsitekturnya sudah siap menambahkan provider baru, tapi belum ada kode adapter-nya.
+7. **`/api/v1/*` adalah satu-satunya API yang boleh diakses pihak luar** — jalur H2H untuk partner reseller, diautentikasi dengan `username` + signature md5, dibayar dari saldo prabayar akun partner. Seluruh endpoint lain di `web/src/app/api/` bersifat internal (webhook, polling, cron). Kalau menambah endpoint publik baru, tempatnya di bawah `/api/v1/` dan dokumennya di `web/src/content/api-partner.md` (dirender di `/mitra/dokumentasi`) — dokumen itu dikirim ke pihak luar, jadi jangan menaruh detail internal di sana.
+8. **Provider PPOB yang sudah benar-benar berfungsi cuma Digiflazz** — 3 provider lain (`OkeConnect`, `QiosPay`, `Serpul`) baru terdaftar sebagai pilihan (enum) di database, arsitekturnya sudah siap menambahkan provider baru, tapi belum ada kode adapter-nya.
 
 ## Kalau Dokumentasi Ini Perlu Diperbarui
 

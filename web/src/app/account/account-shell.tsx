@@ -6,7 +6,7 @@ import { LogOut, Store } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
-import { ACCOUNT_NAV, isAccountNavActive, resolveAccountPageTitle } from "./nav-config";
+import { ACCOUNT_NAV, ACCOUNT_NAV_GRID_CLASS, isAccountNavActive, resolveAccountPageTitle } from "./nav-config";
 
 /**
  * Kerangka panel user.
@@ -138,7 +138,7 @@ export function AccountShell({
         aria-label="Menu akun"
         className="glass-panel fixed inset-x-0 bottom-0 z-30 border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        <ul className="grid grid-cols-5">
+        <ul className={cn("grid", ACCOUNT_NAV_GRID_CLASS)}>
           {ACCOUNT_NAV.map((item) => {
             const active = isAccountNavActive(pathname, item.href);
             return (

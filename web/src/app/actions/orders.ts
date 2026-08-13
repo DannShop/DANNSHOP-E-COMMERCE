@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { retryOrderFulfillment, retryOrderRefund } from "@/lib/order/fulfillment";
 import { truncateNote } from "@/lib/order/status-note";
+import { enqueuePartnerCallback } from "@/lib/partner/callback";
 import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 
 export interface ActionResult {
@@ -115,6 +116,10 @@ export async function markCompletedManualAction(formData: FormData): Promise<Act
   });
   const completedOrder = await db.order.findUnique({ where: { id: orderId } });
   if (completedOrder) await sendOrderCompletedEmail(completedOrder, sn.trim());
+  // Status final yang ditetapkan admin juga harus sampai ke partner - jalur
+  // otomatis di fulfillment.ts bukan satu-satunya yang bisa menutup order
+  // (lihat pola "audit semua instance sejenis" di catatan repo).
+  await enqueuePartnerCallback(orderId);
   await logAdmin(admin.adminId, "order.mark_completed_manual", orderId, { sn: sn.trim() });
   revalidatePath("/admin/orders");
   revalidatePath(`/admin/orders/${orderNumber}`);
@@ -153,6 +158,7 @@ export async function markRefundedAction(formData: FormData): Promise<ActionResu
       null,
     );
   }
+  await enqueuePartnerCallback(orderId);
   await logAdmin(admin.adminId, "order.mark_refunded", orderId, { note: note.trim() });
   revalidatePath("/admin/orders");
   revalidatePath(`/admin/orders/${orderNumber}`);
