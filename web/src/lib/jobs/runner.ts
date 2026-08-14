@@ -4,10 +4,9 @@ import type { ProviderKey } from "@prisma/client";
 import { applyFulfillmentResult, dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
 import { getAdapter } from "@/lib/providers/registry";
 import type { TopupProviderAdapter } from "@/lib/providers/types";
-import { decideBalanceAlertTransition } from "@/lib/providers/balance-alert";
 import { buildCustomerNo } from "@/lib/order/customer-no";
-import { formatBalanceAlertMessage, notifyTelegram } from "@/lib/notify/telegram";
 import { sendPartnerCallback } from "@/lib/partner/callback";
+import { applyBalanceAlert } from "@/lib/providers/balance-sync";
 
 export type JobHandler = (payload: unknown) => Promise<string | void>;
 
@@ -137,34 +136,11 @@ export const handlers: Record<string, JobHandler> = {
       });
       await db.providerBalanceLog.create({ data: { providerId: provider.id, balance } });
 
-      const transition = decideBalanceAlertTransition(balance, provider.minBalanceAlert!, provider.balanceAlertStatus);
-      if (transition.alert !== "none") {
-        // Kirim dulu, baru persist transisi status - KALAU sukses terkirim.
-        // Kalau kirim gagal (jaringan/token salah), status DB TIDAK diubah supaya
-        // siklus job berikutnya (1 jam lagi) otomatis mencoba ulang alert yang sama
-        // (state machine mengevaluasi ulang dari status lama, konsisten).
-        const outcome = await notifyTelegram(
-          "provider_balance",
-          formatBalanceAlertMessage({
-            displayName: provider.displayName,
-            balance,
-            threshold: provider.minBalanceAlert!,
-            recovered: transition.alert === "recovered",
-          }),
-        );
-        // "disabled" (admin sengaja mematikan kategori notifikasi ini) ikut
-        // dianggap tuntas - hanya "failed" yang menahan transisi untuk dicoba
-        // ulang. Kalau tidak dibedakan, mematikan notifikasi saldo akan
-        // membekukan state machine-nya selamanya di status lama.
-        if (outcome !== "failed") {
-          // CAS: cuma tulis kalau status belum diubah proses lain sejak dibaca -
-          // menutup race yang sangat jarang antar-invocation job yang tumpang tindih.
-          await db.providerConfig.updateMany({
-            where: { key: provider.key, balanceAlertStatus: provider.balanceAlertStatus },
-            data: { balanceAlertStatus: transition.newStatus },
-          });
-        }
-      }
+      // Evaluasi alert dipusatkan di applyBalanceAlert() supaya jalur cron ini,
+      // tombol "Cek Saldo" manual, dan penyimpanan ambang batas tidak pernah
+      // berbeda perilaku. Sebelumnya logikanya hanya ada di sini, dan dua jalur
+      // lain diam-diam melewatkannya.
+      await applyBalanceAlert(provider, balance);
     }
 
     // Self-reschedule tiap 1 jam (pola sama seperti "sync-prices") - dijalankan

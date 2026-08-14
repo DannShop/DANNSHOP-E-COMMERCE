@@ -8,6 +8,7 @@ import type { DigiflazzCredentials } from "@/lib/providers/digiflazz";
 import type { OkeConnectCredentials } from "@/lib/providers/okeconnect";
 import { getAdapter } from "@/lib/providers/registry";
 import { isRelayConfigured } from "@/lib/providers/relay";
+import { applyBalanceAlert } from "@/lib/providers/balance-sync";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 
 export const digiflazzCredentialsSchema = z.object({
@@ -257,6 +258,11 @@ export async function checkProviderBalance(formData: FormData): Promise<ActionRe
       data: { balance, healthStatus: "HEALTHY", lastHealthCheckAt: new Date() },
     });
     await db.providerBalanceLog.create({ data: { providerId: config.id, balance } });
+    // Saldo baru HARUS langsung dievaluasi terhadap ambang batas. Tanpa ini,
+    // badge saldo tetap menampilkan status lama sampai cron per-jam berjalan -
+    // admin yang baru saja menekan "Cek Saldo" justru melihat angka baru dengan
+    // status lama di sebelahnya.
+    await applyBalanceAlert(config, balance);
     await logAdmin(admin.adminId, "provider.check_balance", key, { balance: balance.toString() });
     revalidatePath("/admin/providers");
     return { ok: `Saldo ${key}: Rp ${Number(balance).toLocaleString("id-ID")}` };
@@ -401,15 +407,24 @@ export async function saveBalanceThreshold(formData: FormData): Promise<ActionRe
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  // Reset balanceAlertStatus ke "OK" tiap kali ambang diubah - status LOW lama
-  // bikin state machine decideBalanceAlertTransition mengira tidak ada transisi
-  // (alert "menipis" berikutnya senyap), dan menurunkan ambang saat status LOW
-  // bisa memicu alert "pulih" palsu. Reset memastikan evaluasi job berikutnya
-  // selalu mulai dari kondisi bersih.
-  await db.providerConfig.update({
+  // Ambang disimpan lebih dulu dengan status di-reset ke "OK", supaya evaluasi di
+  // bawah mulai dari kondisi bersih: status LOW peninggalan ambang LAMA tidak
+  // boleh membuat state machine mengira "tidak ada transisi" terhadap ambang BARU.
+  const config = await db.providerConfig.update({
     where: { key },
     data: { minBalanceAlert: parsed.data.minBalanceAlert, balanceAlertStatus: "OK" },
   });
+
+  // ...lalu LANGSUNG dievaluasi terhadap saldo yang sudah tersimpan.
+  //
+  // Reset saja tidak cukup, dan justru itu bug-nya: admin menyetel ambang
+  // Rp 10.000 saat saldo tinggal Rp 73, layar menampilkan "Sehat", dan keadaan
+  // salah itu bertahan sampai cron per-jam berjalan. Padahal jawabannya sudah ada
+  // di tangan - saldo terakhir tersimpan di baris yang baru saja ditulis.
+  //
+  // `balanceAlertStatus: "OK"` disertakan eksplisit karena `config` memuat nilai
+  // SETELAH update, dan applyBalanceAlert memakai nilai itu untuk klaim CAS-nya.
+  await applyBalanceAlert({ ...config, balanceAlertStatus: "OK" }, config.balance);
   await logAdmin(admin.adminId, "provider.save_balance_threshold", key, {
     minBalanceAlert: parsed.data.minBalanceAlert?.toString() ?? null,
   });
