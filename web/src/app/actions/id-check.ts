@@ -81,6 +81,7 @@ const headerSchema = z.array(z.object({ name: z.string(), value: z.string() })).
 
 const configSchema = z.object({
   enabled: z.string().nullish().transform((v) => v === "on"),
+  provider: z.enum(["http", "okeconnect"]).default("http"),
   urlTemplate: z.string().optional().transform((v) => (v ?? "").trim()),
   method: z.enum(["GET", "POST"]),
   bodyTemplate: z.string().max(2000).optional().transform((v) => (v ?? "").trim()),
@@ -95,6 +96,7 @@ export async function saveIdCheckConfigAction(formData: FormData): Promise<Actio
 
   const parsed = configSchema.safeParse({
     enabled: formData.get("enabled"),
+    provider: formData.get("provider") === "okeconnect" ? "okeconnect" : "http",
     urlTemplate: formData.get("urlTemplate"),
     method: formData.get("method") === "POST" ? "POST" : "GET",
     bodyTemplate: formData.get("bodyTemplate"),
@@ -127,10 +129,13 @@ export async function saveIdCheckConfigAction(formData: FormData): Promise<Actio
       value: h.value !== "" ? h.value : (existing.headers.find((e) => e.name === h.name.trim())?.value ?? ""),
     }));
 
-  if (parsed.data.enabled && !parsed.data.urlTemplate) {
+  // URL hanya wajib untuk jalur HTTP generik. Jalur OkeConnect memakai kredensial
+  // provider dari /admin/providers, jadi menuntut URL di sini akan memblokir
+  // konfigurasi yang sebenarnya sudah lengkap.
+  if (parsed.data.provider === "http" && parsed.data.enabled && !parsed.data.urlTemplate) {
     return { error: "URL penyedia wajib diisi sebelum fitur ini bisa dinyalakan." };
   }
-  if (parsed.data.urlTemplate) {
+  if (parsed.data.provider === "http" && parsed.data.urlTemplate) {
     // Divalidasi dengan placeholder terisi contoh - URL bertemplate tidak bisa
     // di-parse mentah karena "{user_id}" bukan karakter URL yang sah.
     const sample = parsed.data.urlTemplate.replace(/\{[a-zA-Z0-9_]+\}/g, "1");
@@ -140,6 +145,7 @@ export async function saveIdCheckConfigAction(formData: FormData): Promise<Actio
 
   await saveIdCheckConfig({
     enabled: parsed.data.enabled,
+    provider: parsed.data.provider,
     urlTemplate: parsed.data.urlTemplate,
     method: parsed.data.method,
     bodyTemplate: parsed.data.bodyTemplate,
@@ -154,7 +160,11 @@ export async function saveIdCheckConfigAction(formData: FormData): Promise<Actio
       adminId: admin.adminId,
       action: "id_check.save_config",
       targetType: "site_setting",
-      detail: { enabled: parsed.data.enabled, headerNames: mergedHeaders.map((h) => h.name) },
+      detail: {
+        enabled: parsed.data.enabled,
+        provider: parsed.data.provider,
+        headerNames: mergedHeaders.map((h) => h.name),
+      },
     },
   });
   revalidatePath("/admin/id-check");
@@ -170,10 +180,17 @@ export async function testIdCheckAction(
   if ("error" in admin) return admin;
 
   const config = await getIdCheckConfig();
-  if (!config.urlTemplate) return { error: "Isi dulu URL penyedia lalu simpan." };
+  if (config.provider === "http" && !config.urlTemplate) {
+    return { error: "Isi dulu URL penyedia lalu simpan." };
+  }
 
   // Tes SENGAJA mengabaikan saklar `enabled`: justru inilah cara admin
   // memastikan konfigurasinya benar SEBELUM menyalakannya untuk pembeli.
   const result = await performIdCheck({ config, gameCode, target });
-  return result.ok ? { nickname: result.nickname } : { error: result.error };
+  // `raw` DIKEMBALIKAN HANYA DI JALUR ADMIN INI. Untuk jalur OkeConnect, format
+  // balasan produk CEK* belum terdokumentasi - balasan mentah inilah satu-satunya
+  // cara melihat bentuk sebenarnya lalu menyetel extractCustomerName().
+  return result.ok
+    ? { nickname: result.nickname, raw: result.raw }
+    : { error: result.error, raw: result.raw };
 }

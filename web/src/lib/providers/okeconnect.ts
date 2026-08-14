@@ -88,6 +88,42 @@ const priceRowSchema = z.object({
 });
 const priceListSchema = z.array(priceRowSchema);
 
+/**
+ * Menarik nama pemilik dari kalimat balasan produk CEK*.
+ *
+ * Bersifat SEMENTARA sampai formatnya terlihat dari tes sungguhan (lihat
+ * checkCustomerName). Ditulis sebagai daftar pola bermarkah eksplisit, BUKAN
+ * tebakan longgar seperti "ambil kata kapital terpanjang": salah menarik nama
+ * berarti pembeli melihat nama orang lain lalu meyakini nomornya sudah benar —
+ * kegagalan yang jauh lebih merugikan daripada sekadar "nama tidak ditemukan".
+ *
+ * Karena itu kalau tidak ada markah yang cocok, jawabannya null.
+ */
+export function extractCustomerName(message: string): string | null {
+  const text = (message ?? "").trim();
+  if (!text) return null;
+
+  // Kegagalan eksplisit tidak boleh dikorek namanya sama sekali.
+  if (/\bgagal\b|tidak ditemukan|tidak valid|salah\b/i.test(text)) return null;
+
+  const patterns = [
+    /\bNAMA\s*[:=]\s*([^\n.|]+)/i,
+    /\bNAME\s*[:=]\s*([^\n.|]+)/i,
+    /\bAN\s*[:.]\s*([^\n.|]+)/i, // "AN: BUDI" / "AN. BUDI"
+    /\ba\/n\s*[:.]?\s*([^\n.|]+)/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const name = m[1].trim().replace(/\s{2,}/g, " ");
+      // Batas atas mencegah pola yang kelewat rakus menelan sisa kalimat
+      // (termasuk angka saldo) dan menampilkannya ke pembeli sebagai "nama".
+      if (name && name.length <= 60) return name;
+    }
+  }
+  return null;
+}
+
 export class OkeConnectAdapter implements TopupProviderAdapter {
   readonly key = "okeconnect" as const;
 
@@ -273,6 +309,36 @@ export class OkeConnectAdapter implements TopupProviderAdapter {
       costPrice: parsed.costPrice,
       raw: { text, parsed, refIdMismatch },
     };
+  }
+
+  /**
+   * Cek nama pemilik akun/nomor lewat produk CEK* OkeConnect.
+   *
+   * OkeConnect menjual ini sebagai PRODUK biasa berharga 0 — `CEKPLN` (nama
+   * pemilik token PLN), `CEKD` (Dana), `CEKGJK` (Gopay), `CEKSHP` (ShopeePay),
+   * `CEKOVO`, `CEKLINK`, `CEKML`, `CEKFF`, dst — jadi jalurnya endpoint `/trx`
+   * yang sama, bukan endpoint tersendiri.
+   *
+   * ⚠️ FORMAT RESPONSNYA BELUM TERDOKUMENTASI dan belum pernah diuji dengan
+   * kredensial sungguhan. Karena itu fungsi ini mengembalikan `raw` APA ADANYA
+   * di samping `name` hasil tebakan: halaman tes di /admin/id-check menampilkan
+   * `raw` supaya formatnya bisa dilihat langsung, lalu extractCustomerName()
+   * disesuaikan. Sampai itu terjadi, `name` bisa saja null walau providernya
+   * sebenarnya menjawab dengan benar — dan itu ditangani sebagai "tidak
+   * ketemu", bukan ditebak-tebak.
+   */
+  async checkCustomerName(input: {
+    productCode: string;
+    dest: string;
+    refId: string;
+    context?: ProviderCallContext;
+  }): Promise<{ name: string | null; raw: string }> {
+    const text = await this.get(
+      "/trx",
+      { product: input.productCode, dest: input.dest, refID: input.refId, ...this.authParams() },
+      { operation: "cek-nama", context: { ourRefId: input.refId, ...input.context } },
+    );
+    return { name: extractCustomerName(text), raw: text };
   }
 
   /**

@@ -24,13 +24,22 @@ export function IdCheckForm({
 }: {
   status: IdCheckStatus;
   action: (formData: FormData) => Promise<ActionResult>;
-  testAction: (gameCode: string, target: Record<string, string>) => Promise<{ nickname?: string; error?: string }>;
+  // `raw` = balasan mentah penyedia. Hanya dipakai di panel Uji Coba halaman ini
+  // (lihat catatan di performIdCheck) — jangan diteruskan ke komponen pembeli.
+  testAction: (
+    gameCode: string,
+    target: Record<string, string>,
+  ) => Promise<{ nickname?: string; error?: string; raw?: string }>;
 }) {
   const [state, formAction, pending] = useActionState(
     (_prev: ActionResult, formData: FormData) => action(formData),
     INITIAL_STATE,
   );
   const [method, setMethod] = useState<"GET" | "POST">(status.method);
+  // Menentukan bagian mana dari form ini yang relevan: jalur OkeConnect tidak
+  // memakai URL/header/path sama sekali, jadi menampilkannya cuma bikin admin
+  // mengisi kolom yang tidak akan pernah dibaca.
+  const [provider, setProvider] = useState<"http" | "okeconnect">(status.provider);
   // Nilai header sengaja dimulai kosong walau sudah tersimpan: server
   // memperlakukan kosong sebagai "pertahankan yang lama", jadi API key tidak
   // pernah perlu dikirim ke browser sama sekali.
@@ -40,7 +49,7 @@ export function IdCheckForm({
 
   const [testGame, setTestGame] = useState("");
   const [testFields, setTestFields] = useState("user_id=123456789\nzone_id=1234");
-  const [testResult, setTestResult] = useState<{ nickname?: string; error?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ nickname?: string; error?: string; raw?: string } | null>(null);
   const [testing, startTest] = useTransition();
 
   function runTest() {
@@ -91,7 +100,41 @@ export function IdCheckForm({
           Aktifkan fitur cek ID untuk pembeli
         </label>
 
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="space-y-1.5 rounded-lg border p-3">
+          <Label htmlFor="provider">Sumber data</Label>
+          <select
+            id="provider"
+            name="provider"
+            value={provider}
+            onChange={(e) => setProvider(e.target.value === "okeconnect" ? "okeconnect" : "http")}
+            className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+          >
+            <option value="okeconnect">OkeConnect — pakai kredensial provider yang sudah ada</option>
+            <option value="http">API pihak ketiga (isi URL sendiri)</option>
+          </select>
+          {provider === "okeconnect" ? (
+            <p className="text-xs text-muted-foreground">
+              Memakai produk <span className="font-mono">CEK*</span> OkeConnect lewat kredensial di{" "}
+              <strong>Admin → Providers</strong> — tidak perlu langganan API terpisah. Isi{" "}
+              <strong>Kode cek ID</strong> di tiap produk dengan kode produknya, mis.{" "}
+              <span className="font-mono">CEKPLN</span> (nama pemilik token PLN),{" "}
+              <span className="font-mono">CEKD</span> (Dana), <span className="font-mono">CEKGJK</span> (Gopay),{" "}
+              <span className="font-mono">CEKML</span> (Mobile Legends).
+              <br />
+              <strong className="text-amber-700 dark:text-amber-400">
+                Belum pernah diuji dengan kredensial sungguhan.
+              </strong>{" "}
+              Pakai tombol Tes di bawah dulu — balasan mentah penyedia akan ditampilkan apa adanya supaya bisa
+              dicocokkan.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Adapter HTTP generik: kamu yang menyediakan URL, header, dan letak nickname di dalam respons JSON.
+            </p>
+          )}
+        </div>
+
+        <div className={provider === "okeconnect" ? "hidden" : "grid gap-3 sm:grid-cols-[1fr_auto]"}>
           <div className="space-y-1.5">
             <Label htmlFor="urlTemplate">URL penyedia</Label>
             <Input
@@ -117,12 +160,17 @@ export function IdCheckForm({
           </div>
         </div>
 
+        {/* Semua isian di bawah ini khusus jalur HTTP generik. Dipakai `hidden`
+            (bukan render bersyarat) supaya input yang ber-`required` seperti
+            nicknamePath tetap ada di DOM dan form tidak gagal tersubmit saat
+            jalur OkeConnect dipilih. */}
+        <div className={provider === "okeconnect" ? "hidden" : "contents"}>
         <div className="rounded-md bg-muted/50 p-3 text-xs">
           <p className="font-semibold">Placeholder yang bisa dipakai</p>
           <ul className="mt-1.5 space-y-1 text-muted-foreground">
             <li>
               <code className="font-mono">{"{game}"}</code> — diisi dari kolom{" "}
-              <strong>Kode game (cek ID)</strong> di form produk. Nilainya mengikuti penyedia yang kamu pakai (mis.{" "}
+              <strong>Kode cek ID</strong> di form produk. Nilainya mengikuti penyedia yang kamu pakai (mis.{" "}
               <code className="font-mono">mobile-legends</code> atau <code className="font-mono">ml</code>).
             </li>
             <li>
@@ -233,6 +281,7 @@ export function IdCheckForm({
           <code className="font-mono">{'{"data":{"username":"Budi"}}'}</code>, isi{" "}
           <code className="font-mono">data.username</code>.
         </p>
+        </div>
 
         <Button type="submit" disabled={pending} className="self-start">
           {pending ? "Menyimpan..." : "Simpan Konfigurasi Cek ID"}
@@ -252,12 +301,12 @@ export function IdCheckForm({
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="test-game">Kode game</Label>
+            <Label htmlFor="test-game">Kode cek ID</Label>
             <Input
               id="test-game"
               value={testGame}
               onChange={(e) => setTestGame(e.target.value)}
-              placeholder="mobile-legends"
+              placeholder={provider === "okeconnect" ? "CEKPLN" : "mobile-legends"}
               className="font-mono text-xs"
             />
           </div>
@@ -277,11 +326,26 @@ export function IdCheckForm({
           {testing ? "Mengecek..." : "Jalankan Tes"}
         </Button>
         {testResult && (
-          <p
-            className={`mt-2 text-xs ${testResult.error ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
-          >
-            {testResult.error ?? `Nickname ditemukan: ${testResult.nickname}`}
-          </p>
+          <>
+            <p
+              className={`mt-2 text-xs ${testResult.error ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
+            >
+              {testResult.error ?? `Nama ditemukan: ${testResult.nickname}`}
+            </p>
+            {testResult.raw && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs font-medium">Balasan mentah penyedia</p>
+                <pre className="max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap break-all">
+                  {testResult.raw}
+                </pre>
+                <p className="text-xs text-muted-foreground">
+                  Hanya terlihat di halaman ini, tidak pernah ditampilkan ke pembeli. Kalau namanya jelas terbaca di
+                  sini tapi di atas tertulis &quot;tidak ditemukan&quot;, berarti pola pembaca namanya perlu
+                  disesuaikan — kirimkan potongan teks ini.
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

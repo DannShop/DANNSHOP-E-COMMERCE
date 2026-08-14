@@ -22,6 +22,7 @@ import { effectivePrice } from "@/lib/pricing/effective-price";
 import { getMembershipContext, type MembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
 import { requireActiveAccount } from "@/lib/account/user-status";
+import { generatePublicToken } from "@/lib/order/public-token";
 
 export interface CheckoutResult {
   ok?: string;
@@ -32,9 +33,19 @@ export interface CheckoutResult {
 
 class InsufficientBalanceError extends Error {}
 
-async function createOrderWithRetry(data: Parameters<typeof db.order.create>[0]["data"]) {
+// publicToken diisi DI SINI, bukan di pemanggil: kedua jalur checkout (bayar
+// saldo & lewat gateway) melewati fungsi ini, jadi satu tempat ini menjamin tidak
+// ada order yang lahir tanpa token acak kriptografis. Pemanggil sengaja tidak
+// boleh mengirimnya (Omit) supaya tidak ada dua sumber kebenaran.
+// Tipenya disebut eksplisit sebagai varian Unchecked (bukan
+// Parameters<typeof db.order.create>): tipe `data` milik Prisma adalah UNION
+// Checked|Unchecked, dan `Omit` pada union itu meruntuhkan tipe field seperti
+// `userId` jadi tidak terpakai. Kedua pemanggil di bawah memang mengisi FK
+// langsung (userId/productItemId), jadi varian inilah yang sebenarnya dipakai.
+async function createOrderWithRetry(data: Omit<Prisma.OrderUncheckedCreateInput, "publicToken">) {
+  const withToken = { ...data, publicToken: generatePublicToken() };
   try {
-    return await db.order.create({ data });
+    return await db.order.create({ data: withToken });
   } catch (e) {
     const isOrderNumberCollision =
       e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -42,8 +53,12 @@ async function createOrderWithRetry(data: Parameters<typeof db.order.create>[0][
       Array.isArray(e.meta?.target) &&
       (e.meta!.target as string[]).includes("orderNumber");
     if (!isOrderNumberCollision) throw e;
-    // retry sekali dengan orderNumber baru
-    return db.order.create({ data: { ...data, orderNumber: generateOrderNumber(new Date()) } });
+    // retry sekali dengan orderNumber baru. publicToken ikut dibuat ulang: yang
+    // pertama tidak pernah tersimpan, dan token sekali pakai lebih murah daripada
+    // memikirkan apakah ada jalur yang sempat membocorkannya.
+    return db.order.create({
+      data: { ...withToken, orderNumber: generateOrderNumber(new Date()), publicToken: generatePublicToken() },
+    });
   }
 }
 

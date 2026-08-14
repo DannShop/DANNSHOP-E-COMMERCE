@@ -19,9 +19,22 @@ export interface IdCheckHeader {
   value: string;
 }
 
+/**
+ * Sumber data cek ID.
+ *
+ * - `http` — adapter HTTP generik yang dikonfigurasi admin (perilaku lama, tetap
+ *   jadi default supaya konfigurasi yang sudah ada tidak berubah artinya).
+ * - `okeconnect` — memakai produk CEK* milik OkeConnect lewat kredensial provider
+ *   yang sudah tersimpan di /admin/providers. Tidak perlu berlangganan API pihak
+ *   ketiga, dan cakupannya bukan cuma game: `CEKPLN` untuk nama pemilik token
+ *   PLN, `CEKD`/`CEKGJK`/`CEKSHP`/`CEKOVO` untuk e-wallet.
+ */
+export type IdCheckProvider = "http" | "okeconnect";
+
 export interface IdCheckConfig {
   /** Saklar induk. Mati = tombol cek ID tidak muncul di produk mana pun. */
   enabled: boolean;
+  provider: IdCheckProvider;
   urlTemplate: string;
   method: "GET" | "POST";
   /** Badan request untuk POST (JSON, boleh memuat placeholder). */
@@ -38,6 +51,9 @@ const KEY = "id_check_config";
 
 const DEFAULTS: IdCheckConfig = {
   enabled: false,
+  // Default "http" (bukan "okeconnect") supaya konfigurasi yang sudah tersimpan
+  // sebelum pilihan ini ada tetap berperilaku persis seperti sebelumnya.
+  provider: "http",
   urlTemplate: "",
   method: "GET",
   bodyTemplate: "",
@@ -54,6 +70,7 @@ export async function getIdCheckConfig(): Promise<IdCheckConfig> {
     const parsed = decryptJson<Partial<IdCheckConfig>>(row.value);
     return {
       enabled: parsed.enabled === true,
+      provider: parsed.provider === "okeconnect" ? "okeconnect" : "http",
       urlTemplate: parsed.urlTemplate ?? "",
       method: parsed.method === "POST" ? "POST" : "GET",
       bodyTemplate: parsed.bodyTemplate ?? "",
@@ -79,6 +96,7 @@ export async function saveIdCheckConfig(config: IdCheckConfig): Promise<void> {
 export interface IdCheckStatus {
   configured: boolean;
   enabled: boolean;
+  provider: IdCheckProvider;
   urlTemplate: string;
   method: "GET" | "POST";
   bodyTemplate: string;
@@ -92,8 +110,11 @@ export interface IdCheckStatus {
 export async function getIdCheckStatus(): Promise<IdCheckStatus> {
   const config = await getIdCheckConfig();
   return {
-    configured: config.urlTemplate !== "",
+    // Jalur OkeConnect tidak memakai urlTemplate sama sekali - kesiapannya
+    // ditentukan kredensial provider di /admin/providers, bukan di sini.
+    configured: config.provider === "okeconnect" ? true : config.urlTemplate !== "",
     enabled: config.enabled,
+    provider: config.provider,
     urlTemplate: config.urlTemplate,
     method: config.method,
     bodyTemplate: config.bodyTemplate,
@@ -132,16 +153,78 @@ function readPath(source: unknown, path: string): unknown {
 }
 
 export type IdCheckResult =
-  | { ok: true; nickname: string }
-  | { ok: false; error: string };
+  | { ok: true; nickname: string; raw?: string }
+  | { ok: false; error: string; raw?: string };
 
-export async function performIdCheck(params: {
+export interface IdCheckParams {
   config: IdCheckConfig;
-  /** Kode game produk (Product.nicknameCheckKey) - mengisi placeholder {game}. */
+  /** Kode produk di sisi penyedia (Product.nicknameCheckKey). */
   gameCode: string;
   /** Nilai field yang diisi pembeli - masing-masing jadi placeholder namanya sendiri. */
   target: Record<string, string>;
-}): Promise<IdCheckResult> {
+}
+
+/**
+ * Pintu masuk tunggal cek ID. Memilih jalur sesuai `config.provider`.
+ *
+ * `raw` pada hasilnya HANYA untuk halaman tes admin — jangan pernah ditampilkan
+ * ke pembeli. Isinya balasan mentah penyedia yang bisa memuat keterangan internal
+ * (saldo kita, kode produk, nomor transaksi).
+ */
+export async function performIdCheck(params: IdCheckParams): Promise<IdCheckResult> {
+  if (params.config.provider === "okeconnect") return performOkeConnectIdCheck(params);
+  return performHttpIdCheck(params);
+}
+
+/**
+ * Cek ID lewat produk CEK* OkeConnect (CEKPLN, CEKD, CEKGJK, CEKML, …).
+ *
+ * `gameCode` di sini berarti KODE PRODUK CEK, bukan slug permainan. Nomor tujuan
+ * dirangkai dari nilai target berurutan tanpa pemisah — aturan yang sama dengan
+ * buildCustomerNo() untuk transaksi, supaya cek dan pembelian tidak pernah
+ * memakai bentuk tujuan yang berbeda.
+ */
+async function performOkeConnectIdCheck(params: IdCheckParams): Promise<IdCheckResult> {
+  const productCode = params.gameCode.trim();
+  if (!productCode) {
+    return { ok: false, error: "Produk ini belum diisi kode cek ID-nya." };
+  }
+  const dest = Object.values(params.target)
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .join("");
+  if (!dest) return { ok: false, error: "Isi dulu data akunmu." };
+
+  // Import dinamis: modul provider menarik registry + Prisma, dan file ini juga
+  // dipakai jalur publik yang tidak selalu membutuhkannya.
+  const { getAdapter } = await import("@/lib/providers/registry");
+  const { OkeConnectAdapter } = await import("@/lib/providers/okeconnect");
+  const { generateRefId } = await import("@/lib/order/order-number");
+
+  try {
+    const adapter = await getAdapter("OKECONNECT");
+    if (!(adapter instanceof OkeConnectAdapter)) {
+      return { ok: false, error: "Provider OkeConnect belum siap dipakai untuk cek ID." };
+    }
+    const { name, raw } = await adapter.checkCustomerName({
+      productCode,
+      dest,
+      refId: generateRefId("CEK", new Date()),
+    });
+    if (!name) {
+      // Balasan diterima tapi namanya tidak terbaca. Sengaja TIDAK menampilkan
+      // balasan mentah ke pembeli — lihat catatan `raw` di performIdCheck.
+      return { ok: false, error: "Nama pemilik tidak ditemukan. Periksa lagi nomor/ID-nya.", raw };
+    }
+    return { ok: true, nickname: name, raw };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("performOkeConnectIdCheck: gagal", { productCode, error: message });
+    return { ok: false, error: "Layanan cek ID sedang tidak bisa dihubungi.", raw: message };
+  }
+}
+
+async function performHttpIdCheck(params: IdCheckParams): Promise<IdCheckResult> {
   const { config } = params;
   if (!config.urlTemplate) return { ok: false, error: "Cek ID belum dikonfigurasi admin." };
 
@@ -183,7 +266,33 @@ export async function performIdCheck(params: {
       body,
       signal: AbortSignal.timeout(config.timeoutMs),
       cache: "no-store",
+      // redirect "manual", BUKAN default "follow".
+      //
+      // validateIdCheckUrl() hanya memeriksa URL AWAL. Dengan "follow", host
+      // publik yang lolos pemeriksaan bisa membalas 302 ke
+      // http://169.254.169.254/... dan fetch akan mengikutinya tanpa pemeriksaan
+      // ulang - membatalkan seluruh tujuan penyaring host di atas.
+      //
+      // Ini standar yang sudah dipakai di relay ber-IP tetap kita
+      // (CURLOPT_FOLLOWLOCATION => false di relay/digiflazz-relay.php); jalur ini
+      // yang tertinggal. Penyedia cek ID tidak pernah butuh redirect, jadi
+      // menolaknya tidak menghilangkan kemampuan apa pun.
+      redirect: "manual",
     });
+
+    // Dengan redirect "manual", respons 3xx sampai ke sini apa adanya. Dijadikan
+    // kegagalan yang menyebut sebabnya, supaya admin yang salah mengisi URL
+    // (mis. lupa /api, lalu penyedia meredirect) tahu harus memperbaiki apa -
+    // bukan sekadar "respons bukan JSON".
+    if (res.status >= 300 && res.status < 400) {
+      return {
+        ok: false,
+        error:
+          "Penyedia membalas redirect, dan redirect tidak diikuti demi keamanan. " +
+          "Isi URL tujuan akhirnya langsung di Admin → Cek ID Game.",
+      };
+    }
+
     const text = await res.text();
     try {
       json = JSON.parse(text);
@@ -192,7 +301,14 @@ export async function performIdCheck(params: {
     }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error("performIdCheck: panggilan penyedia gagal", { url, error: message });
+    // Query string dibuang sebelum dicatat: banyak penyedia cek ID menaruh API
+    // key sebagai parameter URL, dan log ini masuk ke log runtime yang dibaca
+    // lebih banyak orang daripada isi panel admin. Prinsip yang sama dengan
+    // sanitizeEndpointForLog() di lib/providers/api-log.ts.
+    console.error("performIdCheck: panggilan penyedia gagal", {
+      url: url.split(/[?#]/)[0],
+      error: message,
+    });
     return { ok: false, error: "Layanan cek ID sedang tidak bisa dihubungi." };
   }
 

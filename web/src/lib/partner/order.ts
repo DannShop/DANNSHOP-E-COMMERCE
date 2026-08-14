@@ -11,6 +11,7 @@ import { formatOrderPaidMessage, notifyTelegram } from "@/lib/notify/telegram";
 import { parseCustomerNo } from "@/lib/partner/signature";
 import { PARTNER_RC, type PartnerRc } from "@/lib/partner/response";
 import type { AuthedPartner } from "@/lib/partner/auth";
+import { generatePublicToken } from "@/lib/order/public-token";
 
 export interface PartnerOrderSuccess {
   ok: true;
@@ -337,6 +338,9 @@ async function createPartnerOrderRow(input: {
     paymentMethod: "balance",
     fulfillmentMode: "AUTO" as const,
     payment: { create: { method: "balance", status: "PENDING" as const } },
+    // Order lewat API partner tetap punya halaman invoice publik, jadi tokennya
+    // harus sekuat jalur storefront — lihat lib/order/public-token.ts.
+    publicToken: generatePublicToken(),
   };
   try {
     return await db.order.create({ data });

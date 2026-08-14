@@ -17,10 +17,14 @@ import {
 } from "@/components/ui/select";
 import { ActionMessage, INITIAL_STATE, withPrevState } from "./action-utils";
 import type { ServerAction } from "./action-utils";
+import { InputFieldsBuilder } from "./input-fields-builder";
+import type { InputFieldDef } from "@/lib/catalog/input-field-presets";
 
 export interface ProductFormCategory {
   id: string;
   name: string;
+  /** Dipakai memilih preset field tujuan (lib/catalog/input-field-presets.ts). */
+  slug: string;
 }
 
 export interface ProductFormInitial {
@@ -54,7 +58,26 @@ export function ProductForm({
   uploadProductBanner: (formData: FormData) => Promise<{ url?: string; error?: string }>;
 }) {
   const [state, formAction, pending] = useActionState(withPrevState(action), INITIAL_STATE);
-  const inputFieldsDefault = initial ? JSON.stringify(initial.inputFields ?? [], null, 2) : "";
+
+  // Kategori & mode pengiriman jadi state karena dua bagian form di bawah
+  // bergantung padanya: preset field mengikuti kategori, dan seluruh blok
+  // "data yang diminta ke pembeli" + cek ID disembunyikan untuk produk MANUAL.
+  const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
+  const [fulfillmentMode, setFulfillmentMode] = useState<"AUTO" | "MANUAL">(
+    initial?.fulfillmentMode ?? "AUTO",
+  );
+  const [inputFields, setInputFields] = useState<InputFieldDef[]>(() =>
+    Array.isArray(initial?.inputFields) ? (initial.inputFields as InputFieldDef[]) : [],
+  );
+  const categorySlug = categories.find((c) => c.id === categoryId)?.slug;
+  const isManual = fulfillmentMode === "MANUAL";
+
+  // Produk manual dikirim admin sendiri (Canva/Netflix dsb) — tidak ada provider
+  // yang menerima nomor tujuan, jadi field tujuan tidak punya arti apa pun di
+  // sana. Dikosongkan saat dikirim, BUKAN sekadar disembunyikan: menyembunyikan
+  // saja akan tetap menyimpan field lama dan pembeli tetap diwajibkan mengisinya
+  // di halaman produk (validasi di checkout.ts membaca inputFields, bukan mode).
+  const submittedFields = isManual ? [] : inputFields;
 
   const [iconUrl, setIconUrl] = useState(initial?.iconUrl ?? "");
   const [bannerUrl, setBannerUrl] = useState(initial?.banner ?? "");
@@ -83,7 +106,8 @@ export function ProductForm({
           <Label htmlFor="categoryId">Kategori</Label>
           <Select
             name="categoryId"
-            defaultValue={initial?.categoryId}
+            value={categoryId}
+            onValueChange={(v) => setCategoryId(v ?? "")}
             items={categories.map((c) => ({ value: c.id, label: c.name }))}
             required
           >
@@ -170,51 +194,69 @@ export function ProductForm({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="inputFields">Input fields (JSON array)</Label>
-        <Textarea
-          id="inputFields"
-          name="inputFields"
-          required
-          defaultValue={inputFieldsDefault}
-          className="font-mono text-xs"
-          rows={4}
-          placeholder={'[{"name":"user_id","label":"User ID"},{"name":"zone_id","label":"Zone ID"}]'}
-        />
-        <p className="text-xs text-muted-foreground">
-          Daftar field yang diminta ke pembeli, contoh: {'[{"name":"user_id","label":"User ID"}]'}
-        </p>
-      </div>
+      {/* Nilai yang sesungguhnya dikirim ke server: tetap JSON string, jadi
+          productSchema di lib/validation/catalog.ts tidak perlu berubah sama sekali. */}
+      <input type="hidden" name="inputFields" value={JSON.stringify(submittedFields)} />
 
-      <div className="space-y-3 rounded-lg border p-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="nicknameCheckKey">Kode game (cek ID)</Label>
-          <Input
-            id="nicknameCheckKey"
-            name="nicknameCheckKey"
-            defaultValue={initial?.nicknameCheckKey ?? ""}
-            placeholder="mobile-legends"
-            className="font-mono text-xs"
-          />
-          <p className="text-xs text-muted-foreground">
-            Mengisi placeholder <code className="font-mono">{"{game}"}</code> pada URL penyedia. Nilainya mengikuti
-            penyedia yang kamu pakai — lihat Admin → Cek ID Game.
-          </p>
+      {isManual ? (
+        <p className="rounded-lg border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
+          Produk <strong>manual</strong> tidak meminta data tujuan apa pun ke pembeli — cukup email untuk
+          pengiriman. Kamu yang mengirim barangnya sendiri setelah pembayaran masuk.
+        </p>
+      ) : (
+        <InputFieldsBuilder
+          fields={inputFields}
+          onChange={setInputFields}
+          categorySlug={categorySlug}
+          initialCategorySlug={initial ? categories.find((c) => c.id === initial.categoryId)?.slug : undefined}
+        />
+      )}
+
+      {/* Cek ID juga tidak berlaku untuk produk manual: tidak ada ID tujuan untuk
+          diperiksa. Nilai lamanya tetap ikut terkirim lewat hidden input supaya
+          konfigurasi yang sudah tersimpan tidak terhapus hanya karena produknya
+          sempat diubah jadi manual lalu dikembalikan lagi. */}
+      {isManual ? (
+        <>
+          <input type="hidden" name="nicknameCheckKey" value={initial?.nicknameCheckKey ?? ""} />
+          {initial?.idCheckEnabled && <input type="hidden" name="idCheckEnabled" value="on" />}
+        </>
+      ) : (
+        <div className="space-y-3 rounded-lg border p-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="nicknameCheckKey">Kode cek ID / nama pemilik</Label>
+            <Input
+              id="nicknameCheckKey"
+              name="nicknameCheckKey"
+              defaultValue={initial?.nicknameCheckKey ?? ""}
+              placeholder="mobile-legends"
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Kode produk di sisi penyedia cek ID. Bukan cuma untuk game — dipakai juga untuk memverifikasi nama
+              pemilik token PLN dan akun e-wallet. Nilainya mengikuti penyedia yang dipakai: lihat{" "}
+              <strong>Admin → Cek ID</strong>.
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <Checkbox id="idCheckEnabled" name="idCheckEnabled" defaultChecked={initial?.idCheckEnabled ?? false} className="mt-0.5" />
+            <Label htmlFor="idCheckEnabled" className="font-normal">
+              Aktifkan cek ID untuk produk ini
+              <span className="block text-xs text-muted-foreground">
+                Tetap tidak muncul kalau saklar induk di halaman Cek ID masih mati.
+              </span>
+            </Label>
+          </div>
         </div>
-        <div className="flex items-start gap-2">
-          <Checkbox id="idCheckEnabled" name="idCheckEnabled" defaultChecked={initial?.idCheckEnabled ?? false} className="mt-0.5" />
-          <Label htmlFor="idCheckEnabled" className="font-normal">
-            Aktifkan cek ID untuk produk ini
-            <span className="block text-xs text-muted-foreground">
-              Tetap tidak muncul kalau saklar induk di halaman Cek ID Game masih mati.
-            </span>
-          </Label>
-        </div>
-      </div>
+      )}
 
       <div className="space-y-1.5 rounded-lg border p-3">
         <Label htmlFor="fulfillmentMode">Mode pengiriman</Label>
-        <Select name="fulfillmentMode" defaultValue={initial?.fulfillmentMode ?? "AUTO"}>
+        <Select
+          name="fulfillmentMode"
+          value={fulfillmentMode}
+          onValueChange={(v) => setFulfillmentMode(v === "MANUAL" ? "MANUAL" : "AUTO")}
+        >
           <SelectTrigger id="fulfillmentMode">
             <SelectValue />
           </SelectTrigger>

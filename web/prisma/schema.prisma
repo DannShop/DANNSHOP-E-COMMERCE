@@ -446,7 +446,21 @@ model ProviderPriceListCache {
 model Order {
   id            String               @id @default(cuid())
   orderNumber   String               @unique // INV-YYYYMMDD-XXXX
-  publicToken   String               @unique @default(cuid()) // kunci akses invoice/status API - tidak tertebak (beda dari orderNumber yang cuma 4 digit/hari)
+  // Kunci akses invoice & status API. Ini SATU-SATUNYA penjaga /invoice/[token]
+  // (tidak ada cek sesi di sana), dan halamannya menampilkan email pembeli,
+  // nomor tujuan, nominal, serta instruksi bayar. Jadi token ini kredensial.
+  //
+  // SENGAJA TANPA @default(cuid()). Dulu memakainya, padahal cuid v1 bukan
+  // pembangkit acak kriptografis - blok acaknya berasal dari Math.random(), yang
+  // keadaannya bisa dipulihkan dari beberapa keluaran yang teramati (dan penyerang
+  // bisa memperoleh keluaran itu secara sah dengan membuat order sendiri).
+  //
+  // Tanpa default, TypeScript MEMAKSA setiap titik pembuatan Order mengisi kolom
+  // ini - jadi corong pembuatan order berikutnya tidak bisa diam-diam kembali ke
+  // pembangkit yang lemah. Isi selalu dengan generatePublicToken()
+  // (lib/order/public-token.ts). Aman dihapus tanpa migrasi: default ini hanya
+  // ada di level Prisma Client, kolomnya di DB tidak pernah punya DEFAULT.
+  publicToken   String               @unique
   status        OrderStatus          @default(PENDING_PAYMENT)
   userId        String?
   user          User?                @relation(fields: [userId], references: [id])

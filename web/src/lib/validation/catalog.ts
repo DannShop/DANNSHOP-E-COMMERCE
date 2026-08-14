@@ -11,16 +11,65 @@ export const productSchema = z.object({
   iconUrl: z.string().optional().transform((v) => (v === "" || v == null ? null : v)),
   banner: z.string().optional().transform((v) => (v === "" || v == null ? null : v)),
   description: z.string().optional().transform((v) => (v === "" ? undefined : v)),
-  // inputFields dikirim sebagai JSON string dari textarea admin
+  // inputFields dikirim sebagai JSON string dari form admin (disusun oleh
+  // InputFieldsBuilder, bukan lagi diketik tangan).
+  //
+  // Isinya divalidasi per-baris, bukan cuma "harus array": `name` dipakai sebagai
+  // nama field di form pembeli DAN kunci di Order.target, dan checkout.ts menolak
+  // order kalau field wajibnya kosong. Satu baris cacat (nama kosong, bukan
+  // string, nama kembar) membuat produknya TIDAK BISA dibeli sama sekali — dan
+  // gejalanya muncul di halaman pembeli, jauh dari tempat kesalahannya dibuat.
   inputFields: z.string().transform((v, ctx) => {
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(v);
-      if (!Array.isArray(parsed)) throw new Error();
-      return parsed as { name: string; label: string }[];
+      parsed = JSON.parse(v);
     } catch {
-      ctx.addIssue({ code: "custom", message: "inputFields harus JSON array, contoh: [{\"name\":\"user_id\",\"label\":\"User ID\"}]" });
+      ctx.addIssue({ code: "custom", message: "Daftar field tujuan tidak terbaca. Muat ulang halaman lalu susun ulang." });
       return z.NEVER;
     }
+    if (!Array.isArray(parsed)) {
+      ctx.addIssue({ code: "custom", message: "Daftar field tujuan harus berupa daftar." });
+      return z.NEVER;
+    }
+
+    const out: { name: string; label: string }[] = [];
+    const seen = new Set<string>();
+    for (const row of parsed) {
+      if (row === null || typeof row !== "object") {
+        ctx.addIssue({ code: "custom", message: "Ada field tujuan yang bentuknya tidak dikenali." });
+        return z.NEVER;
+      }
+      const { name, label } = row as { name?: unknown; label?: unknown };
+      if (typeof name !== "string" || typeof label !== "string") {
+        ctx.addIssue({ code: "custom", message: "Setiap field tujuan harus punya nama teknis dan label." });
+        return z.NEVER;
+      }
+      const trimmedName = name.trim();
+      const trimmedLabel = label.trim();
+      if (!trimmedName || !trimmedLabel) {
+        ctx.addIssue({ code: "custom", message: "Nama teknis dan label field tujuan tidak boleh kosong." });
+        return z.NEVER;
+      }
+      // Dikunci ke [a-z0-9_]: karakter lain (spasi, titik, tanda kurung) membuat
+      // nama di formData tidak lagi cocok dengan definisinya, sehingga field yang
+      // WAJIB diisi justru selalu terbaca kosong saat checkout.
+      if (!/^[a-z0-9_]+$/.test(trimmedName)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Nama teknis "${trimmedName}" hanya boleh huruf kecil, angka, dan garis bawah.`,
+        });
+        return z.NEVER;
+      }
+      if (seen.has(trimmedName)) {
+        // Nama kembar berarti satu field menimpa nilai field lain di Order.target —
+        // nomor tujuan yang terkirim ke provider jadi salah tanpa error apa pun.
+        ctx.addIssue({ code: "custom", message: `Nama teknis "${trimmedName}" dipakai lebih dari sekali.` });
+        return z.NEVER;
+      }
+      seen.add(trimmedName);
+      out.push({ name: trimmedName, label: trimmedLabel });
+    }
+    return out;
   }),
   nicknameCheckKey: z.string().optional().transform((v) => (v === "" ? undefined : v)),
   // .nullish(): checkbox tak tercentang mengirim `null` lewat formData.get(),

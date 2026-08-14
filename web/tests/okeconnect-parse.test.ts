@@ -4,6 +4,7 @@ import {
   parseOkeConnectBalance,
   parseOkeConnectMessage,
 } from "@/lib/providers/okeconnect-parse";
+import { extractCustomerName } from "@/lib/providers/okeconnect";
 
 // Kalimat di bawah ini disalin APA ADANYA dari dokumentasi resmi OkeConnect
 // (koleksi Postman "API H2H Okeconnect", publishedId 2s93ecv9cE) dan dari
@@ -135,5 +136,34 @@ describe("isOkeConnectAuthRejection", () => {
 
   it("kegagalan produk biasa bukan penolakan kredensial", () => {
     expect(isOkeConnectAuthRejection("GAGAL. Nomor tujuan salah")).toBe(false);
+  });
+});
+
+describe("extractCustomerName — penarik nama pemilik dari produk CEK*", () => {
+  it.each([
+    ["NAMA:", "CEKPLN.12345678 BERHASIL. IDPEL: 12345678 NAMA: BUDI SANTOSO. Saldo 43.934.743", "BUDI SANTOSO"],
+    ["NAMA =", "CEKD.08123456789 NAMA = SITI AMINAH", "SITI AMINAH"],
+    ["NAME:", "CEKGJK.0812 NAME: JOKO WIDODO", "JOKO WIDODO"],
+    ["AN.", "CEKSHP.0812 AN. RUDI HARTONO", "RUDI HARTONO"],
+    ["a/n", "CEKOVO.0812 a/n Dewi Lestari", "Dewi Lestari"],
+  ])("membaca pola %s", (_label, message, expected) => {
+    expect(extractCustomerName(message)).toBe(expected);
+  });
+
+  it("mengembalikan null kalau providernya menjawab GAGAL", () => {
+    // Menarik nama dari balasan gagal jauh lebih berbahaya daripada tidak
+    // menemukannya: pembeli akan melihat nama lalu yakin nomornya sudah benar.
+    expect(extractCustomerName("CEKPLN.999 GAGAL. Nomor tujuan salah. NAMA: -")).toBeNull();
+    expect(extractCustomerName("Nomor tidak ditemukan")).toBeNull();
+  });
+
+  it("mengembalikan null kalau tidak ada markah nama sama sekali", () => {
+    expect(extractCustomerName("T#123 R#1 CEKPLN.12345678 akan diproses. Saldo 43.934.743")).toBeNull();
+    expect(extractCustomerName("")).toBeNull();
+  });
+
+  it("menolak hasil yang kepanjangan (pola kelewat rakus)", () => {
+    const kepanjangan = "NAMA: " + "A".repeat(120);
+    expect(extractCustomerName(kepanjangan)).toBeNull();
   });
 });
