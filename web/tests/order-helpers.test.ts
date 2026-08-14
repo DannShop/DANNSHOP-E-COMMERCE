@@ -86,13 +86,90 @@ describe("selectFulfillmentSku", () => {
     expect(result).toEqual({ ok: false, reason: "price_increased" });
   });
 
-  it("provider selain DIGIFLAZZ diabaikan (belum ada adapter di Fase 3)", () => {
+  // Dulu tes ini menuntut SEMUA provider selain DIGIFLAZZ diabaikan, karena memang
+  // cuma Digiflazz yang punya adapter. Sekarang OkeConnect punya adapter, dan
+  // pemilihannya tidak lagi meng-hardcode nama provider — yang menentukan adalah
+  // provider itu aktif atau tidak.
+  it("SKU provider non-Digiflazz dipakai kalau provider-nya aktif", () => {
     const result = selectFulfillmentSku(
       item,
-      [{ provider: "OKECONNECT", providerSkuCode: "X", costPrice: 15000n, status: "ACTIVE" }],
+      [{ provider: "OKECONNECT", providerSkuCode: "S5", costPrice: 15000n, status: "ACTIVE" }],
+      new Set(["OKECONNECT"]),
+    );
+    expect(result).toEqual({
+      ok: true,
+      sku: { provider: "OKECONNECT", providerSkuCode: "S5", costPrice: 15000n },
+    });
+  });
+
+  it("provider yang tidak aktif tetap diabaikan", () => {
+    const result = selectFulfillmentSku(
+      item,
+      [{ provider: "OKECONNECT", providerSkuCode: "S5", costPrice: 15000n, status: "ACTIVE" }],
       digiflazzActive,
     );
-    expect(result).toEqual({ ok: false, reason: "no_provider" });
+    expect(result).toEqual({ ok: false, reason: "provider_inactive" });
+  });
+
+  describe("urutan pemilihan antar-provider", () => {
+    const both = new Set<"DIGIFLAZZ" | "OKECONNECT" | "QIOSPAY" | "SERPUL">(["DIGIFLAZZ", "OKECONNECT"]);
+
+    it("priority kecil menang, WALAU harga modalnya lebih mahal", () => {
+      // Inti keputusan desain: urutan ditentukan admin lewat priority, bukan harga.
+      // Kalau suatu saat ini berubah jadi "termurah menang", tes ini yang gagal.
+      const result = selectFulfillmentSku(
+        item,
+        [
+          { provider: "OKECONNECT", providerSkuCode: "MURAH", costPrice: 15000n, status: "ACTIVE", priority: 2 },
+          { provider: "DIGIFLAZZ", providerSkuCode: "MAHAL", costPrice: 19000n, status: "ACTIVE", priority: 1 },
+        ],
+        both,
+      );
+      expect(result).toEqual({
+        ok: true,
+        sku: { provider: "DIGIFLAZZ", providerSkuCode: "MAHAL", costPrice: 19000n },
+      });
+    });
+
+    it("priority sama → harga modal termurah jadi pemecah seri", () => {
+      const result = selectFulfillmentSku(
+        item,
+        [
+          { provider: "DIGIFLAZZ", providerSkuCode: "A", costPrice: 19000n, status: "ACTIVE", priority: 5 },
+          { provider: "OKECONNECT", providerSkuCode: "B", costPrice: 15000n, status: "ACTIVE", priority: 5 },
+        ],
+        both,
+      );
+      expect(result.ok && result.sku.providerSkuCode).toBe("B");
+    });
+
+    it("excludeProviders melewati provider yang sudah gagal (jalur failover)", () => {
+      const skus = [
+        { provider: "DIGIFLAZZ" as const, providerSkuCode: "A", costPrice: 19000n, status: "ACTIVE" as const, priority: 1 },
+        { provider: "OKECONNECT" as const, providerSkuCode: "B", costPrice: 15000n, status: "ACTIVE" as const, priority: 2 },
+      ];
+      expect(selectFulfillmentSku(item, skus, both, new Set(["DIGIFLAZZ"]))).toEqual({
+        ok: true,
+        sku: { provider: "OKECONNECT", providerSkuCode: "B", costPrice: 15000n },
+      });
+      // Semua provider dikecualikan → tidak ada kandidat sama sekali.
+      expect(selectFulfillmentSku(item, skus, both, new Set(["DIGIFLAZZ", "OKECONNECT"]))).toEqual({
+        ok: false,
+        reason: "no_provider",
+      });
+    });
+
+    it("provider mahal dilewati kalau ada yang masih di bawah harga jual", () => {
+      const result = selectFulfillmentSku(
+        item,
+        [
+          { provider: "DIGIFLAZZ", providerSkuCode: "KEMAHALAN", costPrice: 25000n, status: "ACTIVE", priority: 1 },
+          { provider: "OKECONNECT", providerSkuCode: "MASIH_UNTUNG", costPrice: 15000n, status: "ACTIVE", priority: 2 },
+        ],
+        both,
+      );
+      expect(result.ok && result.sku.providerSkuCode).toBe("MASIH_UNTUNG");
+    });
   });
 
   it("DIGIFLAZZ ACTIVE tapi provider dinonaktifkan admin → provider_inactive", () => {

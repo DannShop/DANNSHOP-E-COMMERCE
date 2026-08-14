@@ -11,7 +11,10 @@
 //     gagal disimpan tidak boleh menggagalkan transaksi yang sedang berjalan.
 //  2. KREDENSIAL TIDAK BOLEH TERSIMPAN. Body request memuat `sign` (turunan API
 //     key) dan `username`. Log ini dibaca dari halaman admin dan bisa ikut ter-dump
-//     saat backup DB, jadi diredaksi SEBELUM menyentuh database.
+//     saat backup DB, jadi diredaksi SEBELUM menyentuh database. Berlaku untuk DUA
+//     jalur: `requestBody` (lewat redactProviderRequest) DAN `endpoint` (lewat
+//     sanitizeEndpointForLog) — provider yang memakai GET menaruh kredensialnya di
+//     dalam URL, bukan di body.
 
 import type { Prisma, ProviderKey } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -127,13 +130,34 @@ export function truncateTextForLog(text: string): string {
   return `${text.slice(0, MAX_LOG_TEXT_CHARS)}\n…(dipotong, total ${text.length} karakter)`;
 }
 
+/**
+ * Buang query string dari endpoint sebelum disimpan.
+ *
+ * Aturan 2 di atas diberlakukan pada `requestBody` lewat redactProviderRequest,
+ * TAPI `endpoint` dulu tersimpan apa adanya. Itu aman selama satu-satunya provider
+ * memakai POST + body JSON (Digiflazz): URL-nya tidak memuat rahasia apa pun.
+ * Begitu ada provider yang memakai GET dengan kredensial di query string
+ * (OkeConnect: `?memberID=…&pin=…&password=…`), URL ITU SENDIRI jadi rahasia —
+ * dan akan tersimpan polos di DB, terbaca dari halaman admin, ikut ter-dump saat
+ * backup.
+ *
+ * Diperbaiki di SINI, bukan di adapter, supaya kebal secara struktural: adapter
+ * baru yang lalai tetap tidak bisa membocorkan kredensial lewat jalur ini.
+ * Parameternya sendiri tidak hilang dari forensik — yang perlu dilihat admin
+ * tetap ada di `requestBody` dalam bentuk sudah diredaksi.
+ */
+export function sanitizeEndpointForLog(endpoint: string): string {
+  const cut = endpoint.search(/[?#]/);
+  return cut === -1 ? endpoint : endpoint.slice(0, cut);
+}
+
 export const recordProviderApiCall: ProviderApiLogger = async (entry) => {
   try {
     await db.providerApiLog.create({
       data: {
         provider: entry.provider,
         operation: entry.operation,
-        endpoint: entry.endpoint,
+        endpoint: sanitizeEndpointForLog(entry.endpoint),
         outcome: entry.outcome,
         httpStatus: entry.httpStatus,
         durationMs: entry.durationMs,

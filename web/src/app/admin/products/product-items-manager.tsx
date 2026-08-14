@@ -29,6 +29,28 @@ export interface ProviderSkuData {
   costPrice: string; // bigint diserialisasi jadi string dari Server Component
   status: string; // "ACTIVE" | "UNAVAILABLE"
   lastSyncedAtDisplay: string; // sudah diformat di server (hindari mismatch locale saat hidrasi)
+  priority: number; // angka kecil dicoba lebih dulu saat fulfillment
+}
+
+/**
+ * Mana mapping yang sebenarnya akan dipakai duluan saat order masuk.
+ *
+ * Urutannya SENGAJA menyalin persis pemecah seri di selectFulfillmentSku
+ * (priority → harga modal → nama provider). Kalau label di layar memakai aturan
+ * yang berbeda dari yang dipakai mesin fulfillment, admin akan melihat "Utama"
+ * di satu provider sementara order lari ke provider lain — persis jenis
+ * ketidakcocokan yang paling lama ketahuannya.
+ */
+function primarySkuId(skus: ProviderSkuData[]): string | null {
+  if (skus.length === 0) return null;
+  const sorted = [...skus].sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    const ca = BigInt(a.costPrice);
+    const cb = BigInt(b.costPrice);
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    return a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0;
+  });
+  return sorted[0].id;
 }
 
 export interface ProductItemGroupData {
@@ -107,13 +129,23 @@ function MarginIndicator({
 function ProviderSkuRow({
   item,
   sku,
+  isPrimary,
+  showPrimaryControl,
   unmapProviderSku,
+  setPrimaryProviderSku,
 }: {
   item: ProductItemData;
   sku: ProviderSkuData;
+  isPrimary: boolean;
+  showPrimaryControl: boolean;
   unmapProviderSku: ServerAction;
+  setPrimaryProviderSku: ServerAction;
 }) {
   const [state, action, pending] = useActionState(withPrevState(unmapProviderSku), INITIAL_STATE);
+  const [primaryState, primaryAction, primaryPending] = useActionState(
+    withPrevState(setPrimaryProviderSku),
+    INITIAL_STATE,
+  );
   const sellingPrice = BigInt(item.sellingPrice);
   const costPrice = BigInt(sku.costPrice);
   const isLoss = sellingPrice - costPrice < BigInt(0);
@@ -126,6 +158,12 @@ function ProviderSkuRow({
       )}
     >
       <span className="font-medium">{PROVIDER_LABELS[sku.provider] ?? sku.provider}</span>
+      {showPrimaryControl &&
+        (isPrimary ? (
+          <Badge variant="success">Utama</Badge>
+        ) : (
+          <Badge variant="muted">Cadangan</Badge>
+        ))}
       <span className="font-mono text-xs text-muted-foreground">{sku.providerSkuCode}</span>
       <span className="tabular-nums text-xs text-muted-foreground">
         Modal Rp {costPrice.toLocaleString("id-ID")}
@@ -141,15 +179,25 @@ function ProviderSkuRow({
         flashPrice={item.flashPrice ? BigInt(item.flashPrice) : null}
       />
 
-      <form action={action} className="ml-auto flex items-center gap-2">
-        <input type="hidden" name="id" value={sku.id} />
-        <Button type="submit" size="xs" variant="ghost" disabled={pending}>
-          {pending ? "Menghapus..." : "Hapus"}
-        </Button>
-      </form>
-      {(state.ok || state.error) && (
+      <div className="ml-auto flex items-center gap-2">
+        {showPrimaryControl && !isPrimary && (
+          <form action={primaryAction}>
+            <input type="hidden" name="id" value={sku.id} />
+            <Button type="submit" size="xs" variant="outline" disabled={primaryPending}>
+              {primaryPending ? "Menyetel..." : "Jadikan utama"}
+            </Button>
+          </form>
+        )}
+        <form action={action}>
+          <input type="hidden" name="id" value={sku.id} />
+          <Button type="submit" size="xs" variant="ghost" disabled={pending}>
+            {pending ? "Menghapus..." : "Hapus"}
+          </Button>
+        </form>
+      </div>
+      {(state.ok || state.error || primaryState.ok || primaryState.error) && (
         <div className="w-full">
-          <ActionMessage state={state} />
+          <ActionMessage state={state.ok || state.error ? state : primaryState} />
         </div>
       )}
     </div>
@@ -160,12 +208,19 @@ function SkuMappingSection({
   item,
   mapProviderSku,
   unmapProviderSku,
+  setPrimaryProviderSku,
 }: {
   item: ProductItemData;
   mapProviderSku: ServerAction;
   unmapProviderSku: ServerAction;
+  setPrimaryProviderSku: ServerAction;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Utama/Cadangan hanya bermakna kalau ADA yang bisa dipilih. Dengan satu mapping,
+  // labelnya cuma jadi bising: provider itu satu-satunya jalan, mau disebut utama
+  // atau tidak hasilnya sama.
+  const showPrimaryControl = item.providerSkus.length > 1;
+  const primaryId = primarySkuId(item.providerSkus);
 
   return (
     <div className="space-y-2 border-t px-3 py-2.5">
@@ -181,11 +236,27 @@ function SkuMappingSection({
       {item.providerSkus.length > 0 ? (
         <div className="space-y-1.5">
           {item.providerSkus.map((sku) => (
-            <ProviderSkuRow key={sku.id} item={item} sku={sku} unmapProviderSku={unmapProviderSku} />
+            <ProviderSkuRow
+              key={sku.id}
+              item={item}
+              sku={sku}
+              isPrimary={sku.id === primaryId}
+              showPrimaryControl={showPrimaryControl}
+              unmapProviderSku={unmapProviderSku}
+              setPrimaryProviderSku={setPrimaryProviderSku}
+            />
           ))}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">Belum ada mapping provider untuk item ini.</p>
+      )}
+
+      {showPrimaryControl && (
+        <p className="text-xs text-muted-foreground">
+          Provider <strong>Utama</strong> yang dicoba lebih dulu. <strong>Cadangan</strong> hanya dipakai kalau
+          yang utama gagal karena sebab yang dipastikan belum menyentuh produk (IP belum terdaftar, saldo provider
+          kurang, produk gangguan) — bukan untuk kegagalan yang statusnya tidak jelas.
+        </p>
       )}
 
       {pickerOpen && <SkuPicker productItemId={item.id} mapProviderSku={mapProviderSku} />}
@@ -256,6 +327,7 @@ function ItemRow({
   updateProductItem,
   mapProviderSku,
   unmapProviderSku,
+  setPrimaryProviderSku,
 }: {
   productId: string;
   item: ProductItemData;
@@ -263,6 +335,7 @@ function ItemRow({
   updateProductItem: ServerAction;
   mapProviderSku: ServerAction;
   unmapProviderSku: ServerAction;
+  setPrimaryProviderSku: ServerAction;
 }) {
   const [state, action, pending] = useActionState(withPrevState(updateProductItem), INITIAL_STATE);
 
@@ -346,7 +419,12 @@ function ItemRow({
           </div>
         )}
       </form>
-      <SkuMappingSection item={item} mapProviderSku={mapProviderSku} unmapProviderSku={unmapProviderSku} />
+      <SkuMappingSection
+        item={item}
+        mapProviderSku={mapProviderSku}
+        unmapProviderSku={unmapProviderSku}
+        setPrimaryProviderSku={setPrimaryProviderSku}
+      />
     </div>
   );
 }
@@ -519,6 +597,7 @@ export function ProductItemsManager({
   updateProductItem,
   mapProviderSku,
   unmapProviderSku,
+  setPrimaryProviderSku,
   createProductItemGroup,
   updateProductItemGroup,
   deleteProductItemGroup,
@@ -530,6 +609,7 @@ export function ProductItemsManager({
   updateProductItem: ServerAction;
   mapProviderSku: ServerAction;
   unmapProviderSku: ServerAction;
+  setPrimaryProviderSku: ServerAction;
   createProductItemGroup: ServerAction;
   updateProductItemGroup: ServerAction;
   deleteProductItemGroup: ServerAction;
@@ -567,6 +647,7 @@ export function ProductItemsManager({
               updateProductItem={updateProductItem}
               mapProviderSku={mapProviderSku}
               unmapProviderSku={unmapProviderSku}
+              setPrimaryProviderSku={setPrimaryProviderSku}
             />
           ))
         )}

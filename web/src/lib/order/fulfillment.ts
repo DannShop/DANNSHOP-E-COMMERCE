@@ -17,6 +17,7 @@ import { describeOrderTarget } from "@/lib/order/customer-no";
 import { diagnoseFailure } from "@/lib/order/failure-reason";
 import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 import { decideFulfillmentRetry } from "@/lib/order/retry-decision";
+import { decideFailover } from "@/lib/order/failover-decision";
 import { truncateNote } from "@/lib/order/status-note";
 import { enqueuePartnerCallback } from "@/lib/partner/callback";
 
@@ -155,9 +156,15 @@ async function selectAndSend(
   item: ItemForFulfillment,
   attemptNo: number,
   alertOnFailure: boolean = true,
+  excludeProviders?: Set<import("@prisma/client").ProviderKey>,
 ): Promise<void> {
   const activeProviders = await getActiveProviders();
-  const decision = selectFulfillmentSku({ sellingPrice: order.sellingPrice }, item.providerSkus, activeProviders);
+  const decision = selectFulfillmentSku(
+    { sellingPrice: order.sellingPrice },
+    item.providerSkus,
+    activeProviders,
+    excludeProviders,
+  );
   if (!decision.ok) {
     const note =
       decision.reason === "no_provider"
@@ -220,6 +227,82 @@ async function selectAndSend(
   }
 }
 
+/**
+ * Coba alihkan order ke provider lain setelah satu provider gagal.
+ *
+ * Mengembalikan true HANYA kalau percobaan baru benar-benar dikirim - pemanggil
+ * memakai itu untuk berhenti sebelum menjalankan refund. Mengembalikan false pada
+ * semua kasus lain (kategori tidak aman, percobaan habis, tidak ada provider
+ * pengganti yang layak), supaya perilaku lama tetap jalan apa adanya.
+ *
+ * SENGAJA tidak melempar: kegagalan di dalam sini tidak boleh menghalangi refund
+ * yang seharusnya terjadi. Failover itu peningkatan, bukan syarat.
+ */
+async function tryFailover(
+  order: { id: string; orderNumber: string; sellingPrice: bigint; target: unknown; productItemId: string | null },
+  orderId: string,
+  providerMessage: string | null,
+): Promise<boolean> {
+  try {
+    if (!order.productItemId) return false;
+
+    const attempts = await db.orderFulfillment.findMany({
+      where: { orderId },
+      select: { provider: true },
+    });
+    const decision = decideFailover({
+      category: diagnoseFailure(providerMessage).category,
+      attemptsSoFar: attempts.length,
+    });
+    if (!decision.failover) return false;
+
+    // Provider yang SUDAH pernah dicoba untuk order ini tidak boleh dicoba lagi -
+    // kalau tidak, kegagalan yang sama akan berputar sampai batas percobaan habis.
+    const tried = new Set(attempts.map((a) => a.provider));
+
+    const item = await db.productItem.findUniqueOrThrow({
+      where: { id: order.productItemId },
+      include: { providerSkus: true, product: true },
+    });
+
+    // Dicek DULU apakah ada kandidat yang benar-benar lolos semua syarat
+    // (status ACTIVE, provider tidak di-kill-switch, harga modal masih di bawah
+    // harga jual). Tanpa pengecekan ini, selectAndSend akan mengeskalasi order ke
+    // NEEDS_REVIEW saat tidak ada kandidat - padahal yang benar adalah membiarkan
+    // jalur refund yang sudah ada mengambil alih.
+    const activeProviders = await getActiveProviders();
+    const candidate = selectFulfillmentSku(
+      { sellingPrice: order.sellingPrice },
+      item.providerSkus,
+      activeProviders,
+      tried,
+    );
+    if (!candidate.ok) return false;
+
+    await db.orderStatusHistory.create({
+      data: {
+        orderId,
+        toStatus: "PROCESSING",
+        note: truncateNote(
+          `Failover otomatis ke ${candidate.sku.provider} (percobaan ${attempts.length + 1}). ` +
+            `Sebab kegagalan sebelumnya: ${diagnoseFailure(providerMessage).label}`,
+        ),
+      },
+    });
+
+    // alertOnFailure=false: kalau percobaan pengganti ini pun gagal, alert-nya
+    // dikirim lewat jalur kegagalan biasa di applyFulfillmentResult - bukan dua
+    // notifikasi untuk satu order yang sama.
+    await selectAndSend(order, item, attempts.length + 1, false, tried);
+    return true;
+  } catch (e) {
+    // Failover gagal dengan cara yang tidak terduga - JANGAN telan order-nya.
+    // Kembalikan false supaya jalur refund/eskalasi yang sudah teruji tetap jalan.
+    console.error("tryFailover: gagal, melanjutkan ke jalur refund biasa", { orderId, error: e });
+    return false;
+  }
+}
+
 export async function applyFulfillmentResult(fulfillmentId: string, result: ProviderTrxResult): Promise<void> {
   const status = result.status === "success" ? "SUCCESS" : result.status === "failed" ? "FAILED" : "PROCESSING";
 
@@ -272,6 +355,15 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
     await enqueuePartnerCallback(fulfillment.orderId);
   } else if (status === "FAILED") {
     const order = await db.order.findUniqueOrThrow({ where: { id: fulfillment.orderId } });
+
+    // ---- Failover antar-provider, SEBELUM keputusan refund apa pun -------------
+    //
+    // Hanya untuk kegagalan yang bisa dipastikan terjadi sebelum provider menyentuh
+    // produk (lihat failover-decision.ts). Kalau tidak ada alternatif yang benar-benar
+    // bisa dipakai, sengaja JATUH KE BAWAH ke jalur refund yang sudah ada - bukan
+    // eskalasi NEEDS_REVIEW. Kalau tidak, order yang dulunya di-refund otomatis
+    // malah berakhir menunggu admin, dan itu kemunduran buat pembeli.
+    if (await tryFailover(order, fulfillment.orderId, result.message)) return;
 
     if (decideRefundDestination(order.userId) === "wallet") {
       // Member — auto-refund ke saldo, atomik dalam satu transaksi (ledger double-entry)

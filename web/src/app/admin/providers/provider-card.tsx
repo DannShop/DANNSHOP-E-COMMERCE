@@ -92,6 +92,7 @@ export interface ProviderCardProps {
   checkProviderBalance: ServerAction;
   syncProviderNow: ServerAction;
   saveDigiflazzCredentials: ServerAction;
+  saveOkeConnectCredentials: ServerAction;
   saveBalanceThreshold: ServerAction;
 }
 
@@ -113,6 +114,7 @@ export function ProviderCard({
   checkProviderBalance,
   syncProviderNow,
   saveDigiflazzCredentials,
+  saveOkeConnectCredentials,
   saveBalanceThreshold,
 }: ProviderCardProps) {
   const [toggleState, toggleAction, togglePending] = useActionState(
@@ -129,6 +131,13 @@ export function ProviderCard({
   );
   const [credState, credAction, credPending] = useActionState(
     withPrevState(saveDigiflazzCredentials),
+    INITIAL_STATE,
+  );
+  // State terpisah dari form Digiflazz: dua provider tidak pernah tampil di kartu
+  // yang sama, tapi berbagi satu state akan membuat pesan hasil milik provider
+  // lain sempat muncul di kartu yang salah setelah navigasi.
+  const [okeCredState, okeCredAction, okeCredPending] = useActionState(
+    withPrevState(saveOkeConnectCredentials),
     INITIAL_STATE,
   );
   const [thresholdState, thresholdAction, thresholdPending] = useActionState(
@@ -325,6 +334,56 @@ export function ProviderCard({
               <ActionMessage state={credState} />
             </form>
           </>
+        )}
+
+        {providerKey === "OKECONNECT" && (
+          <form action={okeCredAction} className="space-y-3 rounded-lg border p-3">
+            <p className="text-sm font-medium">Kredensial OkeConnect</p>
+            <p className="text-xs text-muted-foreground">
+              Ambil dari dashboard OkeConnect &gt; Integrasi Transaksi &gt; Transaksi IP. Jangan lupa daftarkan juga
+              IP relay ber-IP tetap di kolom IP Address dashboard sana — OkeConnect menolak request dari IP yang
+              tidak terdaftar, sama seperti Digiflazz.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="okeconnect-memberID">User ID</Label>
+              <Input
+                id="okeconnect-memberID"
+                name="memberID"
+                required
+                autoComplete="off"
+                placeholder="OK000000"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="okeconnect-pin">PIN transaksi</Label>
+              <Input id="okeconnect-pin" name="pin" type="password" required autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="okeconnect-password">Password H2H</Label>
+              <Input id="okeconnect-password" name="password" type="password" required autoComplete="off" />
+              <p className="text-xs text-muted-foreground">
+                Password khusus transaksi via IP — <strong>bukan</strong> password login okeconnect.com.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="okeconnect-priceListId">Token daftar harga (opsional)</Label>
+              <Input
+                id="okeconnect-priceListId"
+                name="priceListId"
+                autoComplete="off"
+                placeholder="Kosongkan = pakai bawaan"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Biarkan kosong. Token ini sama untuk semua member dan sudah tertanam di aplikasi; isi hanya kalau
+                OkeConnect menggantinya.
+              </p>
+            </div>
+            <Button type="submit" size="sm" disabled={okeCredPending}>
+              {okeCredPending ? "Menyimpan..." : "Simpan kredensial"}
+            </Button>
+            <ActionMessage state={okeCredState} />
+          </form>
         )}
       </CardContent>
 

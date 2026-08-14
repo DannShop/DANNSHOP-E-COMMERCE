@@ -2,6 +2,7 @@ import type { ProviderKey } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decryptJson } from "@/lib/crypto";
 import { DigiflazzAdapter, type DigiflazzCredentials } from "./digiflazz";
+import { OkeConnectAdapter, type OkeConnectCredentials } from "./okeconnect";
 import { recordProviderApiCall } from "./api-log";
 import type { TopupProviderAdapter } from "./types";
 
@@ -36,6 +37,10 @@ export async function getAdapter(
       // Logger disuntik DI SINI, satu-satunya pabrik adapter untuk panggilan
       // keluar — jadi tidak ada jalur transaksi yang bisa lolos tanpa tercatat.
       return new DigiflazzAdapter(decryptJson<DigiflazzCredentials>(config.credentials), {
+        log: recordProviderApiCall,
+      });
+    case "OKECONNECT":
+      return new OkeConnectAdapter(decryptJson<OkeConnectCredentials>(config.credentials), {
         log: recordProviderApiCall,
       });
     default:

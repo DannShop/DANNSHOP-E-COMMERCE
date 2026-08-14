@@ -74,6 +74,52 @@ export async function providerHttpPost(params: {
     signal: AbortSignal.timeout(params.timeoutMs + 5_000),
   });
 
+  return unwrapRelayResponse(res);
+}
+
+/**
+ * GET ke API provider, dengan parameter sebagai OBJEK — bukan URL yang query
+ * string-nya sudah ditempel.
+ *
+ * KENAPA objek terpisah: relay PHP sengaja menyusun ulang URL tujuan dari bagian
+ * yang sudah divalidasi dan MEMBUANG query string aslinya, supaya URL yang lolos
+ * validasi host+path tidak bisa diselundupi parameter tambahan. Kalau GET dikirim
+ * sebagai satu string URL utuh, proteksi itu harus dilonggarkan. Dengan memisahkan
+ * `query`, relay tetap membangun ulang URL-nya sendiri dan proteksinya utuh.
+ *
+ * Manfaat kedua: parameter tetap berbentuk objek saat dicatat ke ProviderApiLog,
+ * jadi kena redactProviderRequest (pin/password diredaksi). URL yang sudah
+ * ditempel akan lolos redaksi itu.
+ */
+export async function providerHttpGet(params: {
+  url: string;
+  query: Record<string, string>;
+  timeoutMs: number;
+}): Promise<ProviderHttpResponse> {
+  const relayUrl = process.env.PROVIDER_RELAY_URL;
+  const relaySecret = process.env.PROVIDER_RELAY_SECRET;
+
+  if (!relayUrl || !relaySecret) {
+    const qs = new URLSearchParams(params.query).toString();
+    const res = await fetch(`${params.url}?${qs}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(params.timeoutMs),
+    });
+    return { status: res.status, text: await res.text(), viaRelay: false };
+  }
+
+  const res = await fetch(relayUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-relay-secret": relaySecret },
+    body: JSON.stringify({ method: "GET", url: params.url, query: params.query }),
+    signal: AbortSignal.timeout(params.timeoutMs + 5_000),
+  });
+
+  return unwrapRelayResponse(res);
+}
+
+/** Membongkar amplop relay jadi respons provider. Dipakai jalur POST dan GET. */
+async function unwrapRelayResponse(res: Response): Promise<ProviderHttpResponse> {
   const envelopeText = await res.text();
   let envelope: RelayEnvelope;
   try {

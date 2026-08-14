@@ -410,6 +410,13 @@ model ProviderSku {
   providerSkuCode String
   costPrice       BigInt
   status          ProviderSkuStatus @default(ACTIVE)
+  // Urutan pemilihan provider untuk item ini: angka KECIL dicoba lebih dulu.
+  // Ada supaya satu item bisa dipetakan ke beberapa provider sekaligus tanpa
+  // salah satunya menimpa yang lain - admin yang menentukan mana yang utama
+  // (mis. pulsa/kuota ke OkeConnect, game ke Digiflazz), bukan aturan otomatis.
+  // Default sama rata: kalau semua bernilai sama, urutan ditentukan harga modal
+  // termurah sebagai pemecah seri yang deterministik (lihat select-provider.ts).
+  priority        Int               @default(100)
   lastSyncedAt    DateTime?
 
   @@unique([productItemId, provider])

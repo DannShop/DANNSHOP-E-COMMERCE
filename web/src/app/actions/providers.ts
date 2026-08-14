@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { encryptJson, decryptJson } from "@/lib/crypto";
 import type { DigiflazzCredentials } from "@/lib/providers/digiflazz";
+import type { OkeConnectCredentials } from "@/lib/providers/okeconnect";
 import { getAdapter } from "@/lib/providers/registry";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 
@@ -18,6 +19,20 @@ export const digiflazzCredentialsSchema = z.object({
     .optional()
     .transform((v) => (v === "" ? undefined : v)),
   webhookSecret: z
+    .string()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v)),
+});
+
+export const okeconnectCredentialsSchema = z.object({
+  memberID: z.string().min(1, "User ID wajib diisi"),
+  pin: z.string().min(1, "PIN wajib diisi"),
+  password: z.string().min(1, "Password H2H wajib diisi"),
+  // Token daftar harga. BUKAN rahasia dan sama untuk semua member (sudah
+  // diverifikasi — lihat docs/providers/okeconnect.md §1.6), jadi normalnya
+  // dibiarkan kosong dan adapter memakai nilai bawaannya. Tetap bisa diisi supaya
+  // kalau OkeConnect suatu saat menggantinya, cukup diubah dari sini tanpa deploy.
+  priceListId: z
     .string()
     .optional()
     .transform((v) => (v === "" ? undefined : v)),
@@ -141,6 +156,53 @@ export async function saveDigiflazzCredentials(formData: FormData): Promise<Acti
   await logAdmin(admin.adminId, "provider.save_credentials", "DIGIFLAZZ"); // isi kredensial TIDAK di-log
   revalidatePath("/admin/providers");
   return { ok: "Kredensial Digiflazz tersimpan." };
+}
+
+export async function saveOkeConnectCredentials(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = okeconnectCredentialsSchema.safeParse({
+    memberID: formData.get("memberID"),
+    pin: formData.get("pin"),
+    password: formData.get("password"),
+    priceListId: formData.get("priceListId") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  // Pola "kosongkan = jangan ubah" yang sama dengan Digiflazz, dan untuk sebab yang
+  // sama: form tidak pernah mengisi ulang nilai yang sudah tersimpan ke browser,
+  // jadi menimpa blob mentah-mentah akan menghapus field yang tidak ikut dikirim.
+  const existing = await db.providerConfig.findUnique({ where: { key: "OKECONNECT" } });
+  let current: Partial<OkeConnectCredentials> = {};
+  if (typeof existing?.credentials === "string" && existing.credentials.length > 0) {
+    try {
+      current = decryptJson<OkeConnectCredentials>(existing.credentials);
+    } catch (e) {
+      console.error("saveOkeConnectCredentials: kredensial lama gagal didekripsi, disimpan sebagai baru", { error: e });
+    }
+  }
+
+  const merged: OkeConnectCredentials = {
+    memberID: parsed.data.memberID,
+    pin: parsed.data.pin,
+    password: parsed.data.password,
+    priceListId: parsed.data.priceListId ?? current.priceListId,
+  };
+
+  await db.providerConfig.upsert({
+    where: { key: "OKECONNECT" },
+    // Baris ProviderConfig OKECONNECT belum tentu ada — provider ini tidak ikut
+    // ter-seed sejak awal seperti Digiflazz. Dibuat di sini dalam keadaan TIDAK
+    // aktif: mengaktifkan tetap harus lewat tombol Aktifkan, supaya tidak ada
+    // provider yang tiba-tiba ikut melayani order hanya karena kredensialnya diisi.
+    create: { key: "OKECONNECT", displayName: "OkeConnect", credentials: encryptJson(merged), isActive: false },
+    update: { credentials: encryptJson(merged) },
+  });
+  await logAdmin(admin.adminId, "provider.save_credentials", "OKECONNECT"); // isi kredensial TIDAK di-log
+  revalidatePath("/admin/providers");
+  return { ok: "Kredensial OkeConnect tersimpan." };
 }
 
 export async function toggleProviderActive(formData: FormData): Promise<ActionResult> {

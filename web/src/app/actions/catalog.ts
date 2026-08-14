@@ -515,6 +515,53 @@ export async function mapProviderSku(formData: FormData): Promise<ActionResult> 
   return { ok: "SKU berhasil dipetakan." };
 }
 
+// Tetapkan satu mapping sebagai provider UTAMA untuk item ini; sisanya jadi cadangan.
+//
+// Kenapa satu aksi yang mengubah SEMUA baris, bukan field angka `priority` yang
+// bisa diketik bebas per baris: priority yang diisi manual gampang berakhir seri
+// (dua-duanya 1) atau terbalik tanpa disadari, dan akibatnya baru ketahuan saat
+// order sudah terlanjur lari ke provider yang salah. Dengan bentuk ini, keadaan
+// "tepat satu utama" dijaga oleh aksinya sendiri, bukan oleh kedisiplinan admin.
+//
+// Dijalankan dalam satu transaksi supaya tidak pernah ada jeda di mana item punya
+// dua provider utama atau tidak punya satu pun.
+export async function setPrimaryProviderSku(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) return { error: "Mapping tidak ditemukan." };
+
+  const mapping = await db.providerSku.findUnique({
+    where: { id },
+    select: {
+      productItemId: true,
+      provider: true,
+      productItem: { select: { productId: true } },
+    },
+  });
+  if (!mapping) return { error: "Mapping tidak ditemukan." };
+
+  await db.$transaction([
+    // Semua mapping item ini diturunkan dulu...
+    db.providerSku.updateMany({
+      where: { productItemId: mapping.productItemId },
+      data: { priority: 2 },
+    }),
+    // ...lalu yang dipilih dinaikkan. Urutan ini penting: kebalikannya akan
+    // menurunkan lagi baris yang baru saja dijadikan utama.
+    db.providerSku.update({ where: { id }, data: { priority: 1 } }),
+  ]);
+
+  await logAdmin(admin.adminId, "catalog.set_primary_sku", mapping.productItemId, {
+    provider: mapping.provider,
+  });
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${mapping.productItem.productId}`);
+  return { ok: `${mapping.provider} dijadikan provider utama untuk item ini.` };
+}
+
 export async function unmapProviderSku(formData: FormData): Promise<ActionResult> {
   "use server";
   const admin = await requireAdmin();

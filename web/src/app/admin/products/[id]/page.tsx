@@ -9,6 +9,7 @@ import {
   toggleProductActive,
   mapProviderSku,
   unmapProviderSku,
+  setPrimaryProviderSku,
   uploadProductBanner,
   createProductItemGroup,
   updateProductItemGroup,
@@ -129,6 +130,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
               costPrice: sku.costPrice.toString(),
               status: sku.status,
               lastSyncedAtDisplay: formatDateTime(sku.lastSyncedAt),
+              priority: sku.priority,
             })),
           }))}
           groups={product.itemGroups.map((g) => ({ id: g.id, name: g.name, sortOrder: g.sortOrder }))}
@@ -136,6 +138,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           updateProductItem={updateProductItem}
           mapProviderSku={mapProviderSku}
           unmapProviderSku={unmapProviderSku}
+          setPrimaryProviderSku={setPrimaryProviderSku}
           createProductItemGroup={createProductItemGroup}
           updateProductItemGroup={updateProductItemGroup}
           deleteProductItemGroup={deleteProductItemGroup}

@@ -7,6 +7,7 @@ import {
   checkProviderBalance,
   syncProviderNow,
   saveBalanceThreshold,
+  saveOkeConnectCredentials,
 } from "@/app/actions/providers";
 import { ProviderCard } from "./provider-card";
 
@@ -92,6 +93,7 @@ export default async function AdminProvidersPage() {
             checkProviderBalance={checkProviderBalance}
             syncProviderNow={syncProviderNow}
             saveDigiflazzCredentials={saveDigiflazzCredentials}
+            saveOkeConnectCredentials={saveOkeConnectCredentials}
             saveBalanceThreshold={saveBalanceThreshold}
           />
         ))}
