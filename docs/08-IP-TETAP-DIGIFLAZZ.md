@@ -182,3 +182,42 @@ Buka **Admin → Log API Provider**, filter **"Gagal saja"**, lalu cocokkan:
 - API key Digiflazz **tidak pernah** melewati relay dalam bentuk mentah: yang
   dikirim cuma `sign` (hash MD5), sama seperti panggilan langsung.
 - Kalau secret bocor, ganti di dua tempat (file PHP + env Vercel) lalu redeploy.
+
+---
+
+## Memperbarui relay yang SUDAH terpasang (bukan pemasangan pertama)
+
+Dipakai saat file relay di repo berubah — mis. penambahan dukungan GET untuk
+OkeConnect (14 Agu 2026). Berbeda dari pemasangan pertama: URL dan env Vercel
+**tidak** disentuh sama sekali.
+
+> ⚠️ **SATU LANGKAH YANG KALAU TERLEWAT MEMATIKAN SEMUA TRANSAKSI.**
+> File `relay/digiflazz-relay.php` di repo memuat `RELAY_SECRET` versi
+> **placeholder** (`'GANTI-DENGAN-STRING-ACAK-PANJANG'`) — bukan secret asli
+> kamu, karena secret asli memang tidak boleh ikut tersimpan di git. Meng-upload
+> file repo apa adanya membuat relay menolak SEMUA request dengan HTTP 500, dan
+> setiap order otomatis gagal sampai diperbaiki.
+
+Urutan yang aman:
+
+1. **Ambil dulu secret yang sedang berjalan.** cPanel → File Manager → buka
+   `public_html/digiflazz-relay.php` → Edit → salin nilai `RELAY_SECRET` yang ada
+   di sana (baris ~31). Jangan ditutup dulu.
+2. **Siapkan file barunya di komputer.** Buka `relay/digiflazz-relay.php` dari
+   repo, ganti `'GANTI-DENGAN-STRING-ACAK-PANJANG'` dengan secret dari langkah 1.
+3. **Upload menimpa** file lama di `public_html/` (nama file TETAP
+   `digiflazz-relay.php` — sengaja tidak diganti walau sekarang melayani dua
+   provider, supaya `PROVIDER_RELAY_URL` di Vercel tidak perlu diubah).
+4. **Verifikasi sebelum percaya:**
+   ```bash
+   curl -H "x-relay-secret: SECRET-KAMU" "https://domain-kamu.com/digiflazz-relay.php?ping=1"
+   ```
+   Yang benar: `"ok":true` dan `"relay":"provider-relay (digiflazz + okeconnect)"`.
+   Kalau masih tertulis `"relay":"digiflazz"`, file lama belum tertimpa (cache
+   File Manager / salah folder).
+   Kalau `"error":"RELAY_SECRET ... belum diganti"`, langkah 2 terlewat.
+5. **Uji Digiflazz masih hidup** — Admin → Providers → kartu Digiflazz → *Cek
+   Saldo*. Ini memastikan pembaruan tidak merusak jalur yang sudah jalan, dan
+   dilakukan SEBELUM menyentuh apa pun milik OkeConnect.
+
+Tidak perlu redeploy Vercel: yang berubah cuma file di hosting.

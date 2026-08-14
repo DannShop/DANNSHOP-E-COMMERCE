@@ -44,6 +44,22 @@ export interface OkeConnectCredentials {
    * diubah dari halaman admin — tidak perlu deploy ulang.
    */
   priceListId?: string;
+  /**
+   * Segmen acak pada URL callback: `/api/webhooks/okeconnect/<callbackSecret>`.
+   *
+   * BUKAN pengganti verifikasi tanda tangan — OkeConnect tidak menyediakannya sama
+   * sekali, dan tidak ada nilai rahasia yang ikut dikirim di dalam callback yang
+   * bisa dicocokkan. Ini semata memperkecil permukaan: tanpa segmen acak, URL
+   * callback bisa ditebak siapa pun yang tahu domain kita, dan mereka bisa
+   * membanjiri endpoint itu dengan refid karangan.
+   *
+   * Yang benar-benar menjaga kebenaran status adalah pola "callback cuma pemicu,
+   * checkStatus yang memutuskan" di route callback-nya.
+   *
+   * Kosong = endpoint callback menolak semua request (fail-closed), sama seperti
+   * webhookSecret Digiflazz yang belum diisi.
+   */
+  callbackSecret?: string;
 }
 
 const TRX_BASE_URL = "https://h2h.okeconnect.com";
@@ -148,7 +164,7 @@ export class OkeConnectAdapter implements TopupProviderAdapter {
   private async get(
     path: string,
     query: Record<string, string>,
-    meta: { operation: string; context?: ProviderCallContext; baseUrl?: string; viaRelay?: boolean },
+    meta: { operation: string; context?: ProviderCallContext; baseUrl?: string; bypassRelay?: boolean },
   ): Promise<string> {
     const startedAt = Date.now();
     const endpoint = `${meta.baseUrl ?? this.trxBaseUrl}${path}`;
@@ -160,7 +176,12 @@ export class OkeConnectAdapter implements TopupProviderAdapter {
     let viaRelay = false;
 
     try {
-      const res = await providerHttpGet({ url: endpoint, query, timeoutMs: 15_000 });
+      const res = await providerHttpGet({
+        url: endpoint,
+        query,
+        timeoutMs: 15_000,
+        bypassRelay: meta.bypassRelay,
+      });
       viaRelay = res.viaRelay;
       httpStatus = res.status;
       responseText = res.text;
@@ -208,7 +229,11 @@ export class OkeConnectAdapter implements TopupProviderAdapter {
     const text = await this.get(
       "/harga/json",
       { id: this.creds.priceListId || DEFAULT_PRICELIST_ID },
-      { operation: "price-list", baseUrl: this.priceListBaseUrl },
+      // bypassRelay: price list TIDAK butuh IP terdaftar (host-nya pun berbeda dari
+      // host transaksi), dan host ini sengaja tidak ada di ALLOWED_HOSTS relay.
+      // Tanpa ini, sync harga gagal dengan "Host tujuan tidak diizinkan" begitu
+      // relay dikonfigurasi.
+      { operation: "price-list", baseUrl: this.priceListBaseUrl, bypassRelay: true },
     );
 
     let raw: unknown;

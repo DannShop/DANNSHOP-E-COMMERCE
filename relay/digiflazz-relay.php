@@ -35,6 +35,10 @@
 
 // WAJIB DIGANTI. Harus sama persis dengan PROVIDER_RELAY_SECRET di Vercel.
 // Bikin nilainya dengan: openssl rand -hex 32
+// JANGAN isi nilai aslinya di berkas ini — berkas ini DILACAK GIT. Secret asli
+// hanya hidup di dua tempat: salinan yang ter-upload di hosting, dan env
+// PROVIDER_RELAY_SECRET di Vercel. Isi nilainya SETELAH file disalin keluar dari
+// repo (atau langsung lewat editor cPanel), jangan di sini.
 const RELAY_SECRET = 'GANTI-DENGAN-STRING-ACAK-PANJANG';
 
 // Host yang boleh dituju. Dikunci supaya file ini TIDAK bisa dipakai sebagai open

@@ -14,18 +14,29 @@ import { ProviderCard } from "./provider-card";
 // Hanya mengembalikan penanda ADA/TIDAK, tidak pernah nilainya. Kartu provider
 // perlu tahu bahwa sebuah rahasia sudah tersimpan (supaya bisa bilang "kosongkan
 // = tidak diubah"), tapi rahasia itu sendiri tidak boleh ikut terkirim ke browser.
-function describeStoredSecrets(credentials: unknown): { hasDevApiKey: boolean; hasWebhookSecret: boolean } {
+function describeStoredSecrets(credentials: unknown): {
+  hasDevApiKey: boolean;
+  hasWebhookSecret: boolean;
+  hasOkeCallbackSecret: boolean;
+} {
   if (typeof credentials !== "string" || credentials.length === 0) {
-    return { hasDevApiKey: false, hasWebhookSecret: false };
+    return { hasDevApiKey: false, hasWebhookSecret: false, hasOkeCallbackSecret: false };
   }
   try {
-    const creds = decryptJson<DigiflazzCredentials>(credentials);
-    return { hasDevApiKey: Boolean(creds.devApiKey), hasWebhookSecret: Boolean(creds.webhookSecret) };
+    // Dibaca sebagai gabungan kedua bentuk kredensial: satu fungsi melayani semua
+    // kartu provider, dan field yang tidak relevan untuk provider tertentu cuma
+    // menghasilkan `false` - tidak perlu cabang per-provider.
+    const creds = decryptJson<DigiflazzCredentials & { callbackSecret?: string }>(credentials);
+    return {
+      hasDevApiKey: Boolean(creds.devApiKey),
+      hasWebhookSecret: Boolean(creds.webhookSecret),
+      hasOkeCallbackSecret: Boolean(creds.callbackSecret),
+    };
   } catch {
     // Kredensial tidak bisa didekripsi (mis. CREDENTIALS_ENCRYPTION_KEY berganti).
     // Halaman admin tetap harus tampil supaya admin BISA memperbaikinya - jangan
     // sampai satu-satunya tempat untuk membetulkan kredensial ikut mati.
-    return { hasDevApiKey: false, hasWebhookSecret: false };
+    return { hasDevApiKey: false, hasWebhookSecret: false, hasOkeCallbackSecret: false };
   }
 }
 

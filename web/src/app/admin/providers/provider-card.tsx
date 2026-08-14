@@ -82,6 +82,8 @@ export interface ProviderCardProps {
   /** Sekadar penanda ADA/TIDAK — nilainya sendiri tidak pernah dikirim ke browser. */
   hasDevApiKey: boolean;
   hasWebhookSecret: boolean;
+  /** Penanda ADA/TIDAK saja — nilainya tidak pernah dikirim ke browser. */
+  hasOkeCallbackSecret: boolean;
   healthStatus: string;
   balanceDisplay: string;
   lastHealthCheckDisplay: string;
@@ -104,6 +106,7 @@ export function ProviderCard({
   hasCredentials,
   hasDevApiKey,
   hasWebhookSecret,
+  hasOkeCallbackSecret,
   healthStatus,
   balanceDisplay,
   lastHealthCheckDisplay,
@@ -136,6 +139,7 @@ export function ProviderCard({
   // State terpisah dari form Digiflazz: dua provider tidak pernah tampil di kartu
   // yang sama, tapi berbagi satu state akan membuat pesan hasil milik provider
   // lain sempat muncul di kartu yang salah setelah navigasi.
+  const [okeCallbackSecret, setOkeCallbackSecret] = useState("");
   const [okeCredState, okeCredAction, okeCredPending] = useActionState(
     withPrevState(saveOkeConnectCredentials),
     INITIAL_STATE,
@@ -145,12 +149,12 @@ export function ProviderCard({
     INITIAL_STATE,
   );
   const [webhookSecret, setWebhookSecret] = useState("");
-  const [copiedField, setCopiedField] = useState<"url" | "secret" | null>(null);
+  const [copiedField, setCopiedField] = useState<"url" | "secret" | "oke-url" | null>(null);
 
   const actionsDisabled = !hasCredentials;
   const webhookUrl = `${appUrl}/api/webhooks/digiflazz`;
 
-  async function copyToClipboard(text: string, field: "url" | "secret") {
+  async function copyToClipboard(text: string, field: "url" | "secret" | "oke-url") {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedField(field);
@@ -379,6 +383,65 @@ export function ProviderCard({
                 OkeConnect menggantinya.
               </p>
             </div>
+            <div className="space-y-1.5 border-t pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="okeconnect-callbackSecret">Kode URL callback</Label>
+                {hasOkeCallbackSecret && <Badge variant="success">Tersimpan</Badge>}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  id="okeconnect-callbackSecret"
+                  name="callbackSecret"
+                  type="text"
+                  autoComplete="off"
+                  value={okeCallbackSecret}
+                  onChange={(e) => setOkeCallbackSecret(e.target.value)}
+                  placeholder={hasOkeCallbackSecret ? "Kosongkan = tidak diubah" : "Klik Generate"}
+                  className="font-mono"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOkeCallbackSecret(generateWebhookSecret())}
+                >
+                  Generate
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                OkeConnect <strong>tidak menandatangani</strong> callback-nya sama sekali, jadi kode acak ini
+                dipakai supaya URL-nya tidak bisa ditebak. Status order tetap tidak pernah ditentukan dari isi
+                callback — sistem selalu menanyakan ulang statusnya ke OkeConnect sebelum memutuskan.
+              </p>
+              {okeCallbackSecret && (
+                <div className="space-y-1.5 rounded-md bg-muted/50 p-2">
+                  <p className="text-xs font-medium">
+                    Simpan dulu, lalu salin URL ini ke dashboard OkeConnect → Integrasi Transaksi → Transaksi IP →
+                    kolom <strong>URL Callback</strong>:
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate rounded bg-background px-2 py-1.5 text-xs">
+                      {`${appUrl.replace(/\/$/, "")}/api/webhooks/okeconnect/${okeCallbackSecret}`}
+                    </code>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() =>
+                        copyToClipboard(
+                          `${appUrl.replace(/\/$/, "")}/api/webhooks/okeconnect/${okeCallbackSecret}`,
+                          "oke-url",
+                        )
+                      }
+                    >
+                      {copiedField === "oke-url" ? "Tersalin!" : "Salin"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button type="submit" size="sm" disabled={okeCredPending}>
               {okeCredPending ? "Menyimpan..." : "Simpan kredensial"}
             </Button>

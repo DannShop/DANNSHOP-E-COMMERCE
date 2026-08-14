@@ -381,10 +381,23 @@ Urutan yang membuat tiap langkah bisa diverifikasi sebelum menyentuh uang:
    transaksi pertama, bukan sesudah, supaya PIN tidak pernah sempat tersimpan sekali pun.
 5. **`createTransaction()` + `checkStatus()`**, lalu uji dengan SKU termurah (mis. pulsa
    Rp1.000 / `DML12`) untuk sekalian membuktikan format `refID` (§3.4).
-6. **Endpoint callback** dengan keempat lapis mitigasi di §4.1 — dibangun **paling akhir**,
-   setelah `checkStatus` (langkah 5) terbukti jalan, karena lapis pertama justru bersandar
-   penuh pada `checkStatus`. Membangunnya lebih dulu berarti punya endpoint yang belum bisa
-   memverifikasi apa pun.
+6. ✅ **Endpoint callback SUDAH DIBANGUN** — `web/src/app/api/webhooks/okeconnect/[secret]/route.ts`.
+   Keempat lapis §4.1 terpasang:
+   1. Isi `message` **tidak pernah** menentukan status. Callback hanya memicu
+      `checkStatus` (`check=1`), dan jawaban itulah yang diteruskan ke
+      `applyFulfillmentResult`.
+   2. Path memuat segmen acak dari `OkeConnectCredentials.callbackSecret`
+      (di-generate di `/admin/providers`, dibandingkan `safeCompare`). Kosong =
+      endpoint menolak semua request (fail-closed).
+   3. IP asal dibandingkan dengan `103.139.245.61` tapi **hanya dicatat, tidak
+      memblokir** — menunggu konfirmasi CS (pertanyaan #2).
+   4. Idempotency lewat `WebhookEvent`, `eventKey = okeconnect:<refid>` —
+      **tanpa status di dalam kunci**, beda dari Digiflazz. Statusnya di sini
+      berasal dari kalimat karangan pengirim, jadi memasukkannya ke kunci berarti
+      pengirim bisa memaksa pemrosesan berulang cukup dengan mengganti kata.
+
+   Penjaga tambahan: fulfillment yang providernya bukan `OKECONNECT` ditolak, dan
+   yang statusnya sudah final (`SUCCESS`/`FAILED`) tidak diproses ulang.
 7. Baru daftarkan adapter di `registry.ts` (`case "OKECONNECT"`) dan aktifkan lewat
    `/admin/providers`.
 

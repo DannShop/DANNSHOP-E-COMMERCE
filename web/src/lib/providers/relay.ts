@@ -95,11 +95,25 @@ export async function providerHttpGet(params: {
   url: string;
   query: Record<string, string>;
   timeoutMs: number;
+  /**
+   * Paksa keluar LANGSUNG, tidak lewat relay, walau relay dikonfigurasi.
+   *
+   * Dipakai endpoint yang TIDAK mensyaratkan IP terdaftar — khususnya price list
+   * OkeConnect (`okeconnect.com/harga/json`), yang host-nya berbeda dari host
+   * transaksi dan sengaja TIDAK dimasukkan ke ALLOWED_HOSTS relay supaya
+   * permukaan relay tetap sesempit mungkin.
+   *
+   * Tanpa opsi ini, panggilan price list akan diteruskan ke relay dan ditolak
+   * "Host tujuan tidak diizinkan" — gejalanya muncul sebagai "Sync harga gagal"
+   * yang tidak menyebut relay sama sekali. Manfaat sampingannya: respons price
+   * list berukuran ~1,2 MB tidak perlu bolak-balik lewat shared hosting.
+   */
+  bypassRelay?: boolean;
 }): Promise<ProviderHttpResponse> {
   const relayUrl = process.env.PROVIDER_RELAY_URL;
   const relaySecret = process.env.PROVIDER_RELAY_SECRET;
 
-  if (!relayUrl || !relaySecret) {
+  if (params.bypassRelay || !relayUrl || !relaySecret) {
     const qs = new URLSearchParams(params.query).toString();
     const res = await fetch(`${params.url}?${qs}`, {
       method: "GET",

@@ -7,6 +7,7 @@ import { encryptJson, decryptJson } from "@/lib/crypto";
 import type { DigiflazzCredentials } from "@/lib/providers/digiflazz";
 import type { OkeConnectCredentials } from "@/lib/providers/okeconnect";
 import { getAdapter } from "@/lib/providers/registry";
+import { isRelayConfigured } from "@/lib/providers/relay";
 import { runPriceSync } from "@/lib/catalog/price-sync";
 
 export const digiflazzCredentialsSchema = z.object({
@@ -36,18 +37,37 @@ export const okeconnectCredentialsSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v === "" ? undefined : v)),
+  // Kosong = "pertahankan yang tersimpan", pola sama dengan webhookSecret
+  // Digiflazz: form tidak pernah mengirim nilai rahasia balik ke browser.
+  callbackSecret: z
+    .string()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v)),
 });
 
 export type ActionResult = { ok?: string; error?: string };
 
 // Pesan error provider dipangkas panjangnya saja, TIDAK diganti kalimat generik.
-// Kalau ada yang menyebut alamat IP (kasus rc 45 Digiflazz), ditambahi petunjuk
-// bahwa mendaftarkan IP itu langsung percuma di Vercel - IP-nya berganti terus.
+// Kalau ada yang menyebut alamat IP, ditambahi petunjuk — dan petunjuknya BERBEDA
+// tergantung relay sudah dipakai atau belum (lihat di bawah).
 export function describeProviderError(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);
   const message = raw.length > 300 ? `${raw.slice(0, 300)}…` : raw;
-  if (/ip anda tidak kami kenali|ip tidak dikenali/i.test(message)) {
-    return `${message} — jangan whitelist IP ini langsung kalau app di Vercel (IP-nya berganti tiap saat); pakai relay ber-IP tetap, lihat docs/08-IP-TETAP-DIGIFLAZZ.md.`;
+
+  // Tiap provider punya kalimatnya sendiri untuk keluhan yang sama: Digiflazz
+  // "IP Anda tidak kami kenali" (rc 45), OkeConnect "IP tidak sesuai @<ip>".
+  // Dikenali bersama supaya petunjuknya muncul apa pun providernya.
+  if (/ip anda tidak kami kenali|ip tidak dikenali|ip tidak sesuai|ip not (allowed|recognized)/i.test(message)) {
+    // Memberi saran yang salah di sini memakan waktu berjam-jam, karena keduanya
+    // berlawanan arah:
+    //  - TANPA relay, alamat yang disebut adalah IP Vercel yang berganti tiap
+    //    invocation — mendaftarkannya percuma, besok gagal lagi.
+    //  - DENGAN relay, alamat itu justru IP TETAP relay, dan ITULAH yang harus
+    //    didaftarkan. Menyuruh "jangan daftarkan" di keadaan ini mengirim orang
+    //    menjauh dari solusinya.
+    return isRelayConfigured()
+      ? `${message} — relay ber-IP tetap SUDAH aktif, jadi alamat yang disebut di atas adalah IP relay-nya. Daftarkan alamat itu persis (digit demi digit) di whitelist provider. Shared hosting bisa punya lebih dari satu IP keluar: tambahkan, jangan mengganti alamat yang sudah terdaftar.`
+      : `${message} — jangan whitelist IP ini langsung kalau app di Vercel (IP-nya berganti tiap saat); pakai relay ber-IP tetap, lihat docs/08-IP-TETAP-DIGIFLAZZ.md.`;
   }
   return message;
 }
@@ -168,6 +188,7 @@ export async function saveOkeConnectCredentials(formData: FormData): Promise<Act
     pin: formData.get("pin"),
     password: formData.get("password"),
     priceListId: formData.get("priceListId") ?? "",
+    callbackSecret: formData.get("callbackSecret") ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -189,6 +210,7 @@ export async function saveOkeConnectCredentials(formData: FormData): Promise<Act
     pin: parsed.data.pin,
     password: parsed.data.password,
     priceListId: parsed.data.priceListId ?? current.priceListId,
+    callbackSecret: parsed.data.callbackSecret ?? current.callbackSecret,
   };
 
   await db.providerConfig.upsert({
@@ -358,7 +380,13 @@ export async function syncProviderNow(formData: FormData): Promise<ActionResult>
     return { ok: `Sync ${key}: ${result.updated} SKU diupdate, ${result.missing} hilang.` };
   } catch (e) {
     console.error("syncProviderNow: sync gagal", { provider: key, error: e });
-    return { error: "Sync harga gagal, coba lagi." };
+    // Pesan asli provider DITERUSKAN, bukan diganti "coba lagi" seperti sebelumnya.
+    // Kalimat generik itu menyembunyikan justru keterangan yang menentukan —
+    // "IP tidak sesuai @202.10.43.174" (salah daftar whitelist), "Host tujuan
+    // tidak diizinkan" (relay), "Pin Salah" (kredensial) semuanya butuh tindakan
+    // yang berbeda, dan "coba lagi" tidak akan pernah menyelesaikan satu pun.
+    // Konsisten dengan checkProviderBalance yang memang sudah begini.
+    return { error: `Sync harga ${key} gagal: ${describeProviderError(e)}` };
   }
 }
 
