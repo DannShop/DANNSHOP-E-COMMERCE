@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Menu, Sun, Moon, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Menu, Sun, Moon, ChevronRight, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { withThemeTransition } from "@/lib/theme-transition";
 import { RefreshButton } from "@/components/admin/refresh-button";
@@ -40,10 +41,13 @@ export function AdminShell({
   logoUrl,
   logoType,
   faviconUrl,
+  needsTwoFactor = false,
 }: {
   children: React.ReactNode;
   userEmail: string;
   userRole: string;
+  /** true = akun ini belum memasang 2FA; spanduk peringatan ditampilkan. */
+  needsTwoFactor?: boolean;
   /** Logo situs dari Admin > Pengaturan Situs - sumber yang sama dengan storefront. */
   logoUrl: string | null;
   logoType: "image" | "video";
@@ -225,6 +229,23 @@ export function AdminShell({
             Dengan `relative`, <main> jadi containing block-nya, sehingga yang
             tergeser <main> (memang boleh scroll) bukan seluruh shell. */}
         <main className="no-scrollbar relative flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+          {/* Peringatan 2FA. Ditampilkan DI SINI, bukan lewat pengalihan paksa,
+              karena komponen ini tahu pathname-nya sendiri (usePathname) —
+              sementara layout di server tidak, dan pengalihan yang menebak-nebak
+              posisi bisa mengalihkan halaman tujuan ke dirinya sendiri lalu
+              mengunci admin dari seluruh panel. */}
+          {needsTwoFactor && !pathname.startsWith("/admin/keamanan") && (
+            <Link
+              href="/admin/keamanan"
+              className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-sm transition-colors hover:bg-amber-500/15"
+            >
+              <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              <span>
+                <strong>Akun admin ini belum memakai 2FA.</strong> Satu password yang bocor sudah cukup untuk
+                mengambil alih kunci pembayaran dan kredensial provider — pasang sekarang.
+              </span>
+            </Link>
+          )}
           {children}
         </main>
       </div>
