@@ -40,6 +40,20 @@ export function LoginForm({ justRegistered }: { justRegistered: boolean }) {
         }
       />
 
+      {/* Kolom faktor kedua SELALU tampil, tidak muncul setelah password benar.
+          Alur dua langkah butuh pemeriksaan password terpisah lebih dulu, dan
+          pemeriksaan itu sendiri membocorkan akun mana yang memakai 2FA —
+          justru yang paling berguna bagi penyerang yang sudah memegang password
+          bocor. Akun tanpa 2FA cukup membiarkannya kosong. */}
+      <AuthField
+        label="Kode autentikasi"
+        name="totp"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        placeholder="Kosongkan kalau belum mengaktifkan"
+        hint="Enam angka dari aplikasi autentikator, atau salah satu kode pemulihanmu."
+      />
+
       {state?.error && <AuthAlert variant="error">{state.error}</AuthAlert>}
 
       <AuthSubmit pending={pending} pendingLabel="Memproses...">

@@ -43,7 +43,7 @@ export const handlers: Record<string, JobHandler> = {
         runAt: new Date(Date.now() + 3 * 60 * 60_000),
       },
     });
-    return `updated=${result.updated} missing=${result.missing}`;
+    return `updated=${result.updated} missing=${result.missing} repriced=${result.repriced}`;
   },
 
   // payload: { orderId }

@@ -13,10 +13,13 @@ export function CategoryForm({
   category,
   updateAction,
   deleteAction,
+  autoMargin,
 }: {
   category: { id: string; slug: string; name: string; sortOrder: number; productCount: number };
   updateAction: (formData: FormData) => Promise<ActionResult>;
   deleteAction: (formData: FormData) => Promise<ActionResult>;
+  /** Form margin otomatis, dirakit di Server Component supaya action-nya bisa dioper. */
+  autoMargin?: React.ReactNode;
 }) {
   const [updateState, updateFormAction, updatePending] = useActionState(
     (_prev: ActionResult, formData: FormData) => updateAction(formData),
@@ -44,6 +47,8 @@ export function CategoryForm({
           {updatePending ? "..." : "Simpan"}
         </Button>
       </form>
+
+      {autoMargin}
 
       <form id={`delete-category-${category.id}`} action={deleteFormAction} className="mt-2">
         <input type="hidden" name="id" value={category.id} />

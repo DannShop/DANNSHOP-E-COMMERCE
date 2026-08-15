@@ -41,12 +41,19 @@ export async function loginAction(
     await signIn("credentials", {
       email: formData.get("email"),
       password: formData.get("password"),
+      // Kosong untuk akun tanpa 2FA — authorize() mengabaikannya kecuali akunnya
+      // memang mengaktifkan 2FA.
+      totp: formData.get("totp") ?? "",
       redirectTo,
     });
     return {};
   } catch (err) {
     if (err instanceof AuthError) {
-      return { error: "Email atau password salah." };
+      // Satu kalimat untuk password salah DAN kode 2FA salah, dengan sengaja:
+      // membedakannya akan memberi tahu penebak password bahwa passwordnya sudah
+      // benar dan tinggal faktor kedua — persis informasi yang paling berharga
+      // bagi penyerang yang sudah memegang password bocor.
+      return { error: "Email, password, atau kode autentikasi salah." };
     }
     throw err; // redirect() dari signIn dilempar sebagai error — biarkan lewat
   }

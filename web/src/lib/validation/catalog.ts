@@ -161,6 +161,10 @@ export const bulkImportSchema = z.object({
   categoryId: z.string().min(1, "Kategori wajib dipilih"),
   provider: z.string().min(1, "Provider wajib dipilih"),
   brand: z.string().min(1, "Brand wajib dipilih"),
+  // Nama yang DIPAJANG ke pembeli. Terpisah dari `brand`, yang tetap dipakai
+  // sebagai kunci pencocokan ke price list provider — mengganti nama tampilan
+  // tidak boleh memutus hubungan ke SKU-nya.
+  name: z.string().min(1, "Nama produk wajib diisi").max(191, "Nama produk terlalu panjang"),
   slug: z.string().min(1, "Slug wajib diisi").regex(/^[a-z0-9-]+$/, "Slug hanya huruf kecil, angka, tanda hubung"),
   markupPercent: z.coerce.number().min(0, "Markup harga jual harus >= 0"),
   memberMarkupPercent: z.coerce.number().min(0, "Markup harga modal harus >= 0"),

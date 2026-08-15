@@ -126,6 +126,22 @@ model User {
   // lewat assertUserNotBanned() di lib/account/user-status.ts.
   bannedAt        DateTime?
   banReason       String?   @db.Text
+
+  // ===== Autentikasi dua faktor (TOTP) =====
+  // Rahasianya DIENKRIPSI (lib/crypto.ts), bukan di-hash: verifikasi TOTP butuh
+  // rahasia aslinya untuk menghitung ulang kode tiap 30 detik - sama seperti
+  // PartnerAccount.apiKeyEnc yang butuh key asli untuk menandatangani. Kalau
+  // bisa di-hash, sudah pasti di-hash.
+  //
+  // `totpEnabledAt` yang menentukan aktif/tidak, BUKAN ada/tidaknya rahasia:
+  // rahasia sudah ditulis begitu QR ditampilkan, tapi 2FA belum boleh berlaku
+  // sampai orangnya membuktikan aplikasinya benar-benar terpasang dengan
+  // memasukkan satu kode yang valid. Tanpa pemisahan ini, siapa pun yang menutup
+  // halaman di tengah pendaftaran akan terkunci di luar akunnya sendiri.
+  totpSecretEnc   String?   @db.Text
+  totpEnabledAt   DateTime?
+  totpRecoveryCodes TotpRecoveryCode[]
+
   wallet          Wallet?
   orders          Order[]
   deposits        Deposit[]
@@ -136,6 +152,27 @@ model User {
   partnerApplications PartnerApplication[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+/// Kode pemulihan 2FA — jalan masuk saat aplikasi autentikator hilang.
+///
+/// WAJIB ADA, bukan pelengkap. Tanpa ini, HP admin yang hilang atau ter-reset
+/// berarti panel admin terkunci permanen untuk semua orang, dan satu-satunya
+/// jalan keluar adalah mengedit database langsung.
+///
+/// Yang disimpan HANYA hash SHA-256, pola sama persis dengan PasswordResetToken:
+/// kodenya cuma pernah terlihat sekali saat dibuat, jadi bocornya isi tabel ini
+/// tidak bisa dipakai masuk. Sekali pakai lewat `usedAt` - kode yang sudah
+/// dipakai tidak boleh berlaku lagi walaupun orangnya masih menyimpan kertasnya.
+model TotpRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // Token reset password (lupa password). Yang disimpan HANYA hash SHA-256 dari token
@@ -281,12 +318,65 @@ model UserMembership {
 
 // ===== Blok 1: Katalog =====
 
+// Cara harga jual ikut bergerak saat harga modal provider berubah. Penjelasan
+// lengkap beserta alasan tiap penjaganya ada di lib/catalog/auto-margin.ts.
+enum AutoMarginMode {
+  OFF
+  FOLLOW_DELTA // harga jual bergeser sebesar pergeseran modal; margin tiap item dipertahankan
+  FORMULA // harga jual selalu = modal x (1 + margin); seluruh kategori diseragamkan
+}
+
 model Category {
   id        String    @id @default(cuid())
   slug      String    @unique
   name      String
   sortOrder Int       @default(0)
   products  Product[]
+
+  // ===== Margin otomatis =====
+  // Disetel PER KATEGORI, bukan global, karena karakternya memang berbeda:
+  // pulsa marginnya tipis dan sering disetel tangan (cocok FOLLOW_DELTA),
+  // voucher game lebih enak diseragamkan (cocok FORMULA).
+  //
+  // Bawaannya OFF supaya migrasi ini NOL perubahan perilaku saat deploy - tidak
+  // ada satu pun harga yang bergerak sampai admin sengaja menyalakannya per
+  // kategori. Pola yang sama dipakai Product.partnerVisible.
+  autoMarginMode      AutoMarginMode @default(OFF)
+  /// Margin untuk mode FORMULA, dalam basis poin (1% = 100). Tidak dipakai mode lain.
+  autoMarginBp        Int            @default(800)
+  /// Kelipatan pembulatan KE ATAS. 0 = tanpa pembulatan.
+  autoMarginRound     Int            @default(100)
+  /// Batas perubahan modal yang dianggap wajar (basis poin). Di atas ini harga ditahan.
+  autoMarginMaxJumpBp Int            @default(5000)
+}
+
+/// Jejak tiap perubahan harga jual yang TIDAK diketik manusia.
+///
+/// Sebelum ini tidak ada riwayat harga sama sekali di seluruh sistem. Begitu harga
+/// bisa berubah sendiri saat sync, ketiadaan jejak berubah dari kekurangan jadi
+/// bahaya: harga bergeser, tidak ada yang tahu kapan, oleh aturan mana, dan dari
+/// angka berapa - dan pertanyaan itu baru muncul justru saat ada yang salah.
+///
+/// `productItemId` SENGAJA tanpa relasi Prisma, pola yang sama dengan
+/// Order.productItemId: riwayat harus tetap terbaca setelah produknya dihapus,
+/// dan relasi Restrict akan membuat penghapusan produk gagal karena jejaknya.
+/// Nama produk & item ikut disnapshot supaya barisnya tetap bermakna sendiri.
+model PriceChangeLog {
+  id            String   @id @default(cuid())
+  productItemId String
+  productName   String
+  itemName      String
+  oldSelling    BigInt
+  newSelling    BigInt
+  oldCost       BigInt
+  newCost       BigInt
+  /// "auto-margin" - satu-satunya sumber saat ini; kolomnya ada supaya sumber lain menyusul tanpa migrasi.
+  source        String
+  note          String?  @db.Text
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([productItemId])
 }
 
 model Product {

@@ -2,7 +2,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { ChangePasswordForm } from "@/components/change-password-form";
+import { TwoFactorPanel } from "@/components/two-factor-panel";
+import { getTwoFactorStatus } from "@/lib/auth/two-factor";
 import { changePassword } from "@/app/actions/account";
+import {
+  confirmTwoFactorSetup,
+  disableTwoFactorAction,
+  startTwoFactorSetup,
+} from "@/app/actions/two-factor";
 
 export const metadata: Metadata = { title: "Pengaturan" };
 
@@ -19,6 +26,8 @@ export default async function AccountSettingsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
+  const twoFactor = await getTwoFactorStatus(session.user.id);
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
       <section className="flex flex-col gap-1">
@@ -29,6 +38,23 @@ export default async function AccountSettingsPage() {
         <div className="glass-card mt-3 rounded-2xl px-5 py-1">
           <ProfileRow label="Nama" value={session.user.name ?? "—"} />
           <ProfileRow label="Email" value={session.user.email ?? "—"} />
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-1">
+        <h2 className="font-heading text-base font-bold">Keamanan Login</h2>
+        <p className="text-sm text-muted-foreground">
+          Opsional, tapi disarankan kalau saldomu cukup besar untuk disayangkan.
+        </p>
+        <div className="mt-3">
+          <TwoFactorPanel
+            enabled={twoFactor.enabled}
+            recoveryLeft={twoFactor.recoveryLeft}
+            canDisable
+            startSetup={startTwoFactorSetup}
+            confirmSetup={confirmTwoFactorSetup}
+            disableAction={disableTwoFactorAction}
+          />
         </div>
       </section>
 

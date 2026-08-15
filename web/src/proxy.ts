@@ -107,6 +107,16 @@ export default auth(async (req) => {
   if (!isExemptFromMaintenance && (await isMaintenanceModeOn())) {
     return NextResponse.rewrite(new URL("/maintenance", nextUrl));
   }
+
+  // Path yang sedang dibuka diteruskan sebagai header request.
+  //
+  // Next.js TIDAK memberikan pathname ke Server Component, sementara layout
+  // admin perlu tahu apakah yang sedang dibuka halaman Keamanan — kalau tidak,
+  // penegakan "admin wajib 2FA" akan mengalihkan halaman Keamanan itu sendiri ke
+  // dirinya sendiri dan berputar tanpa henti.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", nextUrl.pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 export const config = {

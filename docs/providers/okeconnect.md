@@ -301,6 +301,22 @@ dibangun berlapis:
 
 ---
 
+
+## ✅ Jawaban CS OkeConnect (diterima 2026-08-15)
+
+Dua pertanyaan paling menghambat sudah dijawab:
+
+**1. Batas `refID`** — boleh huruf, boleh tanda hubung, dan boleh panjang.
+Format kita (`FUL-20260814123045-AB12CD`) diterima apa adanya. Ini menutup risiko
+double-charge yang sebelumnya berstatus terbuka: `refID` adalah satu-satunya kunci
+idempotensi di seluruh sistem. Penjaga ketidakcocokan di `okeconnect.ts` tetap
+dipertahankan — sekarang perannya berubah dari "menunggu jawaban" jadi jaring-jaring
+kalau suatu saat perilakunya berubah tanpa pemberitahuan.
+
+**2. Format `dest` untuk game ber-zona** — ID dan zona DIGABUNG jadi satu nilai,
+tanpa pemisah. Sudah sesuai dengan `buildCustomerNo()` yang merangkai `inputFields`
+dengan `.join("")`. Tidak ada perubahan kode yang diperlukan.
+
 ## 4. Yang masih harus Wildan ambil/tanyakan (tidak bisa didapat dari riset)
 
 Sudah didapat dari dashboard: `memberID` = `OK307834`, IP whitelist bisa multi-IP,

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { slugifyBrand } from "@/lib/catalog/bulk-import";
+import { normalizeBrandName } from "@/lib/catalog/brand-name";
 import type { CatalogSource } from "@/lib/providers/labels";
 import { ActionMessage, INITIAL_STATE, withPrevState } from "../action-utils";
 import type { ServerAction } from "../action-utils";
@@ -61,6 +62,7 @@ export function BulkImportPicker({
   // "opt-in" di bawah.
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [slugByBrand, setSlugByBrand] = useState<Record<string, string>>({});
+  const [nameByBrand, setNameByBrand] = useState<Record<string, string>>({});
   const [state, formAction, pending] = useActionState(withPrevState(bulkImportProducts), INITIAL_STATE);
 
   // Mengganti provider atau kata kunci SELALU membuang centangan yang ada.
@@ -220,7 +222,11 @@ export function BulkImportPicker({
       )}
 
       {groups.map(([brand, brandRows]) => {
+        // Slug tetap diturunkan dari nama BRAND asli, bukan dari nama tampilan:
+        // slug ikut menentukan URL produk, dan membuatnya berubah tiap kali admin
+        // mengetik ulang judulnya akan memutus tautan yang sudah tersebar.
         const slug = slugByBrand[brand] ?? slugifyBrand(brand);
+        const displayName = nameByBrand[brand] ?? normalizeBrandName(brand);
         const selectable = brandRows.filter((r) => r.available);
         const checkedCount = brandRows.filter((r) => selected[r.skuCode]).length;
         const allChecked = selectable.length > 0 && selectable.every((r) => selected[r.skuCode]);
@@ -233,25 +239,44 @@ export function BulkImportPicker({
             <input type="hidden" name="markupPercent" value={markupPercent} />
             <input type="hidden" name="memberMarkupPercent" value={memberMarkupPercent} />
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="font-medium">{brand}</p>
-                <p className="text-xs text-muted-foreground">
-                  {brandRows.length} denominasi
-                  {selectable.length !== brandRows.length && ` (${selectable.length} bisa dipilih)`}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor={`slug-${brand}`} className="text-xs text-muted-foreground">
-                  Slug produk
-                </Label>
-                <Input
-                  id={`slug-${brand}`}
-                  name="slug"
-                  value={slug}
-                  onChange={(e) => setSlugByBrand((prev) => ({ ...prev, [brand]: e.target.value }))}
-                  className="h-8 w-48 font-mono text-xs"
-                />
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {brandRows.length} denominasi
+                {selectable.length !== brandRows.length && ` (${selectable.length} bisa dipilih)`} · dari{" "}
+                <span className="font-mono">{brand}</span>
+              </p>
+              {/* Nama TAMPILAN, bisa diedit sebelum ditambahkan.
+                  Terisi otomatis dengan versi rapi dari nama brand provider —
+                  price list OkeConnect memuat nama seperti "TPG Diamond Mobile
+                  Legends" dan "Isat Cetak Vcr Freedom", dan nama itu langsung
+                  jadi judul yang dilihat pembeli. Sarannya otomatis, keputusannya
+                  tetap di tangan admin: 471 nama tidak mungkin dibereskan
+                  sempurna oleh aturan mana pun. */}
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <div className="space-y-1">
+                  <Label htmlFor={`name-${brand}`} className="text-xs text-muted-foreground">
+                    Nama produk (dilihat pembeli)
+                  </Label>
+                  <Input
+                    id={`name-${brand}`}
+                    name="name"
+                    value={displayName}
+                    onChange={(e) => setNameByBrand((prev) => ({ ...prev, [brand]: e.target.value }))}
+                    className="h-8 font-medium"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`slug-${brand}`} className="text-xs text-muted-foreground">
+                    Slug
+                  </Label>
+                  <Input
+                    id={`slug-${brand}`}
+                    name="slug"
+                    value={slug}
+                    onChange={(e) => setSlugByBrand((prev) => ({ ...prev, [brand]: e.target.value }))}
+                    className="h-8 w-full font-mono text-xs sm:w-48"
+                  />
+                </div>
               </div>
             </div>
 

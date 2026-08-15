@@ -388,7 +388,11 @@ export async function syncProviderNow(formData: FormData): Promise<ActionResult>
     // penomoran produknya), itu terlihat di sini, bukan baru ketahuan dari SKU
     // yang hilang misterius di halaman mapping.
     const dup = result.duplicates > 0 ? `, ${result.duplicates} kode ganda diciutkan` : "";
-    return { ok: `Sync ${key}: ${result.updated} SKU diupdate, ${result.missing} hilang${dup}.` };
+    // Jumlah harga jual yang bergeser sendiri WAJIB disebut. Harga yang berubah
+    // tanpa ada yang mengetiknya adalah hal terakhir yang boleh terjadi diam-diam;
+    // rinciannya per item ada di PriceChangeLog.
+    const repriced = result.repriced > 0 ? `, ${result.repriced} harga jual disesuaikan otomatis` : "";
+    return { ok: `Sync ${key}: ${result.updated} SKU diupdate, ${result.missing} hilang${dup}${repriced}.` };
   } catch (e) {
     console.error("syncProviderNow: sync gagal", { provider: key, error: e });
     // Pesan asli provider DITERUSKAN, bukan diganti "coba lagi" seperti sebelumnya.

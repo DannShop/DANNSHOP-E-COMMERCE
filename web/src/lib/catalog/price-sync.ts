@@ -1,6 +1,7 @@
 import type { ProviderKey } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getAdapter } from "@/lib/providers/registry";
+import { recalcSellingPrice } from "@/lib/catalog/auto-margin";
 import type { ProviderSkuPrice } from "@/lib/providers/types";
 
 export interface CurrentSku {
@@ -96,11 +97,118 @@ export function diffPriceList(
   return { updates, missingCount };
 }
 
+interface PriceMove {
+  productItemId: string;
+  newSelling: bigint;
+  logRow: {
+    productItemId: string;
+    productName: string;
+    itemName: string;
+    oldSelling: bigint;
+    newSelling: bigint;
+    oldCost: bigint;
+    newCost: bigint;
+    source: string;
+    note: string | null;
+  };
+}
+
+/**
+ * Susun daftar harga jual yang perlu bergeser karena modalnya berubah.
+ *
+ * Hanya bagian IO-nya yang ada di sini; SELURUH keputusan angkanya ada di
+ * recalcSellingPrice() yang murni dan sudah dikunci tes (termasuk ketiga
+ * penjaganya: lonjakan modal tak wajar, jangan sampai jual rugi, jangan rusak
+ * flash sale).
+ *
+ * Item yang kategorinya masih OFF tidak pernah sampai ke sini — disaring di
+ * query, bukan di memori, supaya sync pada katalog besar tidak menarik ribuan
+ * baris yang sudah pasti tidak dipakai.
+ */
+async function planAutoMarginMoves(
+  current: { id: string; costPrice: bigint; productItemId: string }[],
+  updates: SkuUpdate[],
+): Promise<PriceMove[]> {
+  const oldCostBySkuId = new Map(current.map((c) => [c.id, c.costPrice]));
+  const itemIdBySkuId = new Map(current.map((c) => [c.id, c.productItemId]));
+
+  const affected = updates
+    .map((u) => ({
+      productItemId: itemIdBySkuId.get(u.id),
+      oldCost: oldCostBySkuId.get(u.id),
+      newCost: u.costPrice,
+    }))
+    .filter((a): a is { productItemId: string; oldCost: bigint; newCost: bigint } => Boolean(a.productItemId));
+  if (affected.length === 0) return [];
+
+  const items = await db.productItem.findMany({
+    where: {
+      id: { in: affected.map((a) => a.productItemId) },
+      product: { category: { autoMarginMode: { not: "OFF" } } },
+    },
+    select: {
+      id: true,
+      name: true,
+      sellingPrice: true,
+      flashPrice: true,
+      product: {
+        select: {
+          name: true,
+          category: {
+            select: { autoMarginMode: true, autoMarginBp: true, autoMarginRound: true, autoMarginMaxJumpBp: true },
+          },
+        },
+      },
+    },
+  });
+  const itemById = new Map(items.map((i) => [i.id, i]));
+
+  const moves: PriceMove[] = [];
+  for (const a of affected) {
+    const item = itemById.get(a.productItemId);
+    if (!item) continue; // kategorinya OFF
+
+    const cat = item.product.category;
+    const result = recalcSellingPrice(
+      {
+        mode: cat.autoMarginMode,
+        marginBp: cat.autoMarginBp,
+        roundTo: cat.autoMarginRound,
+        maxJumpBp: cat.autoMarginMaxJumpBp,
+      },
+      {
+        oldCost: a.oldCost,
+        newCost: a.newCost,
+        currentSelling: item.sellingPrice,
+        flashPrice: item.flashPrice,
+      },
+    );
+    if (result.action !== "update") continue;
+
+    moves.push({
+      productItemId: item.id,
+      newSelling: result.newSelling,
+      logRow: {
+        productItemId: item.id,
+        productName: item.product.name,
+        itemName: item.name,
+        oldSelling: item.sellingPrice,
+        newSelling: result.newSelling,
+        oldCost: a.oldCost,
+        newCost: a.newCost,
+        source: "auto-margin",
+        note: `${cat.autoMarginMode}, bulat ke ${cat.autoMarginRound}`,
+      },
+    });
+  }
+  return moves;
+}
+
 // Orchestrator: dipanggil job handler (cron) dan tombol "Sync sekarang" admin.
 // Idempotent — aman dijalankan dobel; setiap run tercatat di PriceSyncLog.
 export async function runPriceSync(
   providerKey: ProviderKey,
-): Promise<{ updated: number; missing: number; duplicates: number }> {
+): Promise<{ updated: number; missing: number; duplicates: number; repriced: number }> {
   const log = await db.priceSyncLog.create({ data: { provider: providerKey } });
   try {
     const adapter = await getAdapter(providerKey);
@@ -112,11 +220,22 @@ export async function runPriceSync(
     const duplicates = raw.length - fetched.length;
     const current = await db.providerSku.findMany({
       where: { provider: providerKey },
-      select: { id: true, providerSkuCode: true, costPrice: true, status: true },
+      // productItemId ikut diambil: margin otomatis butuh tahu item mana yang
+      // harganya terpengaruh oleh tiap perubahan modal.
+      select: { id: true, providerSkuCode: true, costPrice: true, status: true, productItemId: true },
     });
 
     const { updates, missingCount } = diffPriceList(current, fetched);
+    const priceMoves = await planAutoMarginMoves(current, updates);
     const now = new Date();
+
+    // SATU transaksi untuk modal DAN harga jual — ini wajib, bukan kerapian.
+    //
+    // Mode FOLLOW_DELTA menghitung pergeseran dari selisih antara costPrice yang
+    // TERSIMPAN dan yang baru datang. Kalau modal sempat tertulis sementara
+    // penyesuaian harganya gagal, sync berikutnya akan melihat modal lama = modal
+    // baru dan menyimpulkan tidak ada yang perlu diikuti — pergeserannya hilang
+    // PERMANEN, tanpa satu pun error yang menandainya.
     await db.$transaction([
       ...updates.map((u) =>
         db.providerSku.update({
@@ -124,6 +243,12 @@ export async function runPriceSync(
           data: { costPrice: u.costPrice, status: u.status, lastSyncedAt: now },
         })
       ),
+      ...priceMoves.map((m) =>
+        db.productItem.update({ where: { id: m.productItemId }, data: { sellingPrice: m.newSelling } }),
+      ),
+      ...(priceMoves.length > 0
+        ? [db.priceChangeLog.createMany({ data: priceMoves.map((m) => ({ ...m.logRow, createdAt: now })) })]
+        : []),
       db.providerPriceListCache.deleteMany({ where: { provider: providerKey } }),
       db.providerPriceListCache.createMany({
         data: fetched.map((f) => ({
@@ -142,7 +267,7 @@ export async function runPriceSync(
       where: { id: log.id },
       data: { finishedAt: new Date(), skusUpdated: updates.length, skusMissing: missingCount, result: "ok" },
     });
-    return { updated: updates.length, missing: missingCount, duplicates };
+    return { updated: updates.length, missing: missingCount, duplicates, repriced: priceMoves.length };
   } catch (e) {
     await db.priceSyncLog.update({
       where: { id: log.id },

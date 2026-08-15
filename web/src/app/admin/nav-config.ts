@@ -22,6 +22,7 @@ import {
   ReceiptText,
   BarChart3,
   ScanSearch,
+  ShieldCheck,
   Plug,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
@@ -107,7 +108,10 @@ export const NAV_GROUPS: NavGroup[] = [
     // mentok, bukan bagian dari alur kerja harian - menyelipkannya di antara
     // menu operasional cuma menambah jarak tempuh menu yang dipakai tiap hari.
     label: "Bantuan",
-    items: [{ href: "/admin/panduan", label: "Panduan", icon: BookText }],
+    items: [
+      { href: "/admin/keamanan", label: "Keamanan Akun", icon: ShieldCheck },
+      { href: "/admin/panduan", label: "Panduan", icon: BookText },
+    ],
   },
 ];
 

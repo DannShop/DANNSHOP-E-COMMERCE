@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { createCategory, updateCategory, deleteCategory } from "@/app/actions/categories";
+import { createCategory, updateCategory, deleteCategory, updateCategoryAutoMargin } from "@/app/actions/categories";
+import { AutoMarginForm } from "./auto-margin-form";
 import { CategoryForm } from "./category-form";
 import { NewCategoryForm } from "./new-category-form";
 import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
@@ -46,6 +47,19 @@ export default async function CategoriesPage({
             category={{ id: c.id, slug: c.slug, name: c.name, sortOrder: c.sortOrder, productCount: c._count.products }}
             updateAction={updateCategory}
             deleteAction={deleteCategory}
+            autoMargin={
+              <AutoMarginForm
+                category={{
+                  id: c.id,
+                  name: c.name,
+                  autoMarginMode: c.autoMarginMode,
+                  autoMarginBp: c.autoMarginBp,
+                  autoMarginRound: c.autoMarginRound,
+                  autoMarginMaxJumpBp: c.autoMarginMaxJumpBp,
+                }}
+                action={updateCategoryAutoMargin}
+              />
+            }
           />
         ))}
       </div>

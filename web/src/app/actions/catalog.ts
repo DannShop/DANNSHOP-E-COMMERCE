@@ -745,6 +745,7 @@ export async function bulkImportProducts(formData: FormData): Promise<ActionResu
     categoryId: formData.get("categoryId"),
     provider: formData.get("provider"),
     brand: formData.get("brand"),
+    name: formData.get("name"),
     slug: formData.get("slug"),
     markupPercent: formData.get("markupPercent"),
     memberMarkupPercent: formData.get("memberMarkupPercent"),
@@ -779,7 +780,11 @@ export async function bulkImportProducts(formData: FormData): Promise<ActionResu
         create: {
           categoryId: parsed.data.categoryId,
           slug: parsed.data.slug,
-          name: parsed.data.brand,
+          // Nama TAMPILAN, bukan nama brand mentah. Nama brand provider sering
+          // memuat awalan pemasok & singkatan yang tidak berarti bagi pembeli
+          // (lihat lib/catalog/brand-name.ts) - dan nama inilah judul yang
+          // dilihat orang di katalog.
+          name: parsed.data.name,
           inputFields: [{ name: "user_id", label: "ID Tujuan" }],
           isActive: false,
         },
