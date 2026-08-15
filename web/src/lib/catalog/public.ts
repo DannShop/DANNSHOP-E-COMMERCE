@@ -162,11 +162,31 @@ export interface ProductSearchResult {
 export async function searchProducts(query: string): Promise<ProductSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
+
+  // Dipecah per KATA, bukan dicocokkan sebagai satu potongan utuh.
+  //
+  // Sebelumnya `name: { contains: q }` menuntut kata kuncinya muncul persis
+  // berurutan. Itu cukup selama nama produk pendek ("Free Fire"), tapi katalog
+  // sekarang memuat nama panjang hasil impor OkeConnect seperti "Indosat Cetak
+  // Voucher Freedom Mini" — dan di situ orang mengetik potongan yang diingat
+  // dengan urutan bebas ("indosat freedom"), yang tidak akan pernah ketemu.
+  //
+  // Semua kata harus cocok (AND), tapi tiap kata boleh cocok di nama, penerbit,
+  // ATAU nama kategori. Dengan OR di antar-kata, mengetik lebih panjang justru
+  // memperburuk hasil — makin banyak kata, makin banyak yang lolos.
+  const terms = q.split(/\s+/).filter(Boolean);
+
   const products = await db.product.findMany({
     where: {
       isActive: true,
       items: { some: { isActive: true } },
-      name: { contains: q },
+      AND: terms.map((term) => ({
+        OR: [
+          { name: { contains: term } },
+          { publisher: { contains: term } },
+          { category: { name: { contains: term } } },
+        ],
+      })),
     },
     select: { id: true, slug: true, name: true, publisher: true, category: { select: { slug: true } } },
     take: 20,
