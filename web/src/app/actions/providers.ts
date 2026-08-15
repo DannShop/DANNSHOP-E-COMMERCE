@@ -383,7 +383,12 @@ export async function syncProviderNow(formData: FormData): Promise<ActionResult>
     const result = await runPriceSync(key);
     await logAdmin(admin.adminId, "provider.sync_prices", key, result);
     revalidatePath("/admin/providers");
-    return { ok: `Sync ${key}: ${result.updated} SKU diupdate, ${result.missing} hilang.` };
+    // Kode ganda hanya disebut kalau memang ada. Angkanya ditampilkan — bukan
+    // dibuang diam-diam — supaya kalau suatu saat melonjak (provider mengubah
+    // penomoran produknya), itu terlihat di sini, bukan baru ketahuan dari SKU
+    // yang hilang misterius di halaman mapping.
+    const dup = result.duplicates > 0 ? `, ${result.duplicates} kode ganda diciutkan` : "";
+    return { ok: `Sync ${key}: ${result.updated} SKU diupdate, ${result.missing} hilang${dup}.` };
   } catch (e) {
     console.error("syncProviderNow: sync gagal", { provider: key, error: e });
     // Pesan asli provider DITERUSKAN, bukan diganti "coba lagi" seperti sebelumnya.

@@ -164,7 +164,13 @@ export class OkeConnectAdapter implements TopupProviderAdapter {
   private async get(
     path: string,
     query: Record<string, string>,
-    meta: { operation: string; context?: ProviderCallContext; baseUrl?: string; bypassRelay?: boolean },
+    meta: {
+      operation: string;
+      context?: ProviderCallContext;
+      baseUrl?: string;
+      bypassRelay?: boolean;
+      timeoutMs?: number;
+    },
   ): Promise<string> {
     const startedAt = Date.now();
     const endpoint = `${meta.baseUrl ?? this.trxBaseUrl}${path}`;
@@ -179,7 +185,7 @@ export class OkeConnectAdapter implements TopupProviderAdapter {
       const res = await providerHttpGet({
         url: endpoint,
         query,
-        timeoutMs: 15_000,
+        timeoutMs: meta.timeoutMs ?? 15_000,
         bypassRelay: meta.bypassRelay,
       });
       viaRelay = res.viaRelay;
@@ -233,7 +239,15 @@ export class OkeConnectAdapter implements TopupProviderAdapter {
       // host transaksi), dan host ini sengaja tidak ada di ALLOWED_HOSTS relay.
       // Tanpa ini, sync harga gagal dengan "Host tujuan tidak diizinkan" begitu
       // relay dikonfigurasi.
-      { operation: "price-list", baseUrl: this.priceListBaseUrl, bypassRelay: true },
+      //
+      // Timeout DILEBARKAN khusus di sini, dan bukan karena berjaga-jaga: respons
+      // endpoint ini ~1,2 MB (8.153 baris), dan pada pengukuran 2026-08-15 waktu
+      // totalnya berayun jauh — 0,2 dtk saat kena cache Cloudflare sampai 20 dtk
+      // saat harus menarik dari origin. Dengan batas 15 dtk yang dipakai operasi
+      // lain, sync akan gagal SESEKALI tanpa pola yang jelas, dan gejalanya
+      // ("aborted"/timeout) tidak menyebut ukuran respons sama sekali. Operasi
+      // transaksi tetap 15 dtk: di sana menunggu lama justru berbahaya.
+      { operation: "price-list", baseUrl: this.priceListBaseUrl, bypassRelay: true, timeoutMs: 45_000 },
     );
 
     let raw: unknown;
