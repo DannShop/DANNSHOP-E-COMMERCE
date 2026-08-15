@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { TriangleAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmSubmit } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -66,17 +67,7 @@ export function TestTransactionForm({
 
   return (
     <div className="space-y-4">
-      <form
-        action={formAction}
-        className="space-y-4"
-        onSubmit={(e) => {
-          if (!testing && !window.confirm(
-            "Mode testing MATI — transaksi ini akan NYATA dan memotong saldo Digiflazz sungguhan. Lanjutkan?",
-          )) {
-            e.preventDefault();
-          }
-        }}
-      >
+      <form id="test-transaction-form" action={formAction} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="skuCode">Kode SKU</Label>
           <Input
@@ -153,9 +144,32 @@ export function TestTransactionForm({
           </div>
         )}
 
-        <Button type="submit" disabled={pending}>
-          {pending ? "Mengirim..." : "Kirim transaksi tes"}
-        </Button>
+        {/* Konfirmasi HANYA saat mode testing dimatikan — di situ transaksinya
+            nyata dan memotong saldo sungguhan. Saat mode testing hidup, tidak ada
+            yang perlu dikonfirmasi, dan memaksa dialog di tiap percobaan cuma
+            melatih orang menekan "lanjut" tanpa membaca. */}
+        {testing ? (
+          <Button type="submit" disabled={pending}>
+            {pending ? "Mengirim..." : "Kirim transaksi tes"}
+          </Button>
+        ) : (
+          <ConfirmSubmit
+            formId="test-transaction-form"
+            title="Kirim transaksi SUNGGUHAN?"
+            confirmLabel="Ya, kirim sungguhan"
+            trigger={
+              <Button type="button" disabled={pending} variant="destructive">
+                {pending ? "Mengirim..." : "Kirim transaksi tes"}
+              </Button>
+            }
+            description={
+              <>
+                <p className="font-medium">Mode testing sedang MATI.</p>
+                <p>Transaksi ini nyata dan akan memotong saldo provider sungguhan.</p>
+              </>
+            }
+          />
+        )}
       </form>
 
       {state.error && (

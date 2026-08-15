@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { Check, Crown } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmSubmit } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { formatRupiah } from "@/lib/format";
 import { BENEFIT_CATALOG } from "@/lib/membership/benefits";
@@ -41,15 +42,6 @@ export function TierPurchaseCard({
   const isCurrent = currentTierId === tier.id;
   const isSwitchingFromOtherTier = isLoggedIn && currentTierId !== null && !isCurrent;
   const enabledBenefits = BENEFIT_CATALOG.filter((b) => tier.benefits.includes(b.key));
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    if (isSwitchingFromOtherTier) {
-      const ok = window.confirm(
-        `Kamu masih punya tier aktif (berlaku sampai ${currentTierExpiresAt}). Membeli tier "${tier.name}" akan LANGSUNG MENGGANTI tier aktifmu sekarang - sisa waktu tier lama tidak dikembalikan/dikonversi. Lanjutkan?`,
-      );
-      if (!ok) e.preventDefault();
-    }
-  }
 
   return (
     <div
@@ -96,11 +88,38 @@ export function TierPurchaseCard({
       </ul>
 
       {isLoggedIn ? (
-        <form action={formAction} onSubmit={handleSubmit}>
+        <form id={`buy-tier-${tier.id}`} action={formAction}>
           <input type="hidden" name="tierId" value={tier.id} />
-          <Button type="submit" disabled={pending} className="w-full">
-            {pending ? "Memproses..." : isCurrent ? "Perpanjang Tier Ini" : "Beli Tier Ini"}
-          </Button>
+          {/* Konfirmasi HANYA saat pembeli sedang punya tier lain yang masih
+              aktif — cuma di situ ada yang bisa hilang. Memaksa dialog pada
+              pembelian biasa cuma menambah satu ketukan tanpa isi. */}
+          {isSwitchingFromOtherTier ? (
+            <ConfirmSubmit
+              formId={`buy-tier-${tier.id}`}
+              title={`Ganti ke tier "${tier.name}"?`}
+              confirmLabel="Ya, ganti tier"
+              trigger={
+                <Button type="button" disabled={pending} className="w-full">
+                  {pending ? "Memproses..." : "Beli Tier Ini"}
+                </Button>
+              }
+              description={
+                <>
+                  <p>
+                    Tier aktifmu sekarang masih berlaku sampai <strong>{currentTierExpiresAt}</strong>.
+                  </p>
+                  <p>
+                    Membeli tier ini <strong>langsung menggantinya</strong> — sisa waktu tier lama tidak dikembalikan
+                    dan tidak dikonversi.
+                  </p>
+                </>
+              }
+            />
+          ) : (
+            <Button type="submit" disabled={pending} className="w-full">
+              {pending ? "Memproses..." : isCurrent ? "Perpanjang Tier Ini" : "Beli Tier Ini"}
+            </Button>
+          )}
         </form>
       ) : (
         <Link href="/login" className={cn(buttonVariants(), "w-full")}>

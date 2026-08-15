@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { ActionMessage } from "@/components/action-feedback";
 import type { ActionResult } from "@/app/actions/providers";
 
 // 32 byte acak (256-bit) di-encode hex - kekuatan yang wajar untuk kunci HMAC,
@@ -61,17 +62,6 @@ const balanceAlertVariant: Record<string, "success" | "warning"> = {
   LOW: "warning",
 };
 
-function ActionMessage({ state }: { state: ActionResult }) {
-  if (!state.ok && !state.error) return null;
-  return (
-    <p
-      aria-live="polite"
-      className={`text-xs ${state.error ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
-    >
-      {state.error ?? state.ok}
-    </p>
-  );
-}
 
 export interface ProviderCardProps {
   providerKey: string;

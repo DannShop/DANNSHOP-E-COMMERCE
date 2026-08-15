@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmSubmit } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -44,25 +45,25 @@ export function CategoryForm({
         </Button>
       </form>
 
-      <form
-        action={deleteFormAction}
-        onSubmit={(e) => {
-          if (!window.confirm(`Hapus kategori "${category.name}"? Aksi ini tidak bisa dibatalkan.`)) {
-            e.preventDefault();
-          }
-        }}
-        className="mt-2"
-      >
+      <form id={`delete-category-${category.id}`} action={deleteFormAction} className="mt-2">
         <input type="hidden" name="id" value={category.id} />
-        <Button
-          type="submit"
-          size="sm"
-          variant="outline"
-          disabled={deletePending || category.productCount > 0}
-          title={category.productCount > 0 ? "Kategori masih punya produk, tidak bisa dihapus" : undefined}
-        >
-          {deletePending ? "..." : "Hapus"}
-        </Button>
+        <ConfirmSubmit
+          formId={`delete-category-${category.id}`}
+          title={`Hapus kategori "${category.name}"?`}
+          confirmLabel="Hapus kategori"
+          trigger={
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={deletePending || category.productCount > 0}
+              title={category.productCount > 0 ? "Kategori masih punya produk, tidak bisa dihapus" : undefined}
+            >
+              {deletePending ? "..." : "Hapus"}
+            </Button>
+          }
+          description={<p>Kategori ini hilang dari navigasi storefront. Tidak bisa dibatalkan.</p>}
+        />
       </form>
 
       {(updateState.ok || updateState.error) && (

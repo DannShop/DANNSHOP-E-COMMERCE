@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmSubmit } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -102,16 +103,19 @@ export function BannerForm({
         </Button>
       </form>
 
-      <form
-        action={deleteFormAction}
-        onSubmit={(e) => {
-          if (!window.confirm("Hapus banner ini? Aksi ini tidak bisa dibatalkan.")) e.preventDefault();
-        }}
-      >
+      <form id={`delete-banner-${banner.id}`} action={deleteFormAction}>
         <input type="hidden" name="id" value={banner.id} />
-        <Button type="submit" size="sm" variant="outline" disabled={deletePending}>
-          {deletePending ? "..." : "Hapus"}
-        </Button>
+        <ConfirmSubmit
+          formId={`delete-banner-${banner.id}`}
+          title="Hapus banner ini?"
+          confirmLabel="Hapus banner"
+          trigger={
+            <Button type="button" size="sm" variant="destructive" disabled={deletePending}>
+              {deletePending ? "..." : "Hapus"}
+            </Button>
+          }
+          description={<p>Banner ini langsung hilang dari beranda storefront. Tidak bisa dibatalkan.</p>}
+        />
       </form>
 
       {(updateState.ok || updateState.error) && (

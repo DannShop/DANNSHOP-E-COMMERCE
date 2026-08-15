@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { ShieldOff, ShieldCheck, KeyRound, Copy, Check, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmSubmit } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ActionResult, ResetPasswordResult } from "@/app/actions/admin-users";
@@ -121,47 +122,57 @@ export function UserActions({
               <Message state={unbanState} />
             </form>
           ) : (
-            <form
-              action={banFormAction}
-              onSubmit={(e) => {
-                if (!window.confirm(`Tangguhkan akun ${user.email}? Dia langsung tidak bisa checkout, isi saldo, atau beli tier.`)) {
-                  e.preventDefault();
-                }
-              }}
-              className="space-y-2"
-            >
+            <form id={`ban-user-${user.id}`} action={banFormAction} className="space-y-2">
               <input type="hidden" name="userId" value={user.id} />
               <div className="space-y-1.5">
                 <Label htmlFor="ban-reason" className="text-xs">Alasan (opsional, ditampilkan ke user)</Label>
                 <Input id="ban-reason" name="reason" maxLength={500} placeholder="mis. indikasi chargeback berulang" />
               </div>
-              <Button type="submit" size="sm" variant="destructive" disabled={banPending}>
-                <ShieldOff className="size-3.5" aria-hidden="true" />
-                <span className="ml-1.5">{banPending ? "Memproses..." : "Tangguhkan Akun"}</span>
-              </Button>
+              <ConfirmSubmit
+                formId={`ban-user-${user.id}`}
+                title="Tangguhkan akun ini?"
+                confirmLabel="Tangguhkan"
+                trigger={
+                  <Button type="button" size="sm" variant="destructive" disabled={banPending}>
+                    <ShieldOff className="size-3.5" aria-hidden="true" />
+                    <span className="ml-1.5">{banPending ? "Memproses..." : "Tangguhkan Akun"}</span>
+                  </Button>
+                }
+                description={
+                  <>
+                    <p className="font-medium">{user.email}</p>
+                    <p>Dia langsung tidak bisa checkout, isi saldo, atau beli tier.</p>
+                  </>
+                }
+              />
               <Message state={banState} />
             </form>
           )}
 
           {/* ===== Reset password ===== */}
-          <form
-            action={resetFormAction}
-            onSubmit={(e) => {
-              if (!window.confirm(`Reset password ${user.email}? Password lamanya langsung tidak berlaku dan semua sesi yang sedang berjalan diputus.`)) {
-                e.preventDefault();
-              }
-            }}
-            className="space-y-2 border-t pt-4"
-          >
+          <form id={`reset-password-${user.id}`} action={resetFormAction} className="space-y-2 border-t pt-4">
             <input type="hidden" name="userId" value={user.id} />
             <p className="text-xs text-muted-foreground">
               Membuat password acak 16 karakter. Dipakai kalau customer kehilangan akses ke emailnya
               sehingga alur &quot;lupa password&quot; tidak bisa dijalankan.
             </p>
-            <Button type="submit" size="sm" variant="outline" disabled={resetPending}>
-              <KeyRound className="size-3.5" aria-hidden="true" />
-              <span className="ml-1.5">{resetPending ? "Memproses..." : "Reset Password"}</span>
-            </Button>
+            <ConfirmSubmit
+              formId={`reset-password-${user.id}`}
+              title="Reset password akun ini?"
+              confirmLabel="Reset password"
+              trigger={
+                <Button type="button" size="sm" variant="outline" disabled={resetPending}>
+                  <KeyRound className="size-3.5" aria-hidden="true" />
+                  <span className="ml-1.5">{resetPending ? "Memproses..." : "Reset Password"}</span>
+                </Button>
+              }
+              description={
+                <>
+                  <p className="font-medium">{user.email}</p>
+                  <p>Password lamanya langsung tidak berlaku dan semua sesi yang sedang berjalan diputus.</p>
+                </>
+              }
+            />
             {resetState.error && <p className="text-xs text-destructive">{resetState.error}</p>}
             {resetState.password && <GeneratedPassword password={resetState.password} />}
           </form>

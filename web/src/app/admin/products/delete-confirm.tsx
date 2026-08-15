@@ -10,6 +10,13 @@ import type { ServerAction } from "./action-utils";
 /**
  * Konfirmasi hapus, dipakai ketiga titik (produk, satu item, item terpilih).
  *
+ * BEDANYA DENGAN `ui/confirm-dialog.tsx` (ConfirmSubmit), dan kapan pakai yang mana:
+ * ConfirmSubmit men-submit form yang SUDAH ADA di halaman lewat atribut `form`,
+ * jadi dia dipakai kalau tombolnya cuma perlu "bertanya dulu sebelum submit".
+ * Yang di sini membawa form-nya SENDIRI ke dalam dialog, karena isinya ditentukan
+ * oleh apa yang sedang dipilih saat dialog dibuka — daftar `itemIds` untuk hapus
+ * massal tidak punya tempat di halaman sebelum ada yang dicentang.
+ *
  * Pakai Dialog, BUKAN `window.confirm`: dialog bawaan browser memblokir seluruh
  * halaman, tidak bisa memuat rincian apa pun, dan tampilannya terputus total dari
  * sisa panel. Yang paling menentukan, dia cuma bisa bertanya "yakin?" — padahal

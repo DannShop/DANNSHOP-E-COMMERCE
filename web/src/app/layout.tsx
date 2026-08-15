@@ -3,6 +3,7 @@ import { Baloo_2, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
+import { ToastProvider } from "@/components/ui/toast";
 import { getSiteSettings } from "@/lib/site-settings";
 import { StorefrontTheme } from "@/components/storefront-theme";
 
@@ -59,7 +60,12 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
-          <QueryProvider>{children}</QueryProvider>
+          {/* Dipasang di layout ROOT, bukan di layout admin: toast dipakai
+              panel admin, portal mitra, dan storefront (mis. konfirmasi beli
+              tier di /membership). Satu pemasangan menutup ketiganya. */}
+          <ToastProvider>
+            <QueryProvider>{children}</QueryProvider>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

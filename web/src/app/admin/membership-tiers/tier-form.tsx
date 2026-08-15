@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmSubmit } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -158,25 +159,25 @@ export function TierForm({
         )}
       </form>
 
-      <form
-        action={deleteFormAction}
-        onSubmit={(e) => {
-          if (!window.confirm(`Hapus tier "${tier.name}"? Aksi ini tidak bisa dibatalkan.`)) {
-            e.preventDefault();
-          }
-        }}
-        className="mt-2 border-t pt-2"
-      >
+      <form id={`delete-tier-${tier.id}`} action={deleteFormAction} className="mt-2 border-t pt-2">
         <input type="hidden" name="id" value={tier.id} />
-        <Button
-          type="submit"
-          size="sm"
-          variant="outline"
-          disabled={deletePending || tier.membershipCount > 0}
-          title={tier.membershipCount > 0 ? "Sudah pernah dibeli/diberikan, nonaktifkan saja lewat toggle" : undefined}
-        >
-          {deletePending ? "..." : "Hapus Tier"}
-        </Button>
+        <ConfirmSubmit
+          formId={`delete-tier-${tier.id}`}
+          title={`Hapus tier "${tier.name}"?`}
+          confirmLabel="Hapus tier"
+          trigger={
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={deletePending || tier.membershipCount > 0}
+              title={tier.membershipCount > 0 ? "Sudah pernah dibeli/diberikan, nonaktifkan saja lewat toggle" : undefined}
+            >
+              {deletePending ? "..." : "Hapus Tier"}
+            </Button>
+          }
+          description={<p>Tier ini hilang dari halaman membership. Tidak bisa dibatalkan.</p>}
+        />
         {(deleteState.ok || deleteState.error) && (
           <p className={`mt-1 text-xs ${deleteState.error ? "text-destructive" : "text-emerald-700"}`}>
             {deleteState.error ?? deleteState.ok}
