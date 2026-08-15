@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuGroupLabel,
   DropdownMenuLinkItem,
   DropdownMenuSeparator,
@@ -52,19 +53,23 @@ export function AddProductMenu({ sources }: { sources: CatalogSource[] }) {
         {sources.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuGroupLabel>Tarik dari provider</DropdownMenuGroupLabel>
-            {sources.map((s) => (
-              <DropdownMenuLinkItem key={s.key} href={`/admin/products/import?provider=${s.key}`}>
-                <span className="flex flex-1 items-center justify-between gap-2">
-                  <span className="font-medium">{s.label}</span>
-                  {/* Provider nonaktif tetap boleh dipakai menyusun katalog —
-                      lihat alasannya di getCatalogSources. Tandanya dipasang
-                      supaya admin tidak heran kalau produknya sudah jadi tapi
-                      belum bisa dipesan. */}
-                  {!s.isActive && <Badge variant="muted">Belum aktif</Badge>}
-                </span>
-              </DropdownMenuLinkItem>
-            ))}
+            {/* Group WAJIB membungkus GroupLabel — Base UI melempar error kalau
+                labelnya tidak menemukan context grupnya. */}
+            <DropdownMenuGroup>
+              <DropdownMenuGroupLabel>Tarik dari provider</DropdownMenuGroupLabel>
+              {sources.map((s) => (
+                <DropdownMenuLinkItem key={s.key} href={`/admin/products/import?provider=${s.key}`}>
+                  <span className="flex flex-1 items-center justify-between gap-2">
+                    <span className="font-medium">{s.label}</span>
+                    {/* Provider nonaktif tetap boleh dipakai menyusun katalog —
+                        lihat alasannya di getCatalogSources. Tandanya dipasang
+                        supaya admin tidak heran kalau produknya sudah jadi tapi
+                        belum bisa dipesan. */}
+                    {!s.isActive && <Badge variant="muted">Belum aktif</Badge>}
+                  </span>
+                </DropdownMenuLinkItem>
+              ))}
+            </DropdownMenuGroup>
           </>
         )}
       </DropdownMenuContent>

@@ -76,6 +76,19 @@ function DropdownMenuLinkItem({ className, ...props }: MenuPrimitive.LinkItem.Pr
   )
 }
 
+/**
+ * Pembungkus wajib untuk DropdownMenuGroupLabel.
+ *
+ * Base UI menghubungkan label ke grupnya lewat context, dan `Menu.GroupLabel`
+ * MELEMPAR ERROR kalau tidak menemukannya ("MenuGroupContext is missing").
+ * Bukan peringatan yang bisa diabaikan — komponennya gagal render dan seluruh
+ * halaman jatuh ke error boundary ("This page couldn't load").
+ */
+function DropdownMenuGroup({ className, ...props }: MenuPrimitive.Group.Props) {
+  return <MenuPrimitive.Group data-slot="dropdown-menu-group" className={className} {...props} />
+}
+
+/** WAJIB dipakai di dalam DropdownMenuGroup — lihat catatan di atas. */
 function DropdownMenuGroupLabel({ className, ...props }: MenuPrimitive.GroupLabel.Props) {
   return (
     <MenuPrimitive.GroupLabel
@@ -99,6 +112,7 @@ function DropdownMenuSeparator({ className, ...props }: MenuPrimitive.Separator.
 export {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuGroupLabel,
   DropdownMenuItem,
   DropdownMenuLinkItem,

@@ -9,16 +9,37 @@ import { getIdCheckConfig } from "@/lib/catalog/id-check";
 // `fulfillmentMode` wajib ikut dipertimbangkan di SEMUA titik yang menilai
 // "item ini bisa dibeli atau tidak": kalau tidak, produk manual tampil abu-abu
 // di katalog dan ditolak saat checkout, keduanya tanpa sebab yang terlihat.
-// Titik lain yang setara ada di actions/checkout.ts (gerbang selectFulfillmentSku).
+//
+// PROVIDER-AGNOSTIC, dan itu WAJIB sejalan dengan selectFulfillmentSku di
+// lib/order/select-provider.ts. Keduanya menjawab pertanyaan yang sama - "item ini
+// bisa dikirim atau tidak" - cuma di dua waktu berbeda: yang ini saat katalog
+// digambar, yang itu saat order benar-benar dikirim.
+//
+// Fungsi ini SEMPAT memakai `s.provider === "DIGIFLAZZ"` secara harfiah, sisa dari
+// masa ketika Digiflazz satu-satunya provider. Saat OkeConnect masuk, hardcode di
+// selectFulfillmentSku dicabut tapi yang di sini tertinggal - dan bentuk
+// kegagalannya paling menyesatkan yang mungkin: item yang dipetakan HANYA ke
+// OkeConnect lolos semua pengecekan admin (SKU ACTIVE, provider aktif, harga
+// benar, produk aktif), tetap tampil di daftar katalog, lalu halaman produknya
+// berkata "sedang tidak tersedia untuk dibeli saat ini". Tidak ada satu pun
+// layar admin yang menunjuk sebabnya, karena dari sisi data memang tidak ada
+// yang salah.
+//
+// Jadi kalau menambah gerbang ketersediaan baru: samakan dengan select-provider.ts,
+// jangan menyebut nama provider mana pun.
+//
+// Satu perbedaan yang DISENGAJA dari selectFulfillmentSku: guard anti-jual-rugi
+// (costPrice <= sellingPrice) tidak dijalankan di sini. Fungsi ini cuma menerima
+// provider + status, dan menyembunyikan item dari katalog karena harga modalnya
+// naik akan membuat produk hilang diam-diam dari toko. Biar checkout yang menolak
+// dengan sebab yang jelas.
 export function isItemPurchasable(
   providerSkus: { provider: ProviderKey; status: ProviderSkuStatus }[],
   activeProviders: Set<ProviderKey>,
   fulfillmentMode: FulfillmentMode = "AUTO",
 ): boolean {
   if (fulfillmentMode === "MANUAL") return true;
-  return providerSkus.some(
-    (s) => s.provider === "DIGIFLAZZ" && s.status === "ACTIVE" && activeProviders.has(s.provider),
-  );
+  return providerSkus.some((s) => s.status === "ACTIVE" && activeProviders.has(s.provider));
 }
 
 export interface CatalogProduct {
