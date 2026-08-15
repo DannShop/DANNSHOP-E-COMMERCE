@@ -14,6 +14,8 @@ import {
   createProductItemGroup,
   updateProductItemGroup,
   deleteProductItemGroup,
+  deleteProductItem,
+  deleteProductItems,
 } from "@/app/actions/catalog";
 import { getCatalogSources } from "@/lib/providers/catalog-sources";
 import { ProductForm } from "../product-form";
@@ -139,6 +141,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           sources={catalogSources}
           createProductItem={createProductItem}
           updateProductItem={updateProductItem}
+          deleteProductItem={deleteProductItem}
+          deleteProductItems={deleteProductItems}
           mapProviderSku={mapProviderSku}
           unmapProviderSku={unmapProviderSku}
           setPrimaryProviderSku={setPrimaryProviderSku}

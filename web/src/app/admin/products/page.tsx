@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
-import { toggleProductActive } from "@/app/actions/catalog";
+import { Trash2 } from "lucide-react";
+import { deleteProduct, toggleProductActive } from "@/app/actions/catalog";
 import { getCatalogSources } from "@/lib/providers/catalog-sources";
 import { AddProductMenu } from "./add-product-menu";
+import { DeleteConfirm } from "./delete-confirm";
 import { ProductToggleForm } from "./product-toggle-form";
 
 export default async function AdminProductsPage({
@@ -137,6 +139,26 @@ export default async function AdminProductsPage({
                       isActive={product.isActive}
                       itemCount={product._count.items}
                       toggleProductActive={toggleProductActive}
+                    />
+                    <DeleteConfirm
+                      action={deleteProduct}
+                      hiddenFields={{ id: product.id }}
+                      title={`Hapus produk "${product.name}"?`}
+                      confirmLabel="Hapus produk"
+                      trigger={
+                        <Button size="xs" variant="destructive" aria-label={`Hapus produk ${product.name}`}>
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      }
+                      description={
+                        <>
+                          <p>
+                            <strong>{product._count.items} item</strong> beserta seluruh pemetaan SKU providernya ikut
+                            terhapus, dan produk ini langsung hilang dari katalog.
+                          </p>
+                          <p>Tidak bisa dibatalkan.</p>
+                        </>
+                      }
                     />
                   </div>
                 </TableCell>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useActionState } from "react";
-import { ChevronRight, Layers, Plus, TriangleAlert, Zap } from "lucide-react";
+import { ChevronRight, Layers, Plus, Trash2, TriangleAlert, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS, type CatalogSource } from "@/lib/providers/labels";
 import { ActionMessage, INITIAL_STATE, withPrevState } from "./action-utils";
 import type { ServerAction } from "./action-utils";
+import { DeleteConfirm } from "./delete-confirm";
 import { SkuPicker } from "./[id]/sku-picker";
 
 export interface ProviderSkuData {
@@ -223,7 +224,10 @@ function ItemRow({
   item,
   groups,
   sources,
+  selected,
+  onToggleSelected,
   updateProductItem,
+  deleteProductItem,
   mapProviderSku,
   unmapProviderSku,
   setPrimaryProviderSku,
@@ -232,7 +236,10 @@ function ItemRow({
   item: ProductItemData;
   groups: ProductItemGroupData[];
   sources: CatalogSource[];
+  selected: boolean;
+  onToggleSelected: (checked: boolean) => void;
   updateProductItem: ServerAction;
+  deleteProductItem: ServerAction;
   mapProviderSku: ServerAction;
   unmapProviderSku: ServerAction;
   setPrimaryProviderSku: ServerAction;
@@ -247,13 +254,30 @@ function ItemRow({
   const panelId = `item-panel-${item.id}`;
 
   return (
-    <div className={cn("rounded-xl ring-1 transition-colors", open ? "ring-primary/40" : "ring-foreground/10")}>
+    <div
+      className={cn(
+        "flex items-start rounded-xl ring-1 transition-colors",
+        selected ? "bg-primary/5 ring-primary/40" : open ? "ring-primary/40" : "ring-foreground/10",
+      )}
+    >
+      {/* Checkbox DI LUAR tombol buka/tutup. Kalau di dalamnya, mencentang ikut
+          membuka panelnya — dan memilih 20 item untuk dihapus berarti membuka 20
+          panel sekaligus. */}
+      <label className="flex shrink-0 items-center self-stretch py-2.5 pr-1 pl-3">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(checked) => onToggleSelected(checked === true)}
+          aria-label={`Pilih ${item.name}`}
+        />
+      </label>
+
+      <div className="min-w-0 flex-1">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="flex w-full items-center gap-3 rounded-xl py-2.5 pr-3 pl-1 text-left transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >
         <ChevronRight
           className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
@@ -431,6 +455,33 @@ function ItemRow({
               </div>
             </form>
 
+            {/* Hapus diletakkan DI LUAR form simpan, dan dipisahkan garis: dua
+                tombol submit dalam satu form membuat Enter di kolom teks bisa
+                memicu yang salah. */}
+            <div className="mt-3 flex items-center justify-between gap-2 border-t pt-3">
+              <p className="text-xs text-muted-foreground">Hapus item ini beserta pemetaan providernya.</p>
+              <DeleteConfirm
+                action={deleteProductItem}
+                hiddenFields={{ id: item.id }}
+                title={`Hapus item "${item.name}"?`}
+                confirmLabel="Hapus item"
+                trigger={
+                  <Button type="button" size="xs" variant="destructive">
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                    Hapus item
+                  </Button>
+                }
+                description={
+                  <p>
+                    {item.providerSkus.length > 0
+                      ? `${item.providerSkus.length} pemetaan SKU provider ikut terhapus.`
+                      : "Item ini belum dipetakan ke provider mana pun."}{" "}
+                    Tidak bisa dibatalkan.
+                  </p>
+                }
+              />
+            </div>
+
             <TabsPanel value="provider" className="mt-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
@@ -468,6 +519,7 @@ function ItemRow({
           </Tabs>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -656,6 +708,8 @@ export function ProductItemsManager({
   sources,
   createProductItem,
   updateProductItem,
+  deleteProductItem,
+  deleteProductItems,
   mapProviderSku,
   unmapProviderSku,
   setPrimaryProviderSku,
@@ -669,6 +723,8 @@ export function ProductItemsManager({
   sources: CatalogSource[];
   createProductItem: ServerAction;
   updateProductItem: ServerAction;
+  deleteProductItem: ServerAction;
+  deleteProductItems: ServerAction;
   mapProviderSku: ServerAction;
   unmapProviderSku: ServerAction;
   setPrimaryProviderSku: ServerAction;
@@ -676,6 +732,9 @@ export function ProductItemsManager({
   updateProductItemGroup: ServerAction;
   deleteProductItemGroup: ServerAction;
 }) {
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
+  const selectedList = items.filter((i) => selectedIds[i.id]);
+  const allSelected = items.length > 0 && selectedList.length === items.length;
   // Dua angka yang paling menentukan apakah produk ini siap dijual, dihitung
   // sekali di atas supaya admin tidak perlu membuka 30 item satu per satu untuk
   // menemukan yang bermasalah.
@@ -718,6 +777,56 @@ export function ProductItemsManager({
         </p>
       ) : (
         <div className="space-y-2">
+          {/* Baris pilih-semua & hapus massal. Hanya muncul begitu ada yang
+              dicentang — menampilkan tombol hapus permanen di layar padahal
+              belum ada yang dipilih cuma menambah kebisingan pada pekerjaan
+              yang jauh lebih sering dilakukan (mengedit harga). */}
+          <div className="flex flex-wrap items-center gap-3 px-3 py-1">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox
+                checked={allSelected}
+                onCheckedChange={(checked) =>
+                  setSelectedIds(checked === true ? Object.fromEntries(items.map((i) => [i.id, true])) : {})
+                }
+                aria-label="Pilih semua item"
+              />
+              Pilih semua
+            </label>
+
+            {selectedList.length > 0 && (
+              <>
+                <span className="text-xs font-medium">{selectedList.length} dipilih</span>
+                <DeleteConfirm
+                  action={deleteProductItems}
+                  hiddenFields={{ productId }}
+                  title={`Hapus ${selectedList.length} item?`}
+                  confirmLabel={`Hapus ${selectedList.length} item`}
+                  trigger={
+                    <Button type="button" size="xs" variant="destructive">
+                      <Trash2 className="size-3.5" aria-hidden="true" />
+                      Hapus terpilih
+                    </Button>
+                  }
+                  description={
+                    <>
+                      <p>Item berikut beserta seluruh pemetaan SKU providernya akan dihapus:</p>
+                      <ul className="max-h-32 list-disc overflow-y-auto pl-4">
+                        {selectedList.map((i) => (
+                          <li key={i.id}>{i.name}</li>
+                        ))}
+                      </ul>
+                      <p>Tidak bisa dibatalkan.</p>
+                    </>
+                  }
+                >
+                  {selectedList.map((i) => (
+                    <input key={i.id} type="hidden" name="itemIds" value={i.id} />
+                  ))}
+                </DeleteConfirm>
+              </>
+            )}
+          </div>
+
           {items.map((item) => (
             <ItemRow
               key={item.id}
@@ -725,7 +834,10 @@ export function ProductItemsManager({
               item={item}
               groups={groups}
               sources={sources}
+              selected={selectedIds[item.id] === true}
+              onToggleSelected={(checked) => setSelectedIds((prev) => ({ ...prev, [item.id]: checked }))}
               updateProductItem={updateProductItem}
+              deleteProductItem={deleteProductItem}
               mapProviderSku={mapProviderSku}
               unmapProviderSku={unmapProviderSku}
               setPrimaryProviderSku={setPrimaryProviderSku}

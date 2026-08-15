@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { productSchema, productItemSchema, productItemGroupSchema, bulkImportSchema } from "@/lib/validation/catalog";
 import { applyMarkup } from "@/lib/catalog/bulk-import";
 import { computeBulkMarkup } from "@/lib/catalog/bulk-markup";
+import { ORDER_STATUSES_BLOCKING_DELETE, describeDeleteBlock } from "@/lib/catalog/delete-guard";
 import { z } from "zod";
 
 const MAX_BANNER_BYTES = 5 * 1024 * 1024; // 5MB — cukup besar untuk logo/banner produk, cukup kecil untuk cegah abuse storage
@@ -352,6 +353,139 @@ export async function deleteProductItemGroup(formData: FormData): Promise<Action
   revalidatePath(`/admin/products/${productId}`);
   revalidatePath("/");
   return { ok: "Grup dihapus, item di dalamnya jadi tanpa grup." };
+}
+
+/**
+ * Order belum tuntas yang menghalangi penghapusan item-item ini.
+ *
+ * `Order.productItemId` SENGAJA tidak punya relasi Prisma (lihat schema), jadi
+ * database tidak akan menghentikan apa pun — tidak ada foreign key yang menjaga
+ * ini. Penjaganya harus di sini, dan kalau lupa dipanggil, tidak ada satu pun
+ * lapisan di bawah yang menangkapnya.
+ */
+async function findBlockingOrders(productItemIds: string[]) {
+  if (productItemIds.length === 0) return [];
+  return db.order.findMany({
+    where: {
+      productItemId: { in: productItemIds },
+      status: { in: ORDER_STATUSES_BLOCKING_DELETE },
+    },
+    select: { orderNumber: true, status: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/**
+ * Buang item beserta seluruh mapping providernya, dalam SATU transaksi.
+ *
+ * Urutannya wajib: `ProviderSku.productItemId` merujuk ProductItem tanpa
+ * `onDelete`, jadi bawaannya Restrict — menghapus item lebih dulu langsung
+ * ditolak database. Dan keduanya harus satu transaksi: kalau mapping terhapus
+ * lalu penghapusan itemnya gagal, yang tersisa adalah item tanpa provider —
+ * tampak sehat di layar admin, tapi setiap order ke item itu gagal.
+ */
+async function deleteItemsCascade(tx: Parameters<Parameters<typeof db.$transaction>[0]>[0], itemIds: string[]) {
+  await tx.providerSku.deleteMany({ where: { productItemId: { in: itemIds } } });
+  await tx.productItem.deleteMany({ where: { id: { in: itemIds } } });
+}
+
+export async function deleteProductItem(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) return { error: "Item tidak ditemukan." };
+
+  const item = await db.productItem.findUnique({ where: { id }, select: { productId: true, name: true } });
+  if (!item) return { error: "Item tidak ditemukan." };
+
+  const blocked = describeDeleteBlock(await findBlockingOrders([id]));
+  if (blocked) return { error: blocked };
+
+  await db.$transaction((tx) => deleteItemsCascade(tx, [id]));
+  await logAdmin(admin.adminId, "catalog.delete_item", id, { name: item.name });
+  revalidatePath(`/admin/products/${item.productId}`);
+  revalidatePath("/admin/products");
+  revalidatePath("/");
+  return { ok: `Item "${item.name}" dihapus.` };
+}
+
+export async function deleteProductItems(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const productId = formData.get("productId");
+  const ids = formData.getAll("itemIds").filter((v): v is string => typeof v === "string" && v !== "");
+  if (typeof productId !== "string" || !productId) return { error: "Produk tidak ditemukan." };
+  if (ids.length === 0) return { error: "Belum ada item yang dipilih." };
+
+  // Dibatasi ke item milik produk ini. Tanpa ini, id dari produk lain yang
+  // diselipkan ke form akan ikut terhapus — halaman ini tidak pernah bermaksud
+  // menyentuh produk lain.
+  const owned = await db.productItem.findMany({
+    where: { id: { in: ids }, productId },
+    select: { id: true },
+  });
+  if (owned.length === 0) return { error: "Item yang dipilih tidak ditemukan di produk ini." };
+  const ownedIds = owned.map((i) => i.id);
+
+  // SEMUA atau TIDAK SAMA SEKALI. Menghapus sebagian lalu melapor "3 dari 5
+  // terhapus" meninggalkan admin dengan pekerjaan setengah jadi yang harus
+  // dibereskan manual; lebih baik tidak menyentuh apa pun dan menyebut yang
+  // menghalangi.
+  const blocked = describeDeleteBlock(await findBlockingOrders(ownedIds));
+  if (blocked) return { error: blocked };
+
+  await db.$transaction((tx) => deleteItemsCascade(tx, ownedIds));
+  await logAdmin(admin.adminId, "catalog.delete_items", productId, { count: ownedIds.length });
+  revalidatePath(`/admin/products/${productId}`);
+  revalidatePath("/admin/products");
+  revalidatePath("/");
+  return { ok: `${ownedIds.length} item dihapus.` };
+}
+
+/**
+ * Hapus produk beserta seluruh isinya.
+ *
+ * Riwayat order TIDAK ikut hilang: Order menyimpan snapshot productName,
+ * itemName, sellingPrice, dan fulfillmentMode, jadi halaman order & invoice lama
+ * tetap terbaca utuh. Yang tersisa cuma `Order.productItemId` yang menggantung —
+ * tanpa foreign key, dan satu-satunya pembacanya adalah field `sku` di respons
+ * status API partner.
+ */
+export async function deleteProduct(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) return { error: "Produk tidak ditemukan." };
+
+  const product = await db.product.findUnique({
+    where: { id },
+    select: { name: true, items: { select: { id: true } } },
+  });
+  if (!product) return { error: "Produk tidak ditemukan." };
+
+  const itemIds = product.items.map((i) => i.id);
+  const blocked = describeDeleteBlock(await findBlockingOrders(itemIds));
+  if (blocked) return { error: blocked };
+
+  await db.$transaction(async (tx) => {
+    await deleteItemsCascade(tx, itemIds);
+    // Grup dihapus SETELAH itemnya. Kebalikannya tidak salah secara data
+    // (ProductItem.groupId memakai onDelete: SetNull) tapi memaksa database
+    // menulis ulang baris yang sebentar lagi dihapus.
+    await tx.productItemGroup.deleteMany({ where: { productId: id } });
+    await tx.product.delete({ where: { id } });
+  });
+
+  await logAdmin(admin.adminId, "catalog.delete_product", id, { name: product.name, items: itemIds.length });
+  revalidatePath("/admin/products");
+  revalidatePath("/");
+  return { ok: `Produk "${product.name}" beserta ${itemIds.length} itemnya dihapus.` };
 }
 
 const bulkMarkupInputSchema = z.object({
