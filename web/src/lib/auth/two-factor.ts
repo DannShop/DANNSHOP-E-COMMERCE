@@ -57,10 +57,40 @@ export async function getTwoFactorStatus(userId: string): Promise<TwoFactorStatu
  * halaman di tengah pendaftaran tidak berakibat apa-apa.
  */
 export async function stageTotpSecret(userId: string, secret: string): Promise<void> {
-  await db.user.update({
-    where: { id: userId },
-    data: { totpSecretEnc: encryptJson({ secret }), totpEnabledAt: null },
-  });
+  await writeTotpFields(userId, encryptJson({ secret }), null);
+}
+
+/**
+ * Tulis kolom 2FA TANPA menyentuh `User.updatedAt`.
+ *
+ * INI BUKAN OPTIMASI — tanpa ini, memasang 2FA menendang orangnya keluar di
+ * tengah pemasangan, dan bug-nya sudah kejadian di produksi.
+ *
+ * Sebabnya: `proxy.ts` membandingkan `User.updatedAt` di database dengan nilai
+ * yang tersimpan di JWT, dan mengalihkan ke /login begitu keduanya berbeda. Itu
+ * memang disengaja — JWT di sini stateless 8 jam, jadi tanpa pembanding itu
+ * penangguhan akun tidak akan menendang sesi yang sudah berjalan.
+ *
+ * Masalahnya, `@updatedAt` milik Prisma ikut maju pada SETIAP `update()`,
+ * termasuk update yang tidak ada hubungannya dengan identitas atau hak akses.
+ * Akibatnya: klik "Aktifkan 2FA" → rahasia ditulis → updatedAt maju → sesi
+ * dianggap basi → langkah konfirmasi berikutnya kena pengalihan ke /login.
+ * Karena langkah itu sebuah Server Action, pengalihan bukan balasan yang sah,
+ * dan yang terlihat pengguna adalah layar putih "This page couldn't load".
+ *
+ * Dipakai SQL mentah, bukan `update()` dengan `updatedAt` diisi manual, karena
+ * perilaku Prisma untuk kolom ber-`@updatedAt` yang diisi eksplisit tidak
+ * dijamin antarversi — sementara jalur ini tidak boleh "kadang benar". MySQL
+ * tidak punya ON UPDATE untuk kolom ini (nilainya ditentukan Prisma di sisi
+ * klien), jadi SQL mentah pasti meninggalkannya apa adanya. Nilai tetap
+ * diparameterkan, tidak pernah dirangkai ke string.
+ */
+async function writeTotpFields(userId: string, secretEnc: string | null, enabledAt: Date | null): Promise<void> {
+  await db.$executeRaw`
+    UPDATE \`User\`
+    SET \`totpSecretEnc\` = ${secretEnc}, \`totpEnabledAt\` = ${enabledAt}
+    WHERE \`id\` = ${userId}
+  `;
 }
 
 export async function readStagedSecret(userId: string): Promise<string | null> {
@@ -85,6 +115,8 @@ export async function readStagedSecret(userId: string): Promise<string | null> {
 export async function enableTwoFactor(userId: string): Promise<string[]> {
   const codes = Array.from({ length: RECOVERY_CODE_COUNT }, generateRecoveryCode);
 
+  const secretEnc = await readRawSecretEnc(userId);
+
   await db.$transaction([
     // Kode lama dibuang seluruhnya, bukan ditambahi: penerbitan ulang harus
     // membatalkan kertas lama, kalau tidak kode yang sudah dianggap hangus tetap
@@ -93,7 +125,14 @@ export async function enableTwoFactor(userId: string): Promise<string[]> {
     db.totpRecoveryCode.createMany({
       data: codes.map((code) => ({ userId, codeHash: hashRecoveryCode(code) })),
     }),
-    db.user.update({ where: { id: userId }, data: { totpEnabledAt: new Date() } }),
+    // Lewat SQL mentah supaya `updatedAt` tidak ikut maju — lihat catatan panjang
+    // di writeTotpFields. Menyalakan 2FA tidak boleh menendang orang yang sedang
+    // menyalakannya.
+    db.$executeRaw`
+      UPDATE \`User\`
+      SET \`totpSecretEnc\` = ${secretEnc}, \`totpEnabledAt\` = ${new Date()}
+      WHERE \`id\` = ${userId}
+    `,
   ]);
 
   return codes;
@@ -102,8 +141,18 @@ export async function enableTwoFactor(userId: string): Promise<string[]> {
 export async function disableTwoFactor(userId: string): Promise<void> {
   await db.$transaction([
     db.totpRecoveryCode.deleteMany({ where: { userId } }),
-    db.user.update({ where: { id: userId }, data: { totpSecretEnc: null, totpEnabledAt: null } }),
+    db.$executeRaw`
+      UPDATE \`User\`
+      SET \`totpSecretEnc\` = NULL, \`totpEnabledAt\` = NULL
+      WHERE \`id\` = ${userId}
+    `,
   ]);
+}
+
+/** Blob terenkripsi apa adanya, tanpa didekripsi — dipakai enableTwoFactor untuk menulis ulang tanpa mengubahnya. */
+async function readRawSecretEnc(userId: string): Promise<string | null> {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { totpSecretEnc: true } });
+  return typeof user?.totpSecretEnc === "string" ? user.totpSecretEnc : null;
 }
 
 /**
