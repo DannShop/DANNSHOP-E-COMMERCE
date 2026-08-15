@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { ORDER_STATUS_LABEL, DEPOSIT_STATUS_LABEL } from "@/lib/order/status-labels";
 import { getMembershipContext } from "@/lib/membership/tier";
+import { InstallAppCard } from "./install-app-card";
 
 export const metadata: Metadata = { title: "Akun Saya" };
 
@@ -109,6 +110,11 @@ export default async function AccountPage() {
         </span>
         <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </Link>
+
+      {/* ===== Ajakan pasang aplikasi =====
+          Merender null sendiri kalau app-nya sudah terpasang atau browsernya
+          tidak mendukung, jadi tidak perlu dikondisikan dari sini. */}
+      <InstallAppCard />
 
       {/* ===== Transaksi terakhir ===== */}
       <section className="flex flex-col gap-3">

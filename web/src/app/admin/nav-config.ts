@@ -24,6 +24,7 @@ import {
   ScanSearch,
   ShieldCheck,
   Plug,
+  Smartphone,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
@@ -101,6 +102,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/partners", label: "API Partner", icon: Plug },
       { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/admin/jobs", label: "Monitoring Job", icon: Activity },
+      { href: "/admin/mobile-app", label: "Aplikasi Mobile", icon: Smartphone },
     ],
   },
   {

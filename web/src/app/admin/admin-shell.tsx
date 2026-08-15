@@ -8,6 +8,7 @@ import { Menu, Sun, Moon, ChevronRight, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { withThemeTransition } from "@/lib/theme-transition";
 import { RefreshButton } from "@/components/admin/refresh-button";
+import { InstallButton } from "@/components/pwa/install-button";
 import { AdminSidebar } from "./admin-sidebar";
 import { resolvePageTitle } from "./nav-config";
 
@@ -208,6 +209,14 @@ export function AdminShell({
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {/* Merender null sendiri kalau panel ini sudah dibuka dari app yang
+                terpasang, atau kalau browsernya tidak bisa memasang apa pun -
+                jadi tidak perlu dikondisikan dari sini. Teksnya disembunyikan di
+                layar sempit; ikonnya saja sudah cukup di header yang padat. */}
+            <InstallButton
+              label="Install app"
+              className="h-9 gap-1.5 px-2.5 text-xs [&>span]:hidden sm:[&>span]:inline"
+            />
             <RefreshButton />
             <ThemeSwitch />
           </div>

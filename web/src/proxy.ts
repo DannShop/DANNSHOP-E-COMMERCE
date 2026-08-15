@@ -61,7 +61,18 @@ export default auth(async (req) => {
     }
   }
 
-  if (nextUrl.pathname.startsWith("/admin")) {
+  // Manifest aplikasi mobile admin. HARUS dilewatkan tanpa autentikasi, dan ini
+  // bukan kelonggaran melainkan syarat teknis: browser mengambil manifest dengan
+  // `credentials: "omit"` — cookie sesi TIDAK ikut terkirim, seberapa pun
+  // sahnya admin yang sedang membuka halamannya. Kalau ikut digerbang, yang
+  // diterima browser adalah pengalihan ke /login, dan app admin tidak akan
+  // pernah bisa dipasang ke layar utama.
+  //
+  // Yang terbuka cuma nama app, warna, dan URL ikon — tidak ada data, tidak ada
+  // jalan masuk. Halaman-halaman di baliknya tetap digerbang seperti biasa.
+  const isAdminManifest = nextUrl.pathname === "/admin/app.webmanifest";
+
+  if (nextUrl.pathname.startsWith("/admin") && !isAdminManifest) {
     if (!user || user.role !== "ADMIN") {
       return Response.redirect(new URL("/login", nextUrl));
     }
@@ -98,11 +109,31 @@ export default auth(async (req) => {
   // portalnya sementara API-nya jalan berarti mitra kehilangan satu-satunya
   // tempat melihat saldo dan log callback justru saat transaksinya tetap
   // berjalan — tidak koheren.
+  //
+  // Aset aplikasi mobile (PWA) ikut dikecualikan, dan ini BUKAN kerapian —
+  // tanpanya, menyalakan mode maintenance merusak app yang sudah terpasang di
+  // HP orang. Rewrite membalas HTTP 200 berisi HTML halaman maintenance, jadi:
+  //   - /manifest.webmanifest -> browser membaca HTML sebagai manifest, dan app
+  //     yang terpasang kehilangan nama serta ikonnya secara permanen sampai
+  //     dipasang ulang;
+  //   - /sw.js -> pendaftaran service worker gagal (tipe MIME salah);
+  //   - /icons/* -> ikon berubah jadi kotak kosong.
+  // Yang bocor dari pengecualian ini cuma nama toko dan warna — tidak ada
+  // satu pun halaman yang bisa dibelanjakan.
+  //
+  // /admin/app.webmanifest tidak perlu disebut: seluruh /admin sudah dikecualikan.
+  const isPwaAsset =
+    nextUrl.pathname === "/manifest.webmanifest" ||
+    nextUrl.pathname === "/sw.js" ||
+    nextUrl.pathname === "/offline" ||
+    nextUrl.pathname.startsWith("/icons/");
+
   const isExemptFromMaintenance =
     nextUrl.pathname === "/maintenance" ||
     nextUrl.pathname.startsWith("/admin") ||
     nextUrl.pathname.startsWith("/mitra") ||
     nextUrl.pathname.startsWith("/api") ||
+    isPwaAsset ||
     nextUrl.pathname === "/login";
   if (!isExemptFromMaintenance && (await isMaintenanceModeOn())) {
     return NextResponse.rewrite(new URL("/maintenance", nextUrl));
@@ -129,9 +160,16 @@ export default auth(async (req) => {
   // kecuali, dan `nextUrl.pathname` selalu ada. Tidak ada header buatan, tidak
   // ada keadaan "posisi tidak diketahui", jadi pengalihan ke diri sendiri
   // mustahil terjadi.
+  //
+  // Manifest app admin juga dikecualikan di sini. Gerbang di atas sudah
+  // melewatkannya, tapi tanpa pengecualian kedua ini seorang admin yang belum
+  // memasang 2FA akan membuat manifest-nya dibalas pengalihan ke
+  // /admin/keamanan - dan gejalanya bukan pesan error, melainkan app yang
+  // sekadar tidak mau terpasang.
   if (
     nextUrl.pathname.startsWith("/admin") &&
     !nextUrl.pathname.startsWith("/admin/keamanan") &&
+    !isAdminManifest &&
     user?.role === "ADMIN"
   ) {
     const me = await db.user.findUnique({ where: { id: user.id }, select: { totpEnabledAt: true } });

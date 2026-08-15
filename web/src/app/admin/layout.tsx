@@ -1,8 +1,39 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getSiteSettings } from "@/lib/site-settings";
+import { getInvoiceBranding } from "@/lib/invoice/branding";
+import { getPwaSettings } from "@/lib/pwa/settings";
+import { resolveAppNames, resolveIcon } from "@/lib/pwa/config";
 import { AdminShell } from "./admin-shell";
+
+// Panel admin adalah aplikasi mobile KEDUA, terpisah dari app toko.
+//
+// Metadata di sini menimpa milik layout root untuk seluruh /admin, sehingga
+// memasang app dari halaman panel menghasilkan pintasan yang membuka /admin
+// langsung — bukan halaman depan toko.
+//
+// `icons` ditulis LENGKAP (icon + apple), bukan cuma apple: penggabungan
+// metadata Next.js bersifat dangkal, jadi menyebut sebagian field akan
+// menghapus favicon yang diatur layout root.
+export async function generateMetadata(): Promise<Metadata> {
+  const [settings, pwa, branding] = await Promise.all([
+    getSiteSettings(),
+    getPwaSettings(),
+    getInvoiceBranding(),
+  ]);
+  const { shortName } = resolveAppNames(pwa.admin, "admin", branding.brandName);
+
+  return {
+    manifest: "/admin/app.webmanifest",
+    icons: {
+      icon: settings.faviconUrl ?? "/favicon.ico",
+      apple: resolveIcon(pwa.admin, "admin").any,
+    },
+    appleWebApp: { capable: true, title: shortName, statusBarStyle: "default" },
+  };
+}
 
 export default async function AdminLayout({
   children,
