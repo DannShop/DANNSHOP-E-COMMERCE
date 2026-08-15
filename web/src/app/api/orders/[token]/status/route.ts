@@ -32,6 +32,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       productName: order.productName,
       itemName: order.itemName,
       sellingPrice: order.sellingPrice.toString(),
+      // Ikut dikirim walau nilainya statis sepanjang hidup order: halaman
+      // invoice MENIMPA seluruh objeknya dengan hasil polling tiap 3 detik,
+      // jadi field yang tidak ada di sini akan lenyap dari layar beberapa detik
+      // setelah halaman dibuka - bukan tidak pernah tampil, yang justru
+      // membuatnya lebih sulit disadari.
+      discount: order.discount.toString(),
+      voucherCode: order.voucherCode,
       fee: order.fee.toString(),
       uniqueCode: order.uniqueCode,
       total: order.total.toString(),

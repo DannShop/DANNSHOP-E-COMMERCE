@@ -18,7 +18,9 @@ import { getActiveProviders } from "@/lib/providers/registry";
 import { sendOrderCreatedEmail } from "@/lib/notify/email";
 import { formatOrderCreatedMessage, formatOrderPaidMessage, notifyTelegram } from "@/lib/notify/telegram";
 import { describeOrderTarget } from "@/lib/order/customer-no";
-import { effectivePrice } from "@/lib/pricing/effective-price";
+import { effectivePrice, isFlashActive } from "@/lib/pricing/effective-price";
+import { evaluateVoucher } from "@/lib/voucher/evaluate";
+import { buildVoucherRedemption, netPrice, type AppliedVoucher } from "@/lib/voucher/apply";
 import { getMembershipContext, type MembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
 import { requireActiveAccount } from "@/lib/account/user-status";
@@ -69,6 +71,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     buyerPhone: formData.get("buyerPhone") ?? "",
     target: extractTargetFromFormData(formData),
     paymentMethod: formData.get("paymentMethod") ?? "qris",
+    voucherCode: formData.get("voucherCode") ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -119,6 +122,31 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   // diskon otomatis sejak Fase B, harus punya tier yang dibeli.
   const price = effectivePrice(item, { discountBp: membership.discountBp, now });
 
+  // ===== Kode promo =====
+  //
+  // Dinilai SETELAH harga item final (flash sale & diskon tier sudah masuk),
+  // karena voucher memotong dari harga yang benar-benar akan ditagihkan - bukan
+  // dari harga papan. Voucher yang menumpuk di atas flash sale adalah pilihan
+  // per voucher (Voucher.allowFlashSale), bawaannya tidak boleh.
+  //
+  // Dinilai SEBELUM order dibuat supaya kode yang tidak berlaku ditolak tanpa
+  // meninggalkan order gagal di riwayat pembeli.
+  let voucher: AppliedVoucher | null = null;
+  if (parsed.data.voucherCode) {
+    const hasil = await evaluateVoucher({
+      rawCode: parsed.data.voucherCode,
+      price,
+      categoryId: item.product.categoryId,
+      productId: item.productId,
+      isFlashActive: isFlashActive(item, now),
+      target: parsed.data.target,
+      userId,
+      now,
+    });
+    if (!hasil.ok) return { error: hasil.message };
+    voucher = { id: hasil.voucherId, code: hasil.code, discount: hasil.discount, targetKey: hasil.targetKey };
+  }
+
   // Cek ketersediaan SKU provider HANYA berlaku untuk produk otomatis. Produk
   // manual memang sengaja tidak punya ProviderSku sama sekali - menjalankan
   // gerbang ini padanya akan menolak setiap checkout dengan alasan "sedang
@@ -146,6 +174,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
       orderNumber,
       item,
       price,
+      voucher,
       target: parsed.data.target,
       buyerEmail: parsed.data.buyerEmail,
       buyerPhone: parsed.data.buyerPhone,
@@ -158,6 +187,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     orderNumber,
     item,
     price,
+    voucher,
     target: parsed.data.target,
     buyerEmail: parsed.data.buyerEmail,
     buyerPhone: parsed.data.buyerPhone,
@@ -173,6 +203,7 @@ async function createBalanceOrder(input: {
   orderNumber: string;
   item: { id: string; product: { name: string }; name: string };
   price: bigint;
+  voucher: AppliedVoucher | null;
   target: Record<string, string>;
   buyerEmail: string;
   buyerPhone?: string;
@@ -189,10 +220,14 @@ async function createBalanceOrder(input: {
     buyerEmail: input.buyerEmail,
     buyerPhone: input.buyerPhone,
     paidVia: "BALANCE",
+    // sellingPrice tetap harga item apa adanya; potongan disimpan terpisah
+    // supaya laporan penjualan tidak membacanya sebagai item yang harganya
+    // lebih murah. Yang didebit dari saldo adalah `total` di bawah.
     sellingPrice: input.price,
-    total: input.price,
+    total: netPrice(input.price, input.voucher),
     paymentMethod: "balance",
     fulfillmentMode: input.fulfillmentMode,
+    ...buildVoucherRedemption(input.voucher, input.userId),
     payment: { create: { method: "balance", status: "PENDING" } },
   });
   await db.orderStatusHistory.create({
@@ -262,6 +297,7 @@ async function createMidtransOrder(input: {
   orderNumber: string;
   item: { id: string; product: { name: string }; name: string };
   price: bigint;
+  voucher: AppliedVoucher | null;
   target: Record<string, string>;
   buyerEmail: string;
   buyerPhone?: string;
@@ -288,10 +324,15 @@ async function createMidtransOrder(input: {
   // konsisten dengan yang dicocokkan webhook saat settlement.
   const freeFeeBenefit = hasBenefit(input.membership.benefits, "free_order_fee");
   const noUniqueCodeBenefit = hasBenefit(input.membership.benefits, "no_unique_code_order");
-  const fee = rules.feeOrder && !freeFeeBenefit ? calculateFee(input.price, method.feeFlat, method.feePercent) : 0n;
+  // Fee dihitung dari harga SETELAH potongan voucher, bukan harga papan: fee
+  // adalah biaya payment gateway atas nominal yang benar-benar ditagihkan, dan
+  // menagih fee untuk uang yang tidak jadi lewat gateway hanya membuat potongan
+  // yang dijanjikan terasa lebih kecil daripada yang tertulis.
+  const net = netPrice(input.price, input.voucher);
+  const fee = rules.feeOrder && !freeFeeBenefit ? calculateFee(net, method.feeFlat, method.feePercent) : 0n;
   const uniqueCode =
     rules.uniqueCodeOrder && !noUniqueCodeBenefit ? generateUniqueCode(rules.uniqueCodeMin, rules.uniqueCodeMax) : 0;
-  const total = calculateTotal(input.price, fee, uniqueCode);
+  const total = calculateTotal(net, fee, uniqueCode);
 
   const order = await createOrderWithRetry({
     orderNumber: input.orderNumber,
@@ -311,6 +352,7 @@ async function createMidtransOrder(input: {
     paymentMethod: method.code,
     expiredAt,
     fulfillmentMode: input.fulfillmentMode,
+    ...buildVoucherRedemption(input.voucher, input.userId),
     payment: { create: { method: method.code, status: "PENDING", expiredAt } },
   });
   // Ditembak duluan, di-await belakangan bareng orderPayment.update — history

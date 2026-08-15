@@ -7,6 +7,15 @@ export const checkoutSchema = z.object({
   target: z.record(z.string(), z.string().min(1, "Wajib diisi").max(255, "Terlalu panjang"))
     .refine((t) => Object.keys(t).length <= 10, "Terlalu banyak field"),
   paymentMethod: z.string().min(1, "Metode pembayaran wajib dipilih"),
+  // Kosong = tidak memakai kode promo. Sengaja ditransformasi ke `undefined`
+  // (pola sama dengan buyerPhone di atas) supaya kolom yang dibiarkan kosong
+  // tidak masuk ke jalur penilaian voucher dan menghasilkan penolakan "kode
+  // tidak ditemukan" pada checkout yang memang tidak memakai promo.
+  voucherCode: z
+    .string()
+    .max(24, "Kode promo terlalu panjang")
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
 });
 
 export function extractTargetFromFormData(formData: FormData): Record<string, string> {

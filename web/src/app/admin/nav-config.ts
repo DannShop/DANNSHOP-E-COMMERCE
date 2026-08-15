@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Plug,
   Smartphone,
+  TicketPercent,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
@@ -66,6 +67,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/products", label: "Produk & Harga", icon: Package },
       { href: "/admin/categories", label: "Kategori", icon: FolderTree },
       { href: "/admin/markup", label: "Markup Harga", icon: Percent },
+      { href: "/admin/vouchers", label: "Kode Promo", icon: TicketPercent },
     ],
   },
   {

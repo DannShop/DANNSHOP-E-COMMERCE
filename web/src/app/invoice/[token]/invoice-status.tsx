@@ -33,6 +33,9 @@ interface OrderStatusResponse {
   productName: string;
   itemName: string;
   sellingPrice: string;
+  /** Potongan kode promo. "0" = tidak memakai promo. */
+  discount: string;
+  voucherCode: string | null;
   fee: string;
   uniqueCode: number;
   total: string;
@@ -138,6 +141,18 @@ export function InvoiceStatus({
           <span className="text-muted-foreground">Harga item</span>
           <span>{formatRupiah(order.sellingPrice)}</span>
         </div>
+        {/* Baris potongan hanya muncul kalau ada. Tanpanya, pembeli yang
+            memakai kode promo melihat total yang tidak cocok dengan
+            penjumlahan baris di atasnya - dan selisih tanpa penjelasan pada
+            angka tagihan adalah hal pertama yang dilaporkan ke CS. */}
+        {order.discount !== "0" && (
+          <div className="flex justify-between">
+            <span className="min-w-0 truncate text-muted-foreground">
+              Promo{order.voucherCode ? ` ${order.voucherCode}` : ""}
+            </span>
+            <span className="text-primary">−{formatRupiah(order.discount)}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className="text-muted-foreground">Biaya admin</span>
           <span>{formatRupiah(order.fee)}</span>

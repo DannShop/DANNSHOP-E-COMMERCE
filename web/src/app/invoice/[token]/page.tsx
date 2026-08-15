@@ -98,6 +98,8 @@ export default async function InvoicePage({
           productName: order.productName,
           itemName: order.itemName,
           sellingPrice: order.sellingPrice.toString(),
+          discount: order.discount.toString(),
+          voucherCode: order.voucherCode,
           fee: order.fee.toString(),
           uniqueCode: order.uniqueCode,
           total: order.total.toString(),

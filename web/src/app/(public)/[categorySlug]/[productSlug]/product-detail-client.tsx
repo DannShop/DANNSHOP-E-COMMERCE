@@ -14,6 +14,7 @@ import { TrustBadges } from "@/components/trust-badges";
 import { createCheckoutOrder, type CheckoutResult } from "@/app/actions/checkout";
 import { checkGameId } from "@/app/actions/id-check";
 import { hasSufficientBalance } from "@/lib/wallet/decisions";
+import { VoucherField, type AppliedVoucherState } from "./voucher-field";
 import type { ProductForCheckout } from "@/lib/catalog/public";
 
 type Item = ProductForCheckout["items"][number];
@@ -172,6 +173,24 @@ export function ProductDetailClient({
   // perlu membacanya sebelum form dikirim. Form tetap mengirimkannya lewat
   // atribut `name` seperti biasa - alur checkout tidak berubah sama sekali.
   const [targetValues, setTargetValues] = useState<Record<string, string>>({});
+  const [voucher, setVoucher] = useState<AppliedVoucherState | null>(null);
+
+  // Voucher DILEPAS begitu item yang dipilih berganti. Potongannya dihitung
+  // server untuk harga item TERTENTU - voucher persentase pada item Rp10.000
+  // memberi angka yang berbeda dari item Rp500.000, dan membiarkan angka lama
+  // menempel berarti rincian pembayaran menjanjikan potongan yang tidak akan
+  // diberikan server.
+  //
+  // Pola "menyesuaikan state saat render" (bukan useEffect) sesuai anjuran
+  // resmi React, sama seperti penutupan drawer di AdminShell. Letaknya WAJIB
+  // di antara hook lain dan SEBELUM early return di bawah - versi pertama
+  // menaruhnya setelah early return "produk habis", yang membuat jumlah hook
+  // berbeda antar render.
+  const [lastItemId, setLastItemId] = useState(selectedItemId);
+  if (lastItemId !== selectedItemId) {
+    setLastItemId(selectedItemId);
+    setVoucher(null);
+  }
   const [idCheck, setIdCheck] = useState<{ nickname?: string; error?: string } | null>(null);
   const [checkingId, startIdCheck] = useTransition();
   const allTargetsFilled = product.inputFields.every((f) => (targetValues[f.name] ?? "").trim() !== "");
@@ -195,7 +214,14 @@ export function ProductDetailClient({
     );
   }
 
-  const canPayWithBalance = session ? hasSufficientBalance(session.walletBalance, selectedItem?.effectivePrice ?? 0n) : false;
+  // Harga item setelah potongan promo. Semua angka di bawah memakai ini, bukan
+  // effectivePrice mentah - termasuk cek kecukupan saldo, supaya tombol bayar
+  // saldo tidak mati untuk pesanan yang justru sudah terjangkau berkat promo.
+  const itemPrice = selectedItem?.effectivePrice ?? 0n;
+  const voucherDiscount = voucher?.discount ?? 0n;
+  const netItemPrice = itemPrice > voucherDiscount ? itemPrice - voucherDiscount : 0n;
+
+  const canPayWithBalance = session ? hasSufficientBalance(session.walletBalance, netItemPrice) : false;
 
   // Preview "Total Bayar" harus ikut fee metode pembayaran yang lagi
   // dipilih (bukan cuma effectivePrice) - fee final tetap dihitung ulang
@@ -211,11 +237,13 @@ export function ProductDetailClient({
   const feeWaived = pricing.freeFee;
   const feeApplies = pricing.feeEnabled && !feeWaived;
   const uniqueCodeApplies = pricing.uniqueCodeEnabled && !pricing.noUniqueCode;
+  // Fee dihitung dari harga SETELAH potongan promo - cermin persis dari
+  // createMidtransOrder di server.
   const previewFee =
     selectedItem && selectedMethodConfig && !isBalanceSelected && feeApplies
-      ? (selectedItem.effectivePrice * BigInt(selectedMethodConfig.feePercent)) / 10_000n + BigInt(selectedMethodConfig.feeFlat)
+      ? (netItemPrice * BigInt(selectedMethodConfig.feePercent)) / 10_000n + BigInt(selectedMethodConfig.feeFlat)
       : 0n;
-  const previewTotal = selectedItem ? selectedItem.effectivePrice + previewFee : 0n;
+  const previewTotal = selectedItem ? netItemPrice + previewFee : 0n;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -414,6 +442,19 @@ export function ProductDetailClient({
             />
             <p className="text-xs text-muted-foreground">Dipakai CS untuk menghubungi Anda kalau ada kendala pesanan.</p>
           </div>
+
+          {/* Kode promo ditaruh SETELAH data akun & item terpilih, bukan di
+              awal: potongannya bergantung pada item mana yang dipilih dan pada
+              nomor tujuan (batas pemakaian dihitung per tujuan), jadi mengisi
+              kode sebelum keduanya ada cuma menghasilkan penolakan. */}
+          {selectedItem && (
+            <VoucherField
+              productItemId={selectedItem.id}
+              targetValues={targetValues}
+              applied={voucher}
+              onApplied={setVoucher}
+            />
+          )}
         </div>
 
         {selectedItem && (
@@ -423,6 +464,14 @@ export function ProductDetailClient({
               <span className="min-w-0 text-muted-foreground">{selectedItem.name}</span>
               <span className="shrink-0 font-medium">{formatRupiah(selectedItem.effectivePrice)}</span>
             </div>
+            {voucher && (
+              <div className="flex justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate text-muted-foreground">Promo {voucher.code}</span>
+                <span className="shrink-0 font-medium text-primary">
+                  −{formatRupiah(voucher.discount)}
+                </span>
+              </div>
+            )}
             {!isBalanceSelected && (
               <>
                 <div className="flex justify-between gap-3 text-sm">
