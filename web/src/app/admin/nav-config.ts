@@ -1,4 +1,5 @@
 import {
+  BookText,
   Handshake,
   LayoutDashboard,
   ClipboardList,
@@ -100,6 +101,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/admin/jobs", label: "Monitoring Job", icon: Activity },
     ],
+  },
+  {
+    // Ditaruh paling bawah dengan sengaja: dokumentasi dicari saat ada yang
+    // mentok, bukan bagian dari alur kerja harian - menyelipkannya di antara
+    // menu operasional cuma menambah jarak tempuh menu yang dipakai tiap hari.
+    label: "Bantuan",
+    items: [{ href: "/admin/panduan", label: "Panduan", icon: BookText }],
   },
 ];
 

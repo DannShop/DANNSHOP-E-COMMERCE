@@ -41,6 +41,9 @@ const nextConfig: NextConfig = {
   // kelas kegagalan senyap yang sudah beberapa kali menggigit repo ini.
   outputFileTracingIncludes: {
     "/mitra/dokumentasi": ["src/content/**"],
+    // Panduan admin membaca src/content/panduan/*.md dengan cara yang sama, dan
+    // kena jebakan yang sama persis kalau baris ini terlupa.
+    "/admin/panduan/[slug]": ["src/content/**"],
   },
   experimental: {
     serverActions: {
