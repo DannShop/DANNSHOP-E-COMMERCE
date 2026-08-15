@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -29,22 +28,12 @@ export default async function AdminLayout({
     select: { totpEnabledAt: true },
   });
   //
-  // GAGALNYA HARUS AMAN. `x-pathname` dipasang middleware (proxy.ts), dan layout
-  // TIDAK bisa memastikan header itu selalu sampai — jalur render tertentu tidak
-  // melewati middleware sama sekali. Versi pertama penegakan ini mengalihkan
-  // kapan pun header tidak cocok, termasuk saat headernya KOSONG: halaman
-  // Keamanan lalu mengalihkan dirinya sendiri, berputar tanpa henti, dan admin
-  // terkunci dari SELURUH panel — persis kebalikan dari tujuan fitur ini.
-  //
-  // Sekarang pengalihan hanya terjadi kalau posisinya benar-benar diketahui.
-  // Kalau tidak, penegakannya turun jadi spanduk peringatan yang selalu tampil
-  // (lihat needsTwoFactor di AdminShell): mengganggu terus-menerus sampai
-  // dipasang, tapi tidak pernah mengunci siapa pun di luar.
+  // PENGALIHANNYA TIDAK DI SINI — ada di middleware (proxy.ts), yang selalu tahu
+  // pathname dan selalu jalan di tiap request. Layout hanya menyalakan spanduk
+  // peringatan. Alasan lengkapnya ada di proxy.ts; ringkasnya: layout tidak
+  // dijalankan ulang saat berpindah halaman dari dalam aplikasi, jadi penegakan
+  // di sini menyala tidak konsisten dan sempat mengunci admin di produksi.
   const needsTwoFactor = !me?.totpEnabledAt;
-  if (needsTwoFactor) {
-    const path = (await headers()).get("x-pathname");
-    if (path && !path.startsWith("/admin/keamanan")) redirect("/admin/keamanan");
-  }
 
   // Sengaja SETELAH gerbang admin, bukan di-Promise.all bareng auth(): pengunjung
   // yang tidak berhak tidak perlu memicu query apa pun sebelum ditendang.

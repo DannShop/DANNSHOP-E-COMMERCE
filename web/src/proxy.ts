@@ -108,15 +108,40 @@ export default auth(async (req) => {
     return NextResponse.rewrite(new URL("/maintenance", nextUrl));
   }
 
-  // Path yang sedang dibuka diteruskan sebagai header request.
+  // ===== Admin wajib 2FA =====
   //
-  // Next.js TIDAK memberikan pathname ke Server Component, sementara layout
-  // admin perlu tahu apakah yang sedang dibuka halaman Keamanan — kalau tidak,
-  // penegakan "admin wajib 2FA" akan mengalihkan halaman Keamanan itu sendiri ke
-  // dirinya sendiri dan berputar tanpa henti.
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("x-pathname", nextUrl.pathname);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  // DITEGAKKAN DI SINI, bukan di layout admin, dan itu keputusan yang lahir dari
+  // kegagalan nyata di produksi.
+  //
+  // Versi pertama menaruhnya di `admin/layout.tsx` dan menitipkan pathname lewat
+  // header buatan sendiri, karena Server Component tidak diberi tahu route mana
+  // yang sedang dibuka. Dua hal membuatnya rapuh:
+  //
+  //  1. Layout Next.js TIDAK dijalankan ulang saat berpindah halaman dari dalam
+  //     aplikasi — hanya saat halaman dimuat penuh. Jadi penegakannya menyala di
+  //     sebagian jalur dan tidak di jalur lain, dan bedanya tidak terlihat saat
+  //     dicoba biasa.
+  //  2. Ketika headernya tidak sampai, layout tidak punya cara tahu dia sedang
+  //     berada DI halaman tujuan — jadi halaman Keamanan mengalihkan dirinya
+  //     sendiri dan admin terkunci dari seluruh panel.
+  //
+  // Middleware tidak punya dua masalah itu: dia jalan di SETIAP request tanpa
+  // kecuali, dan `nextUrl.pathname` selalu ada. Tidak ada header buatan, tidak
+  // ada keadaan "posisi tidak diketahui", jadi pengalihan ke diri sendiri
+  // mustahil terjadi.
+  if (
+    nextUrl.pathname.startsWith("/admin") &&
+    !nextUrl.pathname.startsWith("/admin/keamanan") &&
+    user?.role === "ADMIN"
+  ) {
+    const me = await db.user.findUnique({ where: { id: user.id }, select: { totpEnabledAt: true } });
+    // Dibaca dari DATABASE, bukan dari isi sesi: JWT di sini stateless dengan
+    // masa 8 jam, jadi token yang terbit sebelum 2FA dipasang akan terus
+    // mengklaim keadaan lama sampai kedaluwarsa.
+    if (!me?.totpEnabledAt) {
+      return NextResponse.redirect(new URL("/admin/keamanan", nextUrl));
+    }
+  }
 });
 
 export const config = {
