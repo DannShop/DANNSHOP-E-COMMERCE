@@ -15,6 +15,7 @@ import {
   updateProductItemGroup,
   deleteProductItemGroup,
 } from "@/app/actions/catalog";
+import { getCatalogSources } from "@/lib/providers/catalog-sources";
 import { ProductForm } from "../product-form";
 import { ProductItemsManager } from "../product-items-manager";
 import { ProductToggleForm } from "../product-toggle-form";
@@ -39,7 +40,7 @@ function toDatetimeLocalValue(d: Date | null | undefined): string {
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [product, categories] = await Promise.all([
+  const [product, categories, catalogSources] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: {
@@ -51,6 +52,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
       },
     }),
     db.category.findMany({ orderBy: { sortOrder: "asc" } }),
+    getCatalogSources(),
   ]);
 
   if (!product) notFound();
@@ -134,6 +136,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             })),
           }))}
           groups={product.itemGroups.map((g) => ({ id: g.id, name: g.name, sortOrder: g.sortOrder }))}
+          sources={catalogSources}
           createProductItem={createProductItem}
           updateProductItem={updateProductItem}
           mapProviderSku={mapProviderSku}

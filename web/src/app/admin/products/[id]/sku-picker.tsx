@@ -20,18 +20,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import type { CatalogSource } from "@/lib/providers/labels";
 import { ActionMessage, INITIAL_STATE, withPrevState } from "../action-utils";
 import type { ServerAction } from "../action-utils";
-
-// Label provider — daftar tetap, sinkron dengan enum ProviderKey (prisma/schema.prisma).
-// Duplikasi kecil (4 entri) dari admin/providers/provider-card.tsx sengaja tidak
-// diekstrak ke modul bersama untuk menghindari coupling lintas fitur untuk hal sekecil ini.
-const PROVIDER_OPTIONS: { key: string; label: string }[] = [
-  { key: "DIGIFLAZZ", label: "Digiflazz" },
-  { key: "OKECONNECT", label: "OkeConnect" },
-  { key: "QIOSPAY", label: "QiosPay" },
-  { key: "SERPUL", label: "Serpul" },
-];
 
 interface PriceListRow {
   skuCode: string;
@@ -43,14 +34,17 @@ interface PriceListRow {
 
 export function SkuPicker({
   productItemId,
+  sources,
   mapProviderSku,
 }: {
   productItemId: string;
+  sources: CatalogSource[];
   mapProviderSku: ServerAction;
 }) {
-  const [provider, setProvider] = useState(PROVIDER_OPTIONS[0].key);
+  const [provider, setProvider] = useState(sources[0]?.key ?? "DIGIFLAZZ");
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<PriceListRow[]>([]);
+  const [rowsTotal, setRowsTotal] = useState(0);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -70,11 +64,13 @@ export function SkuPicker({
           const data = await res.json();
           if (!res.ok) throw new Error(data.error ?? "Gagal mengambil price list.");
           setRows(Array.isArray(data.rows) ? data.rows : []);
+          setRowsTotal(data.rowsTotal ?? 0);
           setSyncedAt(data.syncedAt ?? null);
         })
         .catch((e: unknown) => {
           if (e instanceof DOMException && e.name === "AbortError") return;
           setRows([]);
+          setRowsTotal(0);
           setFetchError(e instanceof Error ? e.message : "Gagal mengambil price list.");
         })
         .finally(() => setLoading(false));
@@ -86,18 +82,16 @@ export function SkuPicker({
   }, [provider, query]);
 
   return (
-    <div className="space-y-3 rounded-lg border border-dashed p-3">
-      <p className="text-sm font-medium">Cari &amp; petakan SKU provider</p>
-
+    <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row">
         <Select value={provider} onValueChange={(value) => value && setProvider(value)}>
-          <SelectTrigger className="sm:w-40" aria-label="Pilih provider">
+          <SelectTrigger className="sm:w-48" aria-label="Pilih provider">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PROVIDER_OPTIONS.map((p) => (
-              <SelectItem key={p.key} value={p.key}>
-                {p.label}
+            {sources.map((s) => (
+              <SelectItem key={s.key} value={s.key}>
+                {s.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -120,6 +114,16 @@ export function SkuPicker({
             : query.trim()
               ? `Tidak ada hasil untuk "${query}". Coba kata kunci lain.`
               : "Ketik nama produk, brand, atau kode SKU untuk mencari."}
+        </p>
+      )}
+
+      {/* Pemotongan diberitahukan, bukan disembunyikan. Daftar ini dibatasi
+          supaya pencarian tetap ringan, tapi pada OkeConnect satu kata kunci bisa
+          cocok dengan 962 baris — tanpa keterangan ini admin akan menyimpulkan
+          SKU yang dia cari memang tidak ada. */}
+      {rowsTotal > rows.length && (
+        <p className="text-xs text-muted-foreground">
+          Menampilkan {rows.length} dari {rowsTotal} hasil — persempit kata kuncinya kalau yang dicari belum kelihatan.
         </p>
       )}
 

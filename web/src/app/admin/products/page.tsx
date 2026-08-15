@@ -8,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageSizeSelect, Pagination } from "@/components/admin/table-toolbar";
 import { buildPagination, parsePage, parsePageSize } from "@/lib/admin/pagination";
 import { toggleProductActive } from "@/app/actions/catalog";
+import { getCatalogSources } from "@/lib/providers/catalog-sources";
+import { AddProductMenu } from "./add-product-menu";
 import { ProductToggleForm } from "./product-toggle-form";
 
 export default async function AdminProductsPage({
@@ -25,9 +27,10 @@ export default async function AdminProductsPage({
 
   // count dijalankan bersama findMany, bukan setelahnya - keduanya tidak saling
   // bergantung, jadi menunggunya berurutan cuma menggandakan latensi halaman.
-  const [total, categories] = await Promise.all([
+  const [total, categories, catalogSources] = await Promise.all([
     db.product.count({ where }),
     db.category.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
+    getCatalogSources(),
   ]);
   const pagination = buildPagination(total, parsePage(rawPage), pageSize);
 
@@ -48,14 +51,7 @@ export default async function AdminProductsPage({
             Kelola produk dan daftar item/harga yang tampil di katalog member.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link href="/admin/products/import" className={buttonVariants({ variant: "outline" })}>
-            Tambah dari Digiflazz
-          </Link>
-          <Link href="/admin/products/new" className={buttonVariants({})}>
-            + Produk baru
-          </Link>
-        </div>
+        <AddProductMenu sources={catalogSources} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -100,7 +96,9 @@ export default async function AdminProductsPage({
             {products.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                  {q || cat ? "Tidak ada produk yang cocok." : 'Belum ada produk. Klik "+ Produk baru" untuk menambah.'}
+                  {q || cat
+                    ? "Tidak ada produk yang cocok."
+                    : 'Belum ada produk. Klik "Tambah produk" di kanan atas untuk mulai.'}
                 </TableCell>
               </TableRow>
             )}
