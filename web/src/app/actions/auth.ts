@@ -9,6 +9,7 @@ import { formatUserRegisteredMessage, notifyTelegram } from "@/lib/notify/telegr
 import type { ResetPasswordResult } from "@/lib/account/reset-password";
 import { requestPasswordReset, resetPasswordWithToken } from "@/lib/account/reset-password";
 import { signIn, signOut } from "@/lib/auth";
+import { checkCredentials } from "@/lib/auth/credentials";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { registerSchema } from "@/lib/validation/auth";
@@ -19,14 +20,46 @@ import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 // (cabang admin-email/email-sudah-ada vs cabang create-baru harus impas waktunya).
 const TIMING_DUMMY_PASSWORD = "dummy-timing-normalization-only";
 
+export interface LoginState {
+  error?: string;
+  /**
+   * Password sudah benar, tapi akun ini memakai 2FA — form berpindah ke langkah
+   * kedua. TIDAK ada sesi yang terbit saat nilai ini dikembalikan.
+   */
+  needsTotp?: boolean;
+}
+
 export async function loginAction(
-  _prev: { error?: string } | undefined,
+  _prev: LoginState | undefined,
   formData: FormData
-): Promise<{ error?: string }> {
+): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (email) {
     const emailLimit = await checkRateLimit(`login:email:${email}`, 20, 60 * 60_000);
     if (!emailLimit.allowed) return { error: "Terlalu banyak percobaan login untuk akun ini, coba lagi nanti." };
+  }
+
+  // ===== Langkah pertama: email + password saja =====
+  //
+  // Dijalankan HANYA saat kode belum diisi. Kalau akunnya memakai 2FA, form
+  // dikembalikan ke langkah kedua tanpa satu pun sesi diterbitkan. Kalau tidak,
+  // fungsi ini lanjut ke signIn seperti biasa - jadi akun tanpa 2FA tidak pernah
+  // melihat langkah kedua sama sekali.
+  //
+  // Konsekuensi yang disadari dan diterima (keputusan Wildan 2026-08-16):
+  // penyerang yang SUDAH memegang password valid jadi tahu akun itu memakai 2FA.
+  // Rate limit per email di atas (20/jam) tetap berlaku untuk langkah ini, jadi
+  // dia tidak bisa dipakai menyapu daftar password.
+  const totpInput = String(formData.get("totp") ?? "").trim();
+  if (!totpInput) {
+    const cek = await checkCredentials({
+      email: formData.get("email"),
+      password: formData.get("password"),
+    });
+    if (cek.kind === "totp_required") return { needsTotp: true };
+    // "invalid" TIDAK dikembalikan sebagai error di sini - biarkan jatuh ke
+    // signIn di bawah, supaya jalur gagal tetap satu dan waktu tempuhnya tidak
+    // berbeda antara "password salah" dan "password benar tanpa 2FA".
   }
 
   // Lookup role duluan buat nentuin tujuan redirect (admin -> /admin, user -> /account).
@@ -49,11 +82,18 @@ export async function loginAction(
     return {};
   } catch (err) {
     if (err instanceof AuthError) {
-      // Satu kalimat untuk password salah DAN kode 2FA salah, dengan sengaja:
-      // membedakannya akan memberi tahu penebak password bahwa passwordnya sudah
-      // benar dan tinggal faktor kedua — persis informasi yang paling berharga
-      // bagi penyerang yang sudah memegang password bocor.
-      return { error: "Email, password, atau kode autentikasi salah." };
+      // Di langkah KEDUA, pesannya boleh menyebut kode — form hanya sampai ke
+      // sana setelah passwordnya terbukti benar, jadi tidak ada rahasia baru
+      // yang dibocorkan, dan "email/password salah" di layar yang cuma meminta
+      // enam angka justru membuat orang mengira harus mengulang dari awal.
+      //
+      // `needsTotp` ikut dikembalikan supaya form TETAP di langkah kedua saat
+      // kodenya salah. Tanpa itu, satu salah ketik melempar pembeli kembali ke
+      // layar email dan dia harus mengetik ulang semuanya.
+      if (totpInput) {
+        return { needsTotp: true, error: "Kode autentikasi salah atau sudah kedaluwarsa." };
+      }
+      return { error: "Email atau password salah." };
     }
     throw err; // redirect() dari signIn dilempar sebagai error — biarkan lewat
   }
