@@ -18,15 +18,53 @@ const INITIAL_CHANNEL_STATE: ChannelTestResult = {};
 // browser. Kalau nominal ujinya diubah, ubah juga di sini.
 const CHANNEL_TEST_AMOUNT_LABEL = "10.000";
 
+/**
+ * Satu URL yang bisa disalin. Diekstrak karena sekarang ada DUA kartu seperti
+ * ini (Notifikasi & Finish) - status `copied` yang disalin per kartu akan
+ * membuat satu tombol menyala "Tersalin" saat yang ditekan tombol sebelahnya.
+ */
+function CopyableUrl({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard API bisa tidak tersedia — abaikan diam-diam
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <code className="min-w-0 flex-1 rounded bg-muted px-2 py-1.5 text-xs break-all">{url}</code>
+      <Button type="button" size="xs" variant="outline" className="shrink-0" onClick={copy}>
+        {copied ? (
+          <>
+            <Check className="size-3.5" /> Tersalin
+          </>
+        ) : (
+          <>
+            <Copy className="size-3.5" /> Salin
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
 export function MidtransConfigForm({
   status,
   webhookUrl,
+  finishUrlFallback,
   action,
   testAction,
   channelTestAction,
 }: {
   status: MidtransConfigStatus;
   webhookUrl: string;
+  finishUrlFallback: string;
   action: (formData: FormData) => Promise<ActionResult>;
   testAction: () => Promise<ActionResult>;
   channelTestAction: () => Promise<ChannelTestResult>;
@@ -46,7 +84,6 @@ export function MidtransConfigForm({
     () => channelTestAction(),
     INITIAL_CHANNEL_STATE,
   );
-  const [copied, setCopied] = useState(false);
   // Radio mode dikendalikan state supaya field Client Key bisa BEREAKSI saat
   // admin memilih Snap - bukan cuma mengikuti nilai yang sudah tersimpan.
   // Tanpa ini, admin yang baru memindahkan ke Snap tidak melihat penanda apa
@@ -55,15 +92,6 @@ export function MidtransConfigForm({
   const [mode, setMode] = useState(status.integrationMode);
   const snapSelected = mode === "snap";
 
-  async function copyWebhookUrl() {
-    try {
-      await navigator.clipboard.writeText(webhookUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard API bisa tidak tersedia — abaikan diam-diam
-    }
-  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -248,20 +276,28 @@ export function MidtransConfigForm({
           Paste ke dashboard Midtrans → Settings → Configuration → Payment Notification URL. Kalau ini belum terpasang,
           pembayaran yang sudah dibayar customer tidak akan terdeteksi otomatis lewat webhook.
         </p>
-        <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 rounded bg-muted px-2 py-1.5 text-xs break-all">{webhookUrl}</code>
-          <Button type="button" size="xs" variant="outline" className="shrink-0" onClick={copyWebhookUrl}>
-            {copied ? (
-              <>
-                <Check className="size-3.5" /> Tersalin
-              </>
-            ) : (
-              <>
-                <Copy className="size-3.5" /> Salin
-              </>
-            )}
-          </Button>
-        </div>
+        <CopyableUrl url={webhookUrl} />
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border p-3">
+        <p className="text-sm font-medium">
+          Finish URL <span className="font-normal text-muted-foreground">— cadangan, opsional</span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Checkout sudah mengirim halaman tujuan <strong>per transaksi</strong> (invoice milik pembeli itu sendiri),
+          dan nilai per-transaksi mengalahkan setelan dashboard — jadi kolom ini <strong>tidak menentukan</strong> ke
+          mana pembeli dikembalikan. Isi tetap disarankan hanya untuk menimpa bawaan Midtrans yang berupa{" "}
+          <code className="rounded bg-muted px-1">example.com</code>, supaya jalur yang tidak lewat checkout kita
+          (mis. uji coba dari dashboard Midtrans) tidak mendarat di situs orang lain.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Paste ke dashboard Midtrans → Settings → Configuration → <strong>Finish Redirect URL</strong>.
+        </p>
+        <CopyableUrl url={finishUrlFallback} />
+        <p className="text-xs text-muted-foreground">
+          Halaman Cek Transaksi dipilih karena dashboard cuma menerima satu URL untuk semua transaksi — di sana pembeli
+          masih bisa menemukan pesanannya lewat email.
+        </p>
       </div>
     </div>
   );

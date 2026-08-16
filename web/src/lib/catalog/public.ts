@@ -3,6 +3,7 @@ import type { FulfillmentMode, ProviderKey, ProviderSkuStatus } from "@prisma/cl
 import { getActiveProviders } from "@/lib/providers/registry";
 import { effectivePrice, isFlashActive, type PricedItem } from "@/lib/pricing/effective-price";
 import { getIdCheckConfig } from "@/lib/catalog/id-check";
+import { countHeldStockMany, hasStock, remainingStock } from "@/lib/catalog/stock";
 
 // Ketersediaan produk MANUAL tidak ditentukan provider mana pun - barangnya
 // dikirim admin sendiri, jadi tidak pernah ada ProviderSku yang bisa dicek.
@@ -215,11 +216,14 @@ export interface ProductForCheckout {
   items: {
     id: string;
     name: string;
+    description: string | null; // penjelas per nominal, tampil di kartu item
     sellingPrice: bigint; // harga dasar - dipakai buat tampilan "harga dicoret" saat efektif != dasar
     effectivePrice: bigint; // harga yang beneran akan ditagih untuk viewer ini - pakai ini di semua kalkulasi/tampilan utama
     isFlashActive: boolean;
     groupName: string | null;
     groupSortOrder: number | null; // null bareng groupName - dipakai urutkan SECTION grup sesuai urutan admin, item di dalamnya tetap urut harga
+    /** Sisa stok. null = TAK TERBATAS, bukan habis - jangan disamakan dengan 0. */
+    stockLeft: number | null;
     purchasable: boolean;
   }[];
 }
@@ -262,15 +266,30 @@ export async function getProductForCheckout(
     if (priceA !== priceB) return priceA < priceB ? -1 : 1;
     return a.sortOrder - b.sortOrder;
   });
+  // Sisa stok untuk seluruh nominal sekaligus - satu groupBy, bukan satu COUNT
+  // per item. Item tanpa batas stok tidak ikut ditanyakan sama sekali, jadi
+  // katalog yang tidak memakai fitur ini tetap nol query tambahan.
+  const itemsWithStock = sortedItems.filter((i) => i.stock !== null);
+  const held = await countHeldStockMany(itemsWithStock.map((i) => i.id));
+
   const items = sortedItems.map((item) => ({
     id: item.id,
     name: item.name,
+    description: item.description,
     sellingPrice: item.sellingPrice,
     effectivePrice: effectivePrice(item, { discountBp, now }),
     isFlashActive: isFlashActive(item, now),
     groupName: item.group?.name ?? null,
     groupSortOrder: item.group?.sortOrder ?? null,
-    purchasable: isItemPurchasable(item.providerSkus, activeProviders, product.fulfillmentMode),
+    // Sisa stok: null = tak terbatas. Dikirim ke klien supaya pembeli melihat
+    // "stok habis" di daftar nominal, bukan baru ditolak setelah mengisi
+    // seluruh formulir dan menekan bayar.
+    stockLeft: remainingStock(item.stock, held.get(item.id) ?? 0),
+    // Stok habis membuat item TIDAK bisa dibeli, sama derajatnya dengan tidak
+    // punya provider - dua-duanya berarti pesanan ini tidak akan bisa dipenuhi.
+    purchasable:
+      isItemPurchasable(item.providerSkus, activeProviders, product.fulfillmentMode) &&
+      hasStock(item.stock, held.get(item.id) ?? 0),
   }));
 
   return {

@@ -22,6 +22,8 @@ export const EMAIL_TEMPLATE_KEYS = [
   "order_failed",
   "welcome",
   "password_reset",
+  "email_change_verify",
+  "email_change_notice",
 ] as const;
 
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
@@ -122,6 +124,37 @@ export const EMAIL_TEMPLATE_META: Record<EmailTemplateKey, EmailTemplateMeta> = 
 <p style="margin-top:16px;font-size:13px;color:#666;">Link ini hanya berlaku <strong>30 menit</strong> dan cuma bisa dipakai sekali.</p>
 <p style="font-size:13px;color:#666;">Kalau kamu tidak meminta reset password, abaikan saja email ini — passwordmu tidak berubah.</p>`,
   },
+  email_change_verify: {
+    label: "Konfirmasi Ganti Email",
+    description:
+      "Dikirim ke alamat BARU saat user mengajukan ganti email. Email baru belum berlaku sampai link di dalamnya diklik.",
+    vars: [
+      { name: "brand_name", description: "Nama toko" },
+      { name: "user_name", description: "Nama pemilik akun" },
+      { name: "old_email", description: "Email lama yang sedang dipakai akun" },
+      { name: "confirm_url", description: "Link konfirmasi (berlaku 30 menit, sekali pakai)" },
+    ],
+    blocks: [{ name: "confirm_button", description: "Tombol 'Konfirmasi Email Baru'" }],
+    defaultBody: `<p>Halo <strong>{{user_name}}</strong>, ada permintaan untuk memindahkan akun {{brand_name}} dari <strong>{{old_email}}</strong> ke alamat ini.</p>
+<p>Klik tombol di bawah untuk menyelesaikannya. Sampai itu dilakukan, email akunmu <strong>belum berubah</strong>.</p>
+{{confirm_button}}
+<p style="margin-top:16px;font-size:13px;color:#666;">Link ini hanya berlaku <strong>30 menit</strong> dan cuma bisa dipakai sekali.</p>
+<p style="font-size:13px;color:#666;">Kalau kamu tidak merasa meminta ini, abaikan saja email ini — tidak ada yang berubah, dan alamat ini tidak akan dipakai.</p>`,
+  },
+  email_change_notice: {
+    label: "Pemberitahuan Ganti Email (ke alamat lama)",
+    description:
+      "Dikirim ke alamat LAMA saat ada permintaan ganti email. Sengaja tanpa link konfirmasi — ini peringatan, bukan tombol.",
+    vars: [
+      { name: "brand_name", description: "Nama toko" },
+      { name: "user_name", description: "Nama pemilik akun" },
+      { name: "new_email", description: "Alamat baru yang diajukan" },
+    ],
+    blocks: [],
+    defaultBody: `<p>Halo <strong>{{user_name}}</strong>, kami menerima permintaan untuk mengubah email akun {{brand_name}} ini menjadi <strong>{{new_email}}</strong>.</p>
+<p>Kalau itu memang kamu, tidak ada yang perlu dilakukan di sini — selesaikan lewat link konfirmasi yang kami kirim ke alamat barunya.</p>
+<p style="margin-top:16px;font-size:13px;color:#666;"><strong>Kalau ini BUKAN kamu:</strong> akunmu kemungkinan sedang diakses orang lain. Segera ganti passwordmu — mengganti password otomatis mengakhiri seluruh sesi yang sedang berjalan, termasuk milik orang tersebut.</p>`,
+  },
 };
 
 // Subjek default dipisah dari `default` di atas supaya keduanya tetap bisa
@@ -133,6 +166,8 @@ const DEFAULT_SUBJECTS: Record<EmailTemplateKey, string> = {
   order_failed: "Pesanan {{order_number}} - Perlu Perhatian - {{brand_name}}",
   welcome: "Selamat Datang di {{brand_name}}",
   password_reset: "Reset Password - {{brand_name}}",
+  email_change_verify: "Konfirmasi Email Baru - {{brand_name}}",
+  email_change_notice: "Ada Permintaan Ganti Email - {{brand_name}}",
 };
 
 export function defaultTemplate(key: EmailTemplateKey): EmailTemplate {

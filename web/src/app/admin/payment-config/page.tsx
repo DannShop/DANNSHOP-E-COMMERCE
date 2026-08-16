@@ -19,6 +19,16 @@ export default async function PaymentConfigPage() {
   // melihat bentuk path-nya dan melengkapi domainnya sendiri.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
   const webhookUrl = `${appUrl}/api/webhooks/midtrans`;
+  // Finish URL CADANGAN untuk dashboard Midtrans. Bukan yang dipakai
+  // sehari-hari: checkout mengirim callbacks.finish per transaksi berisi
+  // /invoice/<token> milik pembeli itu sendiri, dan nilai per-transaksi
+  // mengalahkan setelan dashboard. Yang ini cuma menutup jalur yang tidak lewat
+  // kode kita, supaya jatuhnya tidak ke example.com bawaan Midtrans.
+  //
+  // /cek-transaksi dipilih karena dashboard hanya menerima SATU URL statis untuk
+  // semua transaksi - tidak mungkin spesifik per pesanan. Halaman itu satu-satunya
+  // yang tetap berguna tanpa konteks: pembeli bisa menemukan pesanannya lewat email.
+  const finishUrlFallback = `${appUrl}/cek-transaksi`;
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -35,6 +45,7 @@ export default async function PaymentConfigPage() {
         <MidtransConfigForm
           status={status}
           webhookUrl={webhookUrl}
+          finishUrlFallback={finishUrlFallback}
           action={saveMidtransCredentials}
           testAction={testMidtransConnection}
           channelTestAction={testPaymentChannels}

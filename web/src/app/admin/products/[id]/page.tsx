@@ -18,6 +18,7 @@ import {
   deleteProductItems,
 } from "@/app/actions/catalog";
 import { getCatalogSources } from "@/lib/providers/catalog-sources";
+import { countHeldStockMany } from "@/lib/catalog/stock";
 import { ProductForm } from "../product-form";
 import { ProductItemsManager } from "../product-items-manager";
 import { ProductToggleForm } from "../product-toggle-form";
@@ -58,6 +59,14 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   ]);
 
   if (!product) notFound();
+
+  // Berapa jatah stok yang sedang dipegang order berjalan, untuk SELURUH item
+  // sekaligus. Satu groupBy, bukan satu COUNT per item: produk dengan 20 nominal
+  // kalau tidak akan menembak 20 query berurutan hanya untuk menggambar daftar.
+  //
+  // Ditembak setelah `product` dipastikan ada, jadi produk yang tidak ditemukan
+  // tidak membayar query ini sama sekali.
+  const heldStock = await countHeldStockMany(product.items.map((i) => i.id));
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -116,9 +125,14 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Item &amp; harga</h2>
         <ProductItemsManager
           productId={product.id}
+          isManual={product.fulfillmentMode === "MANUAL"}
           items={product.items.map((item) => ({
             id: item.id,
             name: item.name,
+            description: item.description ?? "",
+            manualSkuCode: item.manualSkuCode ?? "",
+            stock: item.stock === null ? "" : String(item.stock),
+            heldStock: heldStock.get(item.id) ?? 0,
             sellingPrice: item.sellingPrice.toString(),
             memberPrice: item.memberPrice.toString(),
             sortOrder: item.sortOrder,

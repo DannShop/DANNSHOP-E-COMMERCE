@@ -130,6 +130,18 @@ function NominalButton({
           <span className="text-xs text-muted-foreground line-through">{formatRupiah(item.sellingPrice)}</span>
         )}
       </div>
+      {item.description && (
+        <span className="text-[11px] leading-snug text-muted-foreground">{item.description}</span>
+      )}
+      {/* Sisa stok hanya disebut saat benar-benar menipis. Menuliskan "sisa 940"
+          tidak memberi tahu pembeli apa pun; yang mengubah keputusannya adalah
+          tahu bahwa tinggal sedikit. Item tak terbatas (null) tidak pernah
+          menampilkan apa pun. */}
+      {item.stockLeft !== null && item.stockLeft <= 5 && (
+        <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+          Sisa {item.stockLeft}
+        </span>
+      )}
     </button>
   );
 }

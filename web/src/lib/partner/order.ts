@@ -4,6 +4,7 @@ import { generateOrderNumber } from "@/lib/order/order-number";
 import { selectFulfillmentSku } from "@/lib/order/select-provider";
 import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { getActiveProviders } from "@/lib/providers/registry";
+import { checkStockAvailable } from "@/lib/catalog/stock";
 import { effectivePrice } from "@/lib/pricing/effective-price";
 import { getMembershipContext } from "@/lib/membership/tier";
 import { describeOrderTarget } from "@/lib/order/customer-no";
@@ -168,6 +169,16 @@ export async function createPartnerOrder(input: {
       message: "Produk sedang tidak tersedia, coba beberapa saat lagi.",
       httpStatus: 503,
     };
+  }
+
+  // Gerbang stok ditegakkan DI SINI JUGA, bukan cuma di storefront. Menyaringnya
+  // di satu pintu saja adalah lubang yang nyata: mitra memesan lewat API dan
+  // menyimpan katalognya sendiri, jadi tanpa gerbang ini stok yang sudah habis
+  // tetap bisa ditarik habis-habisan lewat /api/v1/transaction sementara pembeli
+  // storefront sudah ditolak. Pola yang sama dengan penegakan partnerVisible.
+  const stockError = await checkStockAvailable(item);
+  if (stockError) {
+    return { ok: false, rc: PARTNER_RC.PRODUCT_UNAVAILABLE, message: stockError, httpStatus: 409 };
   }
 
   // Cek saldo di depan HANYA untuk memberi pesan error yang benar sebelum order

@@ -115,10 +115,43 @@ const nullableDateField = z
     return d;
   });
 
+// Teks opsional: kosong berarti "tidak diisi" (null), BUKAN string kosong.
+// Dibedakan supaya tampilan bisa memakai `?? null` tanpa harus ikut menebak
+// apakah "" berarti dihapus atau tidak pernah ada.
+const nullableTextField = (max: number, message: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      const trimmed = (v ?? "").trim();
+      return trimmed === "" ? null : trimmed;
+    })
+    .refine((v) => v === null || v.length <= max, { message });
+
+// Stok opsional. KOSONG = tak terbatas (null), dan itu berbeda dari 0 yang
+// berarti habis - keduanya harus bisa dinyatakan, jadi field ini tidak boleh
+// dipangkas jadi angka biasa berdefault 0.
+const nullableStockField = z
+  .string()
+  .optional()
+  .transform((v) => (v === "" || v == null ? null : v))
+  .transform((v, ctx) => {
+    if (v === null) return null;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 0) {
+      ctx.addIssue({ code: "custom", message: "Stok harus bilangan bulat 0 atau lebih (kosongkan = tak terbatas)" });
+      return z.NEVER;
+    }
+    return n;
+  });
+
 export const productItemSchema = z
   .object({
     productId: z.string().min(1),
     name: z.string().min(1, "Nama item wajib diisi"),
+    description: nullableTextField(500, "Deskripsi item maksimal 500 karakter"),
+    manualSkuCode: nullableTextField(64, "Kode SKU maksimal 64 karakter"),
+    stock: nullableStockField,
     sellingPrice: z.coerce.bigint().positive("Harga jual harus > 0"),
     // Nama field DB tetap `memberPrice` (mengubahnya menuntut migrasi tanpa
     // manfaat perilaku). Yang dilabeli ke admin: "Harga modal" - sejak Fase B

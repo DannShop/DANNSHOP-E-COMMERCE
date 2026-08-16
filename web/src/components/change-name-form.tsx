@@ -12,22 +12,23 @@ const INITIAL_STATE: ActionResult = {};
 // Jeda singkat supaya pesan "berhasil" sempat kebaca sebelum diarahkan ke /login.
 const LOGOUT_DELAY_MS = 1500;
 
-export function ChangePasswordForm({
+export function ChangeNameForm({
   action,
   idPrefix,
+  currentName,
 }: {
   action: (formData: FormData) => Promise<ActionResult>;
   /** Pembeda id input kalau ada lebih dari satu form di satu halaman. */
   idPrefix: string;
+  currentName: string;
 }) {
   const [state, formAction, pending] = useActionState(
     (_prev: ActionResult, formData: FormData) => action(formData),
     INITIAL_STATE,
   );
 
-  // Sesi lama otomatis basi begitu password berganti (User.updatedAt ikut naik
-  // dan dibandingkan dengan yang tersimpan di JWT), jadi user harus dilogout -
-  // kalau tidak, aksi berikutnya bakal ditolak tanpa penjelasan.
+  // Sama seperti ganti password: menulis ke tabel User menaikkan updatedAt, yang
+  // dibandingkan dengan JWT - sesi lama langsung basi dan harus ditutup rapi.
   useEffect(() => {
     if (!state.ok) return;
     const timer = setTimeout(() => {
@@ -39,46 +40,25 @@ export function ChangePasswordForm({
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
-        <Label htmlFor={`${idPrefix}-current-password`}>Password Saat Ini</Label>
+        <Label htmlFor={`${idPrefix}-name`}>Nama Tampilan</Label>
         <Input
-          id={`${idPrefix}-current-password`}
-          name="currentPassword"
-          type="password"
-          autoComplete="current-password"
+          id={`${idPrefix}-name`}
+          name="name"
+          type="text"
+          autoComplete="name"
+          defaultValue={currentName}
+          minLength={2}
+          maxLength={60}
           required
           disabled={pending || Boolean(state.ok)}
         />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${idPrefix}-new-password`}>Password Baru</Label>
-        <Input
-          id={`${idPrefix}-new-password`}
-          name="newPassword"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          disabled={pending || Boolean(state.ok)}
-        />
-        <p className="text-xs text-muted-foreground">Minimal 8 karakter.</p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${idPrefix}-confirm-password`}>Ulangi Password Baru</Label>
-        <Input
-          id={`${idPrefix}-confirm-password`}
-          name="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          disabled={pending || Boolean(state.ok)}
-        />
+        <p className="text-xs text-muted-foreground">
+          2–60 karakter. Setelah disimpan kamu akan diminta login ulang.
+        </p>
       </div>
 
       <Button type="submit" disabled={pending || Boolean(state.ok)} className="self-start">
-        {pending ? "Menyimpan..." : "Ganti Password"}
+        {pending ? "Menyimpan..." : "Simpan Nama"}
       </Button>
 
       {(state.ok || state.error) && (

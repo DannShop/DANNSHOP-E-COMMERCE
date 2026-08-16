@@ -134,9 +134,38 @@ function MarkRefundedForm({
   );
 }
 
+function CancelOrderForm({
+  orderId, orderNumber, cancelOrderAction,
+}: { orderId: string; orderNumber: string; cancelOrderAction: ServerAction }) {
+  const [state, formAction, pending] = useActionState(withPrevState(cancelOrderAction), INITIAL_STATE);
+  const formId = `cancel-order-${orderId}`;
+  return (
+    <form id={formId} action={formAction} className="flex flex-col gap-2">
+      <input type="hidden" name="orderId" value={orderId} />
+      <ConfirmSubmit
+        formId={formId}
+        title={`Batalkan pesanan ${orderNumber}?`}
+        confirmLabel="Batalkan pesanan"
+        trigger={
+          <Button type="button" disabled={pending} variant="destructive">
+            {pending ? "Membatalkan..." : "Batalkan Pesanan"}
+          </Button>
+        }
+        description={
+          <p>
+            Pesanan ditandai <strong>Kadaluarsa</strong> dan kode pembayarannya langsung tidak berlaku lagi. Kuota
+            voucher dan stok yang tertahan otomatis kembali. Tidak bisa dibatalkan — pembeli harus memesan ulang.
+          </p>
+        }
+      />
+      <ActionMessage state={state} />
+    </form>
+  );
+}
+
 export function OrderActions({
   orderId, orderNumber, status, canRetryRefund,
-  retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction,
+  retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction, cancelOrderAction,
 }: {
   orderId: string;
   orderNumber: string;
@@ -146,7 +175,24 @@ export function OrderActions({
   retryRefundAction: ServerAction;
   markCompletedManualAction: ServerAction;
   markRefundedAction: ServerAction;
+  cancelOrderAction: ServerAction;
 }) {
+  // Hanya pesanan yang BELUM dibayar. Begitu uang masuk, yang berlaku adalah
+  // refund (punya jalurnya sendiri, dengan pengembalian dana) - bukan
+  // pembatalan sepihak yang meninggalkan uang pembeli di tangan kita.
+  if (status === "PENDING_PAYMENT") {
+    return (
+      <div className="flex flex-col gap-4 rounded-xl ring-1 ring-foreground/10 p-4">
+        <h2 className="text-sm font-semibold">Aksi</h2>
+        <p className="text-xs text-muted-foreground">
+          Pesanan ini otomatis batal sendiri saat lewat batas waktu. Batalkan manual kalau pembeli memintanya lebih
+          awal atau pesanannya salah.
+        </p>
+        <CancelOrderForm orderId={orderId} orderNumber={orderNumber} cancelOrderAction={cancelOrderAction} />
+      </div>
+    );
+  }
+
   if (status === "NEEDS_REVIEW") {
     return (
       <div className="flex flex-col gap-4 rounded-xl ring-1 ring-foreground/10 p-4">

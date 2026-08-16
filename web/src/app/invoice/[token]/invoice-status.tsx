@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Clock,
@@ -18,8 +18,74 @@ import { cn } from "@/lib/utils";
 import { PaymentInstructions } from "@/components/payment/payment-instructions";
 import type { SnapBrowserConfig } from "@/lib/payment/gateway-config";
 import type { PaymentActions } from "@/lib/midtrans/client";
+import { cancelOrderByToken, type CancelResult } from "@/app/actions/order-lookup";
 
 const FINAL_STATUSES = ["COMPLETED", "FAILED", "EXPIRED", "REFUNDED", "REFUND_PENDING", "NEEDS_REVIEW"];
+
+/**
+ * Tombol batalkan, ditaruh DI BAWAH instruksi bayar dan sengaja dibuat tidak
+ * menonjol.
+ *
+ * Yang dibatalkan pembeli sendiri hanya pesanan yang belum dibayar - begitu
+ * uangnya masuk, yang berlaku adalah refund lewat admin, bukan pembatalan
+ * sepihak. Gerbang itu ditegakkan di server (cancelPendingOrder), bukan dengan
+ * menyembunyikan tombolnya.
+ *
+ * Konfirmasi dua langkah, bukan langsung batal: tombol ini bertetangga dengan
+ * tombol bayar, dan salah pencet di layar HP berarti QRIS yang sudah dibuka
+ * mendadak mati.
+ */
+function CancelOrderButton({ token }: { token: string }) {
+  const [state, formAction, pending] = useActionState(cancelOrderByToken, {} as CancelResult);
+  const [confirming, setConfirming] = useState(false);
+
+  // Pembatalan yang sukses membuat polling status di atas menarik status
+  // barunya sendiri, jadi tidak ada yang perlu ditulis ulang di sini.
+  if (state.ok) {
+    return <p className="text-center text-xs text-muted-foreground">{state.ok}</p>;
+  }
+
+  if (!confirming) {
+    return (
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+        >
+          Batalkan pesanan ini
+        </button>
+        {state.error && <p className="mt-1 text-xs text-destructive">{state.error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <form action={formAction} className="flex flex-col items-center gap-2">
+      <input type="hidden" name="publicToken" value={token} />
+      <p className="text-center text-xs text-muted-foreground">
+        Batalkan pesanan ini? Kode pembayarannya langsung tidak berlaku lagi.
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setConfirming(false)}
+          className="rounded-md px-3 py-1.5 text-xs font-medium ring-1 ring-foreground/15 hover:bg-muted"
+        >
+          Tidak jadi
+        </button>
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+        >
+          {pending ? "Membatalkan…" : "Ya, batalkan"}
+        </button>
+      </div>
+      {state.error && <p className="text-xs text-destructive">{state.error}</p>}
+    </form>
+  );
+}
 
 function formatRupiah(amount: string | number): string {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
@@ -182,7 +248,10 @@ export function InvoiceStatus({
       )}
 
       {order.status === "PENDING_PAYMENT" && (
-        <PaymentInstructions payment={order.payment} qrDataUri={qrDataUri} snapConfig={snapConfig} />
+        <>
+          <PaymentInstructions payment={order.payment} qrDataUri={qrDataUri} snapConfig={snapConfig} />
+          <CancelOrderButton token={token} />
+        </>
       )}
 
       {order.status === "COMPLETED" && order.sn && (

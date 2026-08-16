@@ -365,18 +365,19 @@ describe("pingMidtrans", () => {
 });
 
 describe("createSnapTransaction", () => {
+  const FINISH = "https://toko.test/invoice/tok-abc";
   const snapOk = { token: "tok-123", redirect_url: "https://app.midtrans.com/snap/v4/redirection/tok-123" };
 
   it("POST ke host SNAP (app.*), bukan host Core API (api.*)", async () => {
     const fn = mockFetchOnce(snapOk, 201);
-    await createSnapTransaction({ orderId: "INV-1", grossAmount: 50487, methodCode: "qris", expiryMinutes: 15 }, creds);
+    await createSnapTransaction({ orderId: "INV-1", grossAmount: 50487, methodCode: "qris", expiryMinutes: 15, finishUrl: FINISH }, creds);
     expect(fn.mock.calls[0][0]).toBe("https://app.sandbox.midtrans.com/snap/v1/transactions");
   });
 
   it("production memakai app.midtrans.com", async () => {
     const fn = mockFetchOnce(snapOk, 201);
     await createSnapTransaction(
-      { orderId: "INV-1", grossAmount: 1000, methodCode: "qris", expiryMinutes: 15 },
+      { orderId: "INV-1", grossAmount: 1000, methodCode: "qris", expiryMinutes: 15, finishUrl: FINISH },
       { serverKey: "prod", isProduction: true },
     );
     expect(fn.mock.calls[0][0]).toBe("https://app.midtrans.com/snap/v1/transactions");
@@ -388,7 +389,7 @@ describe("createSnapTransaction", () => {
     // metode lain, dia membayar dengan fee yang salah.
     const fn = mockFetchOnce(snapOk, 201);
     await createSnapTransaction(
-      { orderId: "INV-1", grossAmount: 54000, methodCode: "va_bca", expiryMinutes: 30 },
+      { orderId: "INV-1", grossAmount: 54000, methodCode: "va_bca", expiryMinutes: 30, finishUrl: FINISH },
       creds,
     );
     const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
@@ -397,6 +398,23 @@ describe("createSnapTransaction", () => {
     // Snap memakai `expiry`, bukan `custom_expiry` milik Core API.
     expect(body.expiry).toEqual({ unit: "minute", duration: 30 });
     expect(body.custom_expiry).toBeUndefined();
+  });
+
+  it("SELALU mengirim callbacks, kalau tidak pembeli mendarat di example.com", async () => {
+    // REGRESI. Tanpa `callbacks`, Midtrans memakai Finish Redirect URL dari
+    // dashboard mereka - yang bawaannya https://example.com. Pembeli yang baru
+    // saja membayar mendarat di halaman "Example Domain" milik orang lain:
+    // tanpa invoice, tanpa status, tanpa jalan kembali ke toko. Dan tidak ada
+    // satu pun error yang muncul, karena dari sisi kita transaksinya sukses.
+    const fn = mockFetchOnce(snapOk, 201);
+    await createSnapTransaction(
+      { orderId: "INV-1", grossAmount: 1000, methodCode: "qris", expiryMinutes: 15, finishUrl: FINISH },
+      creds,
+    );
+    const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
+    // Ketiganya, bukan cuma `finish`: `error` dan `pending` yang dibiarkan
+    // kosong sama-sama jatuh ke bawaan dashboard yang bermasalah itu.
+    expect(body.callbacks).toEqual({ finish: FINISH, error: FINISH, pending: FINISH });
   });
 
   it("memetakan tiap metode ke kode Snap yang benar", async () => {
@@ -414,7 +432,7 @@ describe("createSnapTransaction", () => {
     ];
     for (const [methodCode, expected] of cases) {
       const fn = mockFetchOnce(snapOk, 201);
-      await createSnapTransaction({ orderId: "INV-1", grossAmount: 1000, methodCode, expiryMinutes: 15 }, creds);
+      await createSnapTransaction({ orderId: "INV-1", grossAmount: 1000, methodCode, expiryMinutes: 15, finishUrl: FINISH }, creds);
       const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
       expect(body.enabled_payments, `metode ${methodCode}`).toEqual([expected]);
     }
@@ -426,7 +444,7 @@ describe("createSnapTransaction", () => {
     // selisih yang tidak pernah ketahuan. Lebih baik gagal keras.
     mockFetchOnce(snapOk, 201);
     await expect(
-      createSnapTransaction({ orderId: "INV-1", grossAmount: 1000, methodCode: "dompet-baru", expiryMinutes: 15 }, creds),
+      createSnapTransaction({ orderId: "INV-1", grossAmount: 1000, methodCode: "dompet-baru", expiryMinutes: 15, finishUrl: FINISH }, creds),
     ).rejects.toThrow(/enabled_payments/);
   });
 
@@ -435,7 +453,7 @@ describe("createSnapTransaction", () => {
     // jadi klasifikasinya harus jatuh balik ke status HTTP.
     mockFetchOnce({ error_messages: ["transaction_details.gross_amount is not valid"] }, 400);
     const err = await createSnapTransaction(
-      { orderId: "INV-1", grossAmount: 0, methodCode: "qris", expiryMinutes: 15 },
+      { orderId: "INV-1", grossAmount: 0, methodCode: "qris", expiryMinutes: 15, finishUrl: FINISH },
       creds,
     ).catch((e) => e);
     expect(err).toBeInstanceOf(MidtransApiError);

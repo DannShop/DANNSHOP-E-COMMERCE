@@ -212,14 +212,20 @@ export async function toggleProductActive(formData: FormData): Promise<ActionRes
   return { ok: `Produk ${product.isActive ? "dinonaktifkan" : "diaktifkan"}.` };
 }
 
-export async function createProductItem(formData: FormData): Promise<ActionResult> {
-  "use server";
-  const admin = await requireAdmin();
-  if ("error" in admin) return admin;
-
-  const parsed = productItemSchema.safeParse({
+// Daftar field item DIBACA DI SATU TEMPAT, dipakai create maupun update.
+//
+// Sebelumnya kedua aksi itu masing-masing menyalin daftarnya. Salinan yang
+// menyimpang di sini punya gejala yang sangat mahal dilacak: field yang
+// ditambahkan ke form dan ke create tapi lupa di update akan TERSIMPAN saat item
+// dibuat lalu DIAM-DIAM HILANG begitu item itu disunting - tanpa error, tanpa
+// pesan, dan admin baru sadar setelah datanya sudah lama terlanjur terhapus.
+function parseProductItemForm(formData: FormData) {
+  return productItemSchema.safeParse({
     productId: formData.get("productId"),
     name: formData.get("name"),
+    description: formData.get("description") ?? "",
+    manualSkuCode: formData.get("manualSkuCode") ?? "",
+    stock: formData.get("stock") ?? "",
     sellingPrice: formData.get("sellingPrice"),
     memberPrice: formData.get("memberPrice"),
     sortOrder: formData.get("sortOrder") ?? 0,
@@ -228,12 +234,23 @@ export async function createProductItem(formData: FormData): Promise<ActionResul
     flashEndAt: formData.get("flashEndAt") ?? "",
     groupId: formData.get("groupId") ?? "",
   });
+}
+
+export async function createProductItem(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const parsed = parseProductItemForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const item = await db.productItem.create({
     data: {
       productId: parsed.data.productId,
       name: parsed.data.name,
+      description: parsed.data.description,
+      manualSkuCode: parsed.data.manualSkuCode,
+      stock: parsed.data.stock,
       sellingPrice: parsed.data.sellingPrice,
       memberPrice: parsed.data.memberPrice,
       sortOrder: parsed.data.sortOrder,
@@ -258,23 +275,16 @@ export async function updateProductItem(formData: FormData): Promise<ActionResul
   const id = formData.get("id");
   if (typeof id !== "string" || !id) return { error: "Item tidak ditemukan." };
 
-  const parsed = productItemSchema.safeParse({
-    productId: formData.get("productId"),
-    name: formData.get("name"),
-    sellingPrice: formData.get("sellingPrice"),
-    memberPrice: formData.get("memberPrice"),
-    sortOrder: formData.get("sortOrder") ?? 0,
-    flashPrice: formData.get("flashPrice") ?? "",
-    flashStartAt: formData.get("flashStartAt") ?? "",
-    flashEndAt: formData.get("flashEndAt") ?? "",
-    groupId: formData.get("groupId") ?? "",
-  });
+  const parsed = parseProductItemForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   await db.productItem.update({
     where: { id },
     data: {
       name: parsed.data.name,
+      description: parsed.data.description,
+      manualSkuCode: parsed.data.manualSkuCode,
+      stock: parsed.data.stock,
       sellingPrice: parsed.data.sellingPrice,
       memberPrice: parsed.data.memberPrice,
       sortOrder: parsed.data.sortOrder,

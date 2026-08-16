@@ -128,12 +128,28 @@ export default auth(async (req) => {
     nextUrl.pathname === "/offline" ||
     nextUrl.pathname.startsWith("/icons/");
 
+  // Jalur pemulihan/identitas akun. Dikecualikan dengan alasan yang sama persis
+  // dengan /login yang sudah lama ada di daftar ini: link-link ini masuk lewat
+  // EMAIL, kedaluwarsa dalam 30 menit, dan sekali pakai - orang yang membukanya
+  // saat toko kebetulan sedang maintenance akan melihat halaman maintenance,
+  // mengira link-nya rusak, dan tokennya keburu mati sebelum toko dibuka lagi.
+  // Untuk /konfirmasi-email akibatnya paling mahal: yang sedang memindahkan
+  // alamat email bisa jadi ADMIN yang menyalakan maintenance itu sendiri.
+  //
+  // Tidak ada yang bocor: kedua halaman ini tidak menampilkan satu pun isi toko,
+  // dan tokennyalah yang jadi kredensial, bukan sesi.
+  const isAccountRecovery =
+    nextUrl.pathname === "/konfirmasi-email" ||
+    nextUrl.pathname === "/reset-password" ||
+    nextUrl.pathname === "/forgot-password";
+
   const isExemptFromMaintenance =
     nextUrl.pathname === "/maintenance" ||
     nextUrl.pathname.startsWith("/admin") ||
     nextUrl.pathname.startsWith("/mitra") ||
     nextUrl.pathname.startsWith("/api") ||
     isPwaAsset ||
+    isAccountRecovery ||
     nextUrl.pathname === "/login";
   if (!isExemptFromMaintenance && (await isMaintenanceModeOn())) {
     return NextResponse.rewrite(new URL("/maintenance", nextUrl));

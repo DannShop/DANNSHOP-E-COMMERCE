@@ -15,6 +15,8 @@ import { dispatchFulfillment } from "@/lib/order/fulfillment";
 import { headers } from "next/headers";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 import { getActiveProviders } from "@/lib/providers/registry";
+import { checkStockAvailable } from "@/lib/catalog/stock";
+import { getBaseUrl } from "@/lib/base-url";
 import { sendOrderCreatedEmail } from "@/lib/notify/email";
 import { formatOrderCreatedMessage, formatOrderPaidMessage, notifyTelegram } from "@/lib/notify/telegram";
 import { describeOrderTarget } from "@/lib/order/customer-no";
@@ -156,6 +158,16 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
     const decision = selectFulfillmentSku({ sellingPrice: price }, item.providerSkus, activeProviders);
     if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
   }
+
+  // Gerbang stok. Berlaku untuk produk manual MAUPUN otomatis - item yang tidak
+  // memakai batas stok (stock null) keluar dari fungsi ini tanpa query sama
+  // sekali, jadi katalog yang tidak memakai fitur ini tidak membayar apa pun.
+  //
+  // Dicek SETELAH voucher supaya kode promo yang tidak berlaku tetap ditolak
+  // lebih dulu (pesannya lebih menolong), tapi SEBELUM order dibuat supaya
+  // penolakan stok tidak meninggalkan order gagal di riwayat pembeli.
+  const stockError = await checkStockAvailable(item);
+  if (stockError) return { error: stockError };
 
   if (parsed.data.paymentMethod !== "balance") {
     const method = await db.paymentMethodConfig.findUnique({ where: { code: parsed.data.paymentMethod } });
@@ -370,6 +382,12 @@ async function createMidtransOrder(input: {
       orderId: order.orderNumber,
       grossAmount: Number(total),
       expiryMinutes,
+      // Halaman invoice, bukan beranda: di sinilah pembeli melihat status
+      // sebenarnya (menunggu / sukses / gagal), SN produknya, dan tombol
+      // konfirmasi untuk produk manual. publicToken dipakai karena halaman itu
+      // memang dijaga token, bukan sesi - jadi link ini tetap bekerja untuk
+      // pembeli tamu yang tidak punya akun.
+      finishUrl: `${await getBaseUrl()}/invoice/${order.publicToken}`,
     });
     chargedActions = actions;
     await Promise.all([

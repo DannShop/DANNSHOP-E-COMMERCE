@@ -287,6 +287,32 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   });
 }
 
+// Dikirim ke alamat BARU - inilah satu-satunya yang membawa link konfirmasi.
+export async function sendEmailChangeVerifyEmail(
+  to: string,
+  data: { confirmUrl: string; userName: string; oldEmail: string },
+): Promise<boolean> {
+  const branding = await getInvoiceBranding();
+  return sendTemplated("email_change_verify", to, {
+    vars: { confirm_url: data.confirmUrl, user_name: data.userName, old_email: data.oldEmail },
+    blocks: { confirm_button: button(data.confirmUrl, "Konfirmasi Email Baru", branding.accentColor) },
+  });
+}
+
+// Dikirim ke alamat LAMA. SENGAJA tanpa tombol/link konfirmasi: fungsinya
+// memperingatkan, bukan menyediakan jalan pintas. Kalau alamat lama juga bisa
+// menyetujui perpindahan, penyerang yang membajak sesi tinggal menyetujuinya
+// sendiri dan peringatan ini kehilangan seluruh gunanya.
+export async function sendEmailChangeNoticeEmail(
+  to: string,
+  data: { newEmail: string; userName: string },
+): Promise<boolean> {
+  return sendTemplated("email_change_notice", to, {
+    vars: { new_email: data.newEmail, user_name: data.userName },
+    blocks: {},
+  });
+}
+
 // Pratinjau untuk panel admin: merender template dengan data contoh, TANPA
 // mengirim apa pun. Dipakai supaya admin bisa melihat hasil suntingannya
 // sebelum satu pun pelanggan menerimanya.

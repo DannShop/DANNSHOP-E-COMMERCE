@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
-import { ChevronRight, Layers, Plus, Trash2, TriangleAlert, Zap } from "lucide-react";
+import { Boxes, ChevronRight, Layers, Plus, Trash2, TriangleAlert, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,12 @@ export interface ProductItemGroupData {
 export interface ProductItemData {
   id: string;
   name: string;
+  description: string; // "" kalau tidak diisi
+  manualSkuCode: string; // "" kalau tidak diisi - hanya relevan untuk produk MANUAL
+  /** "" = stok tak terbatas. Dibedakan dari "0" yang berarti habis. */
+  stock: string;
+  /** Berapa jatah stok yang sedang dipegang order berjalan (lib/catalog/stock.ts). */
+  heldStock: number;
   sellingPrice: string; // bigint diserialisasi jadi string dari Server Component
   memberPrice: string;
   sortOrder: number;
@@ -49,6 +55,31 @@ export interface ProductItemData {
 }
 
 const rupiah = (v: string | bigint) => `Rp ${Number(v).toLocaleString("id-ID")}`;
+
+/**
+ * Sisa stok di baris ringkas. Tidak menampilkan apa pun untuk item tanpa batas
+ * stok - mayoritas katalog, dan menuliskan "tak terbatas" di setiap baris cuma
+ * menambah keramaian tanpa memberi tahu apa-apa.
+ *
+ * Angka yang ditampilkan adalah SISA (stok awal dikurangi yang sedang dipegang
+ * order berjalan), bukan stok awal - itulah angka yang menentukan apakah
+ * pembeli berikutnya bisa checkout.
+ */
+function StockLabel({ stock, held }: { stock: string; held: number }) {
+  if (stock === "") return null;
+  const sisa = Math.max(0, Number(stock) - held);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 tabular-nums",
+        sisa === 0 ? "text-destructive" : sisa <= 3 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground",
+      )}
+    >
+      <Boxes className="size-3.5" aria-hidden="true" />
+      {sisa === 0 ? "Stok habis" : `Sisa ${sisa}`}
+    </span>
+  );
+}
 
 /**
  * Mana mapping yang sebenarnya akan dipakai duluan saat order masuk.
@@ -231,6 +262,9 @@ function ItemRow({
   sources,
   selected,
   onToggleSelected,
+  open,
+  onToggleOpen,
+  isManual,
   updateProductItem,
   deleteProductItem,
   mapProviderSku,
@@ -243,13 +277,17 @@ function ItemRow({
   sources: CatalogSource[];
   selected: boolean;
   onToggleSelected: (checked: boolean) => void;
+  /** Dikendalikan induk supaya cuma SATU item terbuka pada satu waktu. */
+  open: boolean;
+  onToggleOpen: () => void;
+  /** Produk manual dikirim admin sendiri - tab Provider tidak berlaku untuknya. */
+  isManual: boolean;
   updateProductItem: ServerAction;
   deleteProductItem: ServerAction;
   mapProviderSku: ServerAction;
   unmapProviderSku: ServerAction;
   setPrimaryProviderSku: ServerAction;
 }) {
-  const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(withPrevState(updateProductItem), INITIAL_STATE);
 
   const cost = cheapestCost(item.providerSkus);
@@ -279,7 +317,7 @@ function ItemRow({
       <div className="min-w-0 flex-1">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggleOpen}
         aria-expanded={open}
         aria-controls={panelId}
         className="flex w-full items-center gap-3 rounded-xl py-2.5 pr-3 pl-1 text-left transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
@@ -292,7 +330,11 @@ function ItemRow({
           <span className="block truncate font-medium">{item.name}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
             <span className="tabular-nums">{rupiah(item.sellingPrice)}</span>
-            {margin === null ? (
+            {/* Peringatan "Belum dipetakan" TIDAK berlaku untuk produk manual:
+                item manual memang tidak punya SKU provider, dan menuduhnya
+                belum siap dijual justru menyesatkan - barangnya selalu tersedia
+                karena dikirim admin sendiri. */}
+            {isManual ? null : margin === null ? (
               <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
                 <TriangleAlert className="size-3.5" aria-hidden="true" />
                 Belum dipetakan
@@ -300,6 +342,7 @@ function ItemRow({
             ) : (
               <MarginBadge margin={margin} />
             )}
+            <StockLabel stock={item.stock} held={item.heldStock} />
             {item.flashPrice && (
               <span className="inline-flex items-center gap-0.5 text-amber-700 dark:text-amber-400">
                 <Zap className="size-3.5" aria-hidden="true" />
@@ -309,9 +352,13 @@ function ItemRow({
           </span>
         </span>
         <Badge variant={item.isActive ? "success" : "muted"}>{item.isActive ? "Aktif" : "Nonaktif"}</Badge>
-        <Badge variant={item.providerSkus.length > 0 ? "muted" : "warning"}>
-          {item.providerSkus.length} SKU
-        </Badge>
+        {isManual ? (
+          <Badge variant="muted">{item.manualSkuCode || "Manual"}</Badge>
+        ) : (
+          <Badge variant={item.providerSkus.length > 0 ? "muted" : "warning"}>
+            {item.providerSkus.length} SKU
+          </Badge>
+        )}
       </button>
 
       {open && (
@@ -319,7 +366,11 @@ function ItemRow({
           <Tabs defaultValue="harga">
             <TabsList>
               <TabsTab value="harga">Harga &amp; status</TabsTab>
-              <TabsTab value="provider">Provider ({item.providerSkus.length})</TabsTab>
+              {/* Produk manual dikirim admin sendiri dan memang TIDAK PERNAH
+                  punya SKU provider. Menampilkan tab ini untuknya cuma
+                  memancing admin memetakan sesuatu yang tidak akan pernah
+                  dipakai, lalu membacanya sebagai "item ini belum siap". */}
+              {!isManual && <TabsTab value="provider">Provider ({item.providerSkus.length})</TabsTab>}
               <TabsTab value="flash">Flash sale</TabsTab>
             </TabsList>
 
@@ -342,6 +393,21 @@ function ItemRow({
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor={`name-${item.id}`}>Nama item</Label>
                     <Input id={`name-${item.id}`} name="name" defaultValue={item.name} required />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor={`description-${item.id}`}>Deskripsi (opsional)</Label>
+                    <textarea
+                      id={`description-${item.id}`}
+                      name="description"
+                      defaultValue={item.description}
+                      rows={2}
+                      maxLength={500}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      placeholder="Proses instan 1-3 menit, butuh User ID + Zone ID"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Tampil di bawah nama nominal ini pada halaman produk. Kosongkan kalau tidak perlu.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor={`sellingPrice-${item.id}`}>Harga jual</Label>
@@ -383,6 +449,43 @@ function ItemRow({
                       className="tabular-nums"
                     />
                   </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`stock-${item.id}`}>Stok (opsional)</Label>
+                    <Input
+                      id={`stock-${item.id}`}
+                      name="stock"
+                      defaultValue={item.stock}
+                      inputMode="numeric"
+                      className="tabular-nums"
+                      placeholder="Kosong = tak terbatas"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {item.stock === ""
+                        ? "Kosong = tak terbatas. Isi angka untuk membatasi."
+                        : `Sedang dipakai ${item.heldStock} order berjalan. Order gagal/kedaluwarsa melepasnya sendiri.`}
+                    </p>
+                  </div>
+                  {isManual && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`manualSkuCode-${item.id}`}>Kode SKU (opsional)</Label>
+                      <Input
+                        id={`manualSkuCode-${item.id}`}
+                        name="manualSkuCode"
+                        defaultValue={item.manualSkuCode}
+                        maxLength={64}
+                        placeholder="NETFLIX-PRIV-1B"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Label buatanmu untuk mencocokkan stok. Tidak dikirim ke provider mana pun.
+                      </p>
+                    </div>
+                  )}
+                  {/* Produk non-manual tidak menampilkan kolom kode SKU, tapi
+                      nilainya tetap ikut dikirim. Tanpa ini, menyunting item
+                      pada produk yang PERNAH manual akan menghapus kodenya
+                      diam-diam - field yang tidak dirender terbaca sebagai
+                      kosong oleh parser, dan kosong berarti "hapus". */}
+                  {!isManual && <input type="hidden" name="manualSkuCode" value={item.manualSkuCode} />}
                   {groups.length > 0 && (
                     <div className="space-y-1.5">
                       <Label htmlFor={`groupId-${item.id}`}>Grup</Label>
@@ -487,6 +590,10 @@ function ItemRow({
               />
             </div>
 
+            {/* Panelnya ikut dilepas, bukan cuma tab-nya disembunyikan: panel
+                yang tetap terpasang tanpa tab hanya jadi DOM tak terjangkau
+                yang masih menembak query dan masih terbaca pembaca layar. */}
+            {!isManual && (
             <TabsPanel value="provider" className="mt-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
@@ -521,6 +628,7 @@ function ItemRow({
                 </p>
               )}
             </TabsPanel>
+            )}
           </Tabs>
         </div>
       )}
@@ -529,11 +637,128 @@ function ItemRow({
   );
 }
 
-function AddItemDialog({ productId, createProductItem }: { productId: string; createProductItem: ServerAction }) {
+/**
+ * Isi dialog Tambah Item. Dipisah dari dialognya BUKAN demi kerapian, tapi
+ * supaya bisa DIPASANG ULANG lewat `key` setiap kali dialog dibuka.
+ *
+ * `useActionState` tidak punya cara mereset. Sebelumnya state-nya hidup di
+ * komponen dialog yang tidak pernah lepas, sementara <ActionMessage> ada di
+ * dalam DialogContent yang DILEPAS saat ditutup. Akibatnya, setelah satu item
+ * berhasil ditambahkan: ref penahan toast milik ActionMessage ikut hilang saat
+ * dialog ditutup, tapi `state.ok` lama masih tersimpan - jadi begitu dialog
+ * dibuka lagi, toast "item ditambahkan" meletus seketika sebelum admin sempat
+ * mengetik apa pun, untuk item yang bahkan belum ada. Dengan form-nya dipasang
+ * ulang, state lama tidak punya tempat untuk bertahan hidup.
+ */
+function AddItemForm({
+  productId,
+  isManual,
+  createProductItem,
+  onSuccess,
+}: {
+  productId: string;
+  isManual: boolean;
+  createProductItem: ServerAction;
+  onSuccess: () => void;
+}) {
   const [state, action, pending] = useActionState(withPrevState(createProductItem), INITIAL_STATE);
 
+  // Efek ActionMessage (anak) jalan lebih dulu daripada efek ini (induk), jadi
+  // toast suksesnya sudah terkirim ke provider global di luar dialog sebelum
+  // dialognya ditutup - tidak ada kabar yang hilang bersama dialognya.
+  useEffect(() => {
+    if (state.ok) onSuccess();
+  }, [state.ok, onSuccess]);
+
   return (
-    <Dialog>
+    <form action={action} className="space-y-4">
+      <input type="hidden" name="productId" value={productId} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="new-item-name">Nama item</Label>
+          <Input id="new-item-name" name="name" required placeholder="86 Diamonds" />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="new-item-description">Deskripsi (opsional)</Label>
+          <textarea
+            id="new-item-description"
+            name="description"
+            rows={2}
+            maxLength={500}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            placeholder="Proses instan 1-3 menit, butuh User ID + Zone ID"
+          />
+          <p className="text-xs text-muted-foreground">Tampil di bawah nama nominal ini pada halaman produk.</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="new-item-selling">Harga jual</Label>
+          <Input id="new-item-selling" name="sellingPrice" inputMode="numeric" required placeholder="22000" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="new-item-member">Batas bawah harga</Label>
+          <Input id="new-item-member" name="memberPrice" inputMode="numeric" required placeholder="21500" />
+          <p className="text-xs text-muted-foreground">
+            Diskon tier member tidak akan pernah menembus angka ini.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="new-item-stock">Stok (opsional)</Label>
+          <Input id="new-item-stock" name="stock" inputMode="numeric" placeholder="Kosong = tak terbatas" />
+          <p className="text-xs text-muted-foreground">Kosongkan kalau stoknya tidak terbatas.</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="new-item-sort">Urutan tampil</Label>
+          <Input id="new-item-sort" name="sortOrder" inputMode="numeric" defaultValue={0} />
+        </div>
+        {isManual && (
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="new-item-sku">Kode SKU (opsional)</Label>
+            <Input id="new-item-sku" name="manualSkuCode" maxLength={64} placeholder="NETFLIX-PRIV-1B" />
+            <p className="text-xs text-muted-foreground">
+              Label buatanmu untuk mencocokkan stok. Tidak dikirim ke provider mana pun.
+            </p>
+          </div>
+        )}
+      </div>
+      <label className="flex w-fit items-center gap-2 text-sm">
+        <Checkbox name="isActive" defaultChecked />
+        Langsung tampilkan di katalog
+      </label>
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={pending}>
+          {pending ? "Menambah..." : "Tambah item"}
+        </Button>
+        <ActionMessage state={state} />
+      </div>
+    </form>
+  );
+}
+
+function AddItemDialog({
+  productId,
+  isManual,
+  createProductItem,
+}: {
+  productId: string;
+  isManual: boolean;
+  createProductItem: ServerAction;
+}) {
+  const [open, setOpen] = useState(false);
+  const [formKey, setFormKey] = useState(0);
+
+  const handleOpenChange = useCallback((next: boolean) => {
+    setOpen(next);
+    // Ditutup dengan cara APA PUN - tombol X, Esc, klik latar, atau sukses -
+    // membuang form lama. Kalau cuma jalur sukses yang direset, admin yang
+    // menutup dialog setelah sebuah error akan membukanya lagi dan mendapati
+    // pesan error itu masih menempel di form yang kosong.
+    if (!next) setFormKey((k) => k + 1);
+  }, []);
+
+  const handleSuccess = useCallback(() => setOpen(false), []);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
           <Button size="sm">
@@ -544,42 +769,19 @@ function AddItemDialog({ productId, createProductItem }: { productId: string; cr
       />
       <DialogContent
         title="Tambah item baru"
-        description="Flash sale, grup, dan pemetaan provider diatur setelah item ini dibuat."
+        description={
+          isManual
+            ? "Flash sale dan grup diatur setelah item ini dibuat."
+            : "Flash sale, grup, dan pemetaan provider diatur setelah item ini dibuat."
+        }
       >
-        <form action={action} className="space-y-4">
-          <input type="hidden" name="productId" value={productId} />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="new-item-name">Nama item</Label>
-              <Input id="new-item-name" name="name" required placeholder="86 Diamonds" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-item-selling">Harga jual</Label>
-              <Input id="new-item-selling" name="sellingPrice" inputMode="numeric" required placeholder="22000" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-item-member">Batas bawah harga</Label>
-              <Input id="new-item-member" name="memberPrice" inputMode="numeric" required placeholder="21500" />
-              <p className="text-xs text-muted-foreground">
-                Diskon tier member tidak akan pernah menembus angka ini.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-item-sort">Urutan tampil</Label>
-              <Input id="new-item-sort" name="sortOrder" inputMode="numeric" defaultValue={0} />
-            </div>
-          </div>
-          <label className="flex w-fit items-center gap-2 text-sm">
-            <Checkbox name="isActive" defaultChecked />
-            Langsung tampilkan di katalog
-          </label>
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={pending}>
-              {pending ? "Menambah..." : "Tambah item"}
-            </Button>
-            <ActionMessage state={state} />
-          </div>
-        </form>
+        <AddItemForm
+          key={formKey}
+          productId={productId}
+          isManual={isManual}
+          createProductItem={createProductItem}
+          onSuccess={handleSuccess}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -711,6 +913,7 @@ export function ProductItemsManager({
   items,
   groups,
   sources,
+  isManual,
   createProductItem,
   updateProductItem,
   deleteProductItem,
@@ -726,6 +929,8 @@ export function ProductItemsManager({
   items: ProductItemData[];
   groups: ProductItemGroupData[];
   sources: CatalogSource[];
+  /** Produk dikirim admin sendiri — menyembunyikan seluruh urusan provider. */
+  isManual: boolean;
   createProductItem: ServerAction;
   updateProductItem: ServerAction;
   deleteProductItem: ServerAction;
@@ -738,6 +943,12 @@ export function ProductItemsManager({
   deleteProductItemGroup: ServerAction;
 }) {
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
+  // SATU item terbuka pada satu waktu. Statusnya di sini, bukan di tiap baris:
+  // baris yang menyimpan sendiri "aku terbuka" tidak punya cara tahu baris lain
+  // ikut terbuka, jadi menyunting sepuluh item berturut-turut meninggalkan
+  // sepuluh panel menganga dan admin harus menggulir jauh untuk menemukan yang
+  // sedang dikerjakannya.
+  const [openItemId, setOpenItemId] = useState<string | null>(null);
   const selectedList = items.filter((i) => selectedIds[i.id]);
   const allSelected = items.length > 0 && selectedList.length === items.length;
   // Dua angka yang paling menentukan apakah produk ini siap dijual, dihitung
@@ -772,7 +983,7 @@ export function ProductItemsManager({
             updateProductItemGroup={updateProductItemGroup}
             deleteProductItemGroup={deleteProductItemGroup}
           />
-          <AddItemDialog productId={productId} createProductItem={createProductItem} />
+          <AddItemDialog productId={productId} isManual={isManual} createProductItem={createProductItem} />
         </div>
       </div>
 
@@ -841,6 +1052,9 @@ export function ProductItemsManager({
               sources={sources}
               selected={selectedIds[item.id] === true}
               onToggleSelected={(checked) => setSelectedIds((prev) => ({ ...prev, [item.id]: checked }))}
+              open={openItemId === item.id}
+              onToggleOpen={() => setOpenItemId((prev) => (prev === item.id ? null : item.id))}
+              isManual={isManual}
               updateProductItem={updateProductItem}
               deleteProductItem={deleteProductItem}
               mapProviderSku={mapProviderSku}

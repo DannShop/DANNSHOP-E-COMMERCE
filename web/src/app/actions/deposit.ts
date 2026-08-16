@@ -10,6 +10,7 @@ import { reportChargeFailure } from "@/lib/payment/charge-failure";
 import { getMembershipContext } from "@/lib/membership/tier";
 import { hasBenefit } from "@/lib/membership/benefits";
 import { requireActiveAccount } from "@/lib/account/user-status";
+import { getBaseUrl } from "@/lib/base-url";
 
 export interface DepositResult {
   error?: string;
@@ -81,6 +82,10 @@ export async function createDeposit(
       orderId: deposit.id,
       grossAmount: Number(totalPaid),
       expiryMinutes,
+      // Riwayat deposit - satu-satunya halaman yang menampilkan status isi saldo
+      // ini. Tanpa ini pembeli yang selesai membayar di Snap mendarat di
+      // example.com, sama persis dengan bug yang terjadi di jalur checkout.
+      finishUrl: `${await getBaseUrl()}/account/deposits`,
     });
     await db.deposit.update({ where: { id: deposit.id }, data: { rawResponse: actions as object } });
   } catch (e) {

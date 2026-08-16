@@ -147,6 +147,7 @@ model User {
   deposits            Deposit[]
   adminActionLogs     AdminActionLog[]
   passwordResetTokens PasswordResetToken[]
+  emailChangeTokens   EmailChangeToken[]
   memberships         UserMembership[]
   partnerAccount      PartnerAccount?
   partnerApplications PartnerApplication[]
@@ -182,6 +183,42 @@ model PasswordResetToken {
   id        String    @id @default(cuid())
   userId    String
   user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Token konfirmasi ganti email. Pola penyimpanannya sama persis dengan
+// PasswordResetToken di atas (hash SHA-256, sekali pakai, kedaluwarsa 30 menit),
+// dengan satu tambahan: `newEmail`.
+//
+// ===== KENAPA ALAMAT BARU DITITIPKAN DI SINI, BUKAN LANGSUNG DITULIS =====
+//
+// Email adalah identitas login DAN alamat tujuan link reset password. Kalau
+// alamat baru ditulis langsung ke User begitu form disubmit, satu salah ketik
+// mengunci orangnya di luar akun sendiri SELAMANYA: dia tidak bisa login (email
+// yang benar sudah bukan miliknya lagi) dan tidak bisa memulihkan lewat lupa
+// password (link-nya dikirim ke alamat yang tidak pernah dia punya). Untuk akun
+// admin - yang memegang kunci pembayaran, kredensial provider, dan seluruh data
+// order - itu kehilangan yang tidak ada jalan pulangnya kecuali mengedit
+// database langsung.
+//
+// Dengan alamatnya menunggu di sini sampai link di inbox BARU diklik, salah
+// ketik tidak menghasilkan apa pun: link-nya nyasar ke alamat yang tidak ada,
+// token kedaluwarsa sendiri dalam 30 menit, dan `User.email` tidak pernah
+// tersentuh.
+model EmailChangeToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Alamat tujuan. TIDAK @unique: dua orang boleh sama-sama punya permintaan
+  // menunggu ke alamat yang sama - yang menentukan siapa yang dapat cuma siapa
+  // yang benar-benar bisa membuka inbox itu dan mengklik link-nya duluan.
+  // Tabrakannya ditangani @unique milik User.email saat token ditukar.
+  newEmail  String
   tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
@@ -456,8 +493,30 @@ model ProductItem {
   productId    String
   product      Product           @relation(fields: [productId], references: [id])
   name         String
+  // Penjelas singkat per nominal, tampil di bawah nama item pada halaman produk.
+  // Terpisah dari Product.description yang menjelaskan produknya secara utuh:
+  // yang perlu diberitahu pembeli sering justru melekat pada satu nominal saja
+  // ("bonus event", "maksimal 1x per akun", "butuh login ulang").
+  description  String?           @db.Text
+  // Kode SKU buatan admin untuk produk MANUAL. Tidak dipakai mesin fulfillment
+  // mana pun - produk manual memang dikirim admin sendiri - ini murni label
+  // supaya barang yang dikirim tangan tetap punya identitas yang bisa dirujuk
+  // saat mencocokkan stok dan menjawab komplain.
+  //
+  // Sengaja TIDAK @unique: ini catatan admin, dan constraint yang menolak
+  // simpan karena kode kembar cuma akan menghalangi pekerjaan tanpa melindungi
+  // apa pun.
+  manualSkuCode String?
   sellingPrice BigInt
   memberPrice  BigInt
+  // Stok tersedia. null = TAK TERBATAS, dan itu bawaannya - jadi migrasi ini
+  // nol perubahan perilaku untuk seluruh item yang sudah ada.
+  //
+  // Ini angka STOK AWAL, bukan sisa. Sisanya DITURUNKAN dari status order
+  // (lib/catalog/stock.ts), persis seperti kuota voucher, karena order pindah
+  // ke keadaan gagal di delapan tempat berbeda dan counter yang lupa dikembalikan
+  // menyusut diam-diam tanpa satu pun error.
+  stock        Int?
   // Flash sale opsional per item. Aktif ditentukan dari waktu server saat
   // request (flashStartAt <= now <= flashEndAt), bukan flag manual yang bisa
   // lupa dimatikan. Lihat lib/pricing/effective-price.ts - satu-satunya

@@ -18,6 +18,7 @@ import {
 } from "@/lib/midtrans/client";
 import { MIN_EXPIRY_MINUTES } from "@/lib/payment/rules";
 import { savePaymentRules } from "@/lib/payment/rules";
+import { getBaseUrl } from "@/lib/base-url";
 import { MAX_UNIQUE_CODE } from "@/lib/payment/fee";
 
 export type ActionResult = { ok?: string; error?: string };
@@ -259,6 +260,10 @@ export async function testPaymentChannels(): Promise<ChannelTestResult> {
             grossAmount: CHANNEL_TEST_AMOUNT,
             methodCode: method.code,
             expiryMinutes: MIN_EXPIRY_MINUTES,
+            // Probe: tidak ada yang akan membayarnya, jadi tidak ada pembeli
+            // yang bisa mendarat di sini. Diisi beranda supaya field wajibnya
+            // terpenuhi dengan URL yang tetap masuk akal seandainya toh dibuka.
+            finishUrl: await getBaseUrl(),
           },
           creds,
         );

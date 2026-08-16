@@ -5,6 +5,7 @@ import { retryOrderFulfillment, retryOrderRefund } from "@/lib/order/fulfillment
 import { truncateNote } from "@/lib/order/status-note";
 import { enqueuePartnerCallback } from "@/lib/partner/callback";
 import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
+import { cancelPendingOrder } from "@/lib/order/cancel";
 
 export interface ActionResult {
   ok?: string;
@@ -29,6 +30,23 @@ async function logAdmin(adminId: string, action: string, targetId: string, detai
   await db.adminActionLog.create({
     data: { adminId, action, targetType: "order", targetId, detail },
   });
+}
+
+export async function cancelOrderAction(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const orderId = formData.get("orderId");
+  if (typeof orderId !== "string" || !orderId) return { error: "Pesanan tidak ditemukan." };
+
+  const result = await cancelPendingOrder(orderId, "Dibatalkan admin");
+  if (result.error) return result;
+
+  await logAdmin(admin.adminId, "order.cancel", orderId);
+  revalidatePath("/admin/orders");
+  revalidatePath(`/admin/orders/${orderId}`);
+  return result;
 }
 
 export async function retryFulfillmentAction(formData: FormData): Promise<ActionResult> {

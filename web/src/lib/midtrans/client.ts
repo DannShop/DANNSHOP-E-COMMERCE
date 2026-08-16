@@ -553,7 +553,22 @@ export interface SnapTransactionResult {
 }
 
 export async function createSnapTransaction(
-  input: { orderId: string; grossAmount: number; methodCode: string; expiryMinutes: number },
+  input: {
+    orderId: string;
+    grossAmount: number;
+    methodCode: string;
+    expiryMinutes: number;
+    /**
+     * Ke mana pembeli dikembalikan setelah selesai membayar di Snap.
+     *
+     * WAJIB diisi pemanggil. Tanpa ini Midtrans memakai "Finish Redirect URL"
+     * dari dashboard mereka, yang bawaannya `https://example.com` - jadi pembeli
+     * yang baru saja membayar mendarat di halaman "Example Domain" milik orang
+     * lain, tanpa invoice, tanpa status, tanpa jalan kembali ke toko. Tidak ada
+     * error di mana pun; dari sisi kita transaksinya sukses sempurna.
+     */
+    finishUrl: string;
+  },
   creds: MidtransCreds,
 ): Promise<SnapTransactionResult> {
   const enabled = SNAP_PAYMENT_CODE[input.methodCode];
@@ -574,6 +589,18 @@ export async function createSnapTransaction(
       // PaymentMethodConfig.expiryMinutes yang sama, supaya kedaluwarsa di
       // Midtrans tetap sejalan dengan expiredAt lokal & job expire-order.
       expiry: { unit: "minute", duration: input.expiryMinutes },
+      // Ketiganya diisi dengan URL yang sama. Snap memakai `finish` untuk
+      // pembayaran sukses, tapi `error` dan `pending` dibiarkan jatuh ke bawaan
+      // dashboard kalau tidak disebut - dan bawaannya sama-sama example.com.
+      // Halaman invoice sudah menampilkan status apa pun yang sebenarnya
+      // (menunggu, gagal, sukses), jadi satu tujuan untuk ketiganya justru yang
+      // paling benar: pembeli selalu mendarat di tempat yang memberi tahu
+      // keadaan pesanannya, bukan di halaman yang menebak-nebak.
+      callbacks: {
+        finish: input.finishUrl,
+        error: input.finishUrl,
+        pending: input.finishUrl,
+      },
     }),
   });
 

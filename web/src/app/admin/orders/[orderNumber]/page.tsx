@@ -6,7 +6,7 @@ import { ORDER_STATUS_LABEL } from "@/lib/order/status-labels";
 import { diagnoseFailure } from "@/lib/order/failure-reason";
 import { ProviderApiLogEntryCard } from "@/components/admin/provider-api-log-entry";
 import {
-  retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction,
+  retryFulfillmentAction, retryRefundAction, markCompletedManualAction, markRefundedAction, cancelOrderAction,
 } from "@/app/actions/orders";
 import { OrderActions } from "./order-actions";
 import type { PaymentActions } from "@/lib/midtrans/client";
@@ -222,6 +222,7 @@ export default async function AdminOrderDetailPage({
             retryRefundAction={retryRefundAction}
             markCompletedManualAction={markCompletedManualAction}
             markRefundedAction={markRefundedAction}
+            cancelOrderAction={cancelOrderAction}
           />
         </div>
       </div>

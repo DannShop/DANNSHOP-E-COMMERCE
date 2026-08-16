@@ -43,6 +43,18 @@ export default defineConfig({
           include: ["tests/components/**/*.test.tsx"],
           environment: "jsdom",
           setupFiles: ["tests/setup/component-env.ts"],
+          // Bawaan vitest 5 detik, dan itu terlalu ketat DI SINI. Merender
+          // pohon Base UI di jsdom bisa memakan beberapa detik, dan saat
+          // beberapa berkas tes komponen berjalan berbarengan di mesin dengan
+          // RAM terbatas, satu render yang biasanya ~3 detik pernah tembus 7.
+          // Gejalanya "Test timed out", yang terbaca seperti tes rusak padahal
+          // perintah yang sama lolos kalau diulang - jenis kegagalan yang
+          // membuat orang berhenti mempercayai suite-nya dan mulai
+          // mengabaikan kegagalan yang sungguhan.
+          //
+          // Hanya project components yang dilonggarkan; project unit tetap di
+          // bawaan supaya tes logika yang menggantung tetap ketahuan cepat.
+          testTimeout: 20_000,
         },
       },
     ],

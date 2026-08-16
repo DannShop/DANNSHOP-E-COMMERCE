@@ -18,6 +18,13 @@ export async function createPaymentActions(input: {
   orderId: string;
   grossAmount: number;
   expiryMinutes: number;
+  /**
+   * Halaman tujuan setelah pembeli selesai di Snap. WAJIB, dan sengaja dijadikan
+   * field yang tidak boleh lupa diisi: kalau kosong, Midtrans mengembalikan
+   * pembeli ke example.com dan tidak ada satu pun error yang muncul di sisi kita.
+   * Mode Core API mengabaikannya (pembeli tidak pernah meninggalkan halaman kita).
+   */
+  finishUrl: string;
 }): Promise<PaymentActions> {
   const { creds, mode } = await getMidtransRuntime();
 
@@ -28,6 +35,7 @@ export async function createPaymentActions(input: {
         grossAmount: input.grossAmount,
         methodCode: input.methodCode,
         expiryMinutes: input.expiryMinutes,
+        finishUrl: input.finishUrl,
       },
       creds,
     );
