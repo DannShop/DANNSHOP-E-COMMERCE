@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS, type CatalogSource } from "@/lib/providers/labels";
+import { compareFulfillmentSku } from "@/lib/order/select-provider";
 import { ActionMessage, INITIAL_STATE, withPrevState } from "./action-utils";
 import type { ServerAction } from "./action-utils";
 import { DeleteConfirm } from "./delete-confirm";
@@ -52,21 +53,25 @@ const rupiah = (v: string | bigint) => `Rp ${Number(v).toLocaleString("id-ID")}`
 /**
  * Mana mapping yang sebenarnya akan dipakai duluan saat order masuk.
  *
- * Urutannya SENGAJA menyalin persis pemecah seri di selectFulfillmentSku
- * (priority → harga modal → nama provider). Kalau label di layar memakai aturan
- * yang berbeda dari yang dipakai mesin fulfillment, admin akan melihat "Utama"
- * di satu provider sementara order lari ke provider lain — persis jenis
- * ketidakcocokan yang paling lama ketahuannya.
+ * MEMAKAI pembanding milik mesin fulfillment (compareFulfillmentSku), bukan
+ * salinannya. Fungsi ini dulu menyalin aturan itu, disertai komentar yang
+ * memperingatkan bahaya kalau kedua salinannya menyimpang — peringatan yang
+ * benar, tapi peringatan tidak pernah menghentikan siapa pun. Gejalanya kalau
+ * menyimpang: admin melihat label "Utama" di satu provider padahal order lari
+ * ke provider lain, dan tidak ada yang error. Dengan pembanding bersama,
+ * menyimpang jadi mustahil.
+ *
+ * Aman diimpor dari komponen klien: select-provider.ts tidak mengimpor apa pun
+ * selain tipe.
  */
 function primarySkuId(skus: ProviderSkuData[]): string | null {
   if (skus.length === 0) return null;
-  const sorted = [...skus].sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    const ca = BigInt(a.costPrice);
-    const cb = BigInt(b.costPrice);
-    if (ca !== cb) return ca < cb ? -1 : 1;
-    return a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0;
-  });
+  const sorted = [...skus].sort((a, b) =>
+    compareFulfillmentSku(
+      { provider: a.provider, costPrice: BigInt(a.costPrice), priority: a.priority },
+      { provider: b.provider, costPrice: BigInt(b.costPrice), priority: b.priority },
+    ),
+  );
   return sorted[0].id;
 }
 

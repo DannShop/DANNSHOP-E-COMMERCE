@@ -17,6 +17,44 @@ export interface CandidateSku {
 const DEFAULT_PRIORITY = 100;
 
 /**
+ * Bentuk minimal yang dibutuhkan pengurutan - sengaja lebih longgar dari
+ * CandidateSku. `provider` bertipe string, bukan ProviderKey: panel admin
+ * menyimpannya sebagai string biasa, dan pembanding ini cuma memakai namanya
+ * sebagai pemecah seri terakhir. Mempersempitnya hanya akan memaksa pemakai
+ * melakukan cast tanpa menambah keamanan apa pun.
+ */
+export interface SortableSku {
+  provider: string;
+  costPrice: bigint;
+  priority?: number;
+}
+
+/**
+ * Urutan pemakaian SKU: priority admin -> harga modal -> nama provider.
+ *
+ * DIEKSPOR, dan itu disengaja. Panel admin menandai satu mapping sebagai "Utama"
+ * berdasarkan urutan yang sama, dan sebelumnya panel itu MENYALIN aturan ini,
+ * disertai komentar yang memperingatkan bahaya kalau kedua salinannya menyimpang
+ * - peringatan yang benar, tapi peringatan tidak pernah menghentikan siapa pun.
+ * Gejala kalau menyimpang: admin melihat label "Utama" di satu provider padahal
+ * order lari ke provider lain, jenis ketidakcocokan yang paling lama ketahuannya
+ * karena tidak ada yang error. Dengan satu pembanding yang dipakai bersama,
+ * menyimpang jadi mustahil, bukan sekadar tidak dianjurkan.
+ *
+ * Pemecah seri TERAKHIR selalu nama provider. Tanpa itu, dua SKU dengan angka
+ * yang identik bisa terurut berbeda antar-pemanggilan (urutan baris dari DB
+ * tidak dijamin), dan order yang sama bisa dikirim ke provider yang berbeda
+ * saat di-retry.
+ */
+export function compareFulfillmentSku(a: SortableSku, b: SortableSku): number {
+  const pa = a.priority ?? DEFAULT_PRIORITY;
+  const pb = b.priority ?? DEFAULT_PRIORITY;
+  if (pa !== pb) return pa - pb;
+  if (a.costPrice !== b.costPrice) return a.costPrice < b.costPrice ? -1 : 1;
+  return a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0;
+}
+
+/**
  * Pilih SKU provider mana yang dipakai untuk memenuhi satu item order.
  *
  * SEBELUMNYA fungsi ini meng-hardcode DIGIFLAZZ. Sekarang provider-agnostik, tapi
@@ -50,16 +88,9 @@ export function selectFulfillmentSku(
   // Guard anti-jual-rugi: harga modal naik di atas harga jual sejak terakhir sync.
   if (affordable.length === 0) return { ok: false, reason: "price_increased" };
 
-  const [best] = affordable.sort((a, b) => {
-    const pa = a.priority ?? DEFAULT_PRIORITY;
-    const pb = b.priority ?? DEFAULT_PRIORITY;
-    if (pa !== pb) return pa - pb;
-    if (a.costPrice !== b.costPrice) return a.costPrice < b.costPrice ? -1 : 1;
-    // Pemecah seri terakhir: nama provider. Tanpa ini, dua SKU dengan priority dan
-    // harga identik bisa terpilih berbeda antar-pemanggilan (urutan dari DB tidak
-    // dijamin), dan order yang sama bisa dikirim ke provider berbeda saat di-retry.
-    return a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0;
-  });
+  // Aturan urutannya ada di compareFulfillmentSku, bukan di sini: panel admin
+  // memakai pembanding yang sama untuk menandai mapping "Utama".
+  const [best] = affordable.sort(compareFulfillmentSku);
 
   return {
     ok: true,
