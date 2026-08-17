@@ -176,6 +176,15 @@ export default auth(async (req) => {
     nextUrl.pathname === "/pwa/splash" ||
     nextUrl.pathname.startsWith("/icons/");
 
+  // Berkas verifikasi kepemilikan domain (Digital Asset Links untuk app Android
+  // TWA, dan sejenisnya di masa depan). Alasannya sama persis dengan aset PWA di
+  // atas: diambil TANPA cookie sesi, dan rewrite maintenance membalas HTTP 200
+  // berisi HTML — Chrome membacanya sebagai berkas verifikasi yang rusak, lalu
+  // app yang SUDAH TERPASANG di HP orang mendadak menampilkan address bar.
+  // Yang terbuka cuma nama paket dan sidik jari sertifikat, dua-duanya memang
+  // informasi publik: sidik jari itu justru ada supaya bisa dicocokkan siapa pun.
+  const isWellKnown = nextUrl.pathname.startsWith("/.well-known/");
+
   // Jalur pemulihan/identitas akun. Dikecualikan dengan alasan yang sama persis
   // dengan /login yang sudah lama ada di daftar ini: link-link ini masuk lewat
   // EMAIL, kedaluwarsa dalam 30 menit, dan sekali pakai - orang yang membukanya
@@ -202,6 +211,7 @@ export default auth(async (req) => {
     nextUrl.pathname.startsWith("/mitra") ||
     nextUrl.pathname.startsWith("/api") ||
     isPwaAsset ||
+    isWellKnown ||
     isAccountRecovery ||
     nextUrl.pathname === "/login";
   if (!isExemptFromMaintenance && (await isMaintenanceModeOn())) {
