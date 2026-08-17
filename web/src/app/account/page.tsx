@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { ORDER_STATUS_LABEL, DEPOSIT_STATUS_LABEL } from "@/lib/order/status-labels";
 import { getMembershipContext } from "@/lib/membership/tier";
+import { getPwaSettings } from "@/lib/pwa/settings";
+import { DownloadApkCard } from "@/components/pwa/download-apk-card";
 import { InstallAppCard } from "./install-app-card";
 
 export const metadata: Metadata = { title: "Akun Saya" };
@@ -48,11 +50,12 @@ export default async function AccountPage() {
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const [wallet, recentOrders, recentDeposits, membership] = await Promise.all([
+  const [wallet, recentOrders, recentDeposits, membership, pwaSettings] = await Promise.all([
     db.wallet.findUnique({ where: { userId } }),
     db.order.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 5 }),
     db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 3 }),
     getMembershipContext(userId),
+    getPwaSettings(),
   ]);
 
   return (
@@ -117,6 +120,11 @@ export default async function AccountPage() {
           Merender null sendiri kalau app-nya sudah terpasang atau browsernya
           tidak mendukung, jadi tidak perlu dikondisikan dari sini. */}
       <InstallAppCard />
+
+      {/* Unduh APK. Dua jalur pemasangan yang berbeda sengaja berdampingan:
+          yang di atas memasang lewat browser (PWA), yang ini berkas Android
+          sungguhan. Kartunya menyembunyikan diri sendiri di luar Android. */}
+      {pwaSettings.apk.toko && <DownloadApkCard apk={pwaSettings.apk.toko} />}
 
       {/* ===== Transaksi terakhir ===== */}
       <section className="flex flex-col gap-3">

@@ -1,8 +1,15 @@
 import { getInvoiceBranding } from "@/lib/invoice/branding";
 import { getPwaSettings } from "@/lib/pwa/settings";
-import { savePwaAppSettings, uploadPwaIcon, uploadPwaSplash } from "@/app/actions/pwa";
+import {
+  removeAndroidApk,
+  savePwaAppSettings,
+  uploadAndroidApk,
+  uploadPwaIcon,
+  uploadPwaSplash,
+} from "@/app/actions/pwa";
 import { MobileAppForm } from "./mobile-app-form";
 import { InstallStatus } from "./install-status";
+import { ApkField } from "./apk-field";
 
 export default async function MobileAppPage() {
   const [settings, branding] = await Promise.all([getPwaSettings(), getInvoiceBranding()]);
@@ -26,6 +33,29 @@ export default async function MobileAppPage() {
         uploadIcon={uploadPwaIcon}
         uploadSplash={uploadPwaSplash}
       />
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Aplikasi Android (.apk)</h2>
+          <p className="text-xs text-muted-foreground">
+            Selain dipasang lewat browser, aplikasi ini juga bisa dibagikan sebagai berkas APK
+            Android sungguhan — bisa dikirim lewat WhatsApp tanpa lewat Play Store. Berkasnya
+            dibuat sekali di komputer, lalu diunggah di sini.
+          </p>
+        </div>
+        <ApkField
+          kind="toko"
+          value={settings.apk.toko}
+          upload={uploadAndroidApk}
+          remove={removeAndroidApk}
+        />
+        <ApkField
+          kind="admin"
+          value={settings.apk.admin}
+          upload={uploadAndroidApk}
+          remove={removeAndroidApk}
+        />
+      </section>
 
       <div className="rounded-lg border border-dashed p-4">
         <h2 className="text-sm font-semibold">Cara memasang di HP</h2>

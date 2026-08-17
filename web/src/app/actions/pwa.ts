@@ -2,8 +2,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { uploadToBlob } from "@/lib/blob-upload";
-import { SHORT_NAME_MAX, type PwaImage, type PwaIconSet } from "@/lib/pwa/config";
-import { savePwaSettings } from "@/lib/pwa/settings";
+import { SHORT_NAME_MAX, type PwaImage, type PwaIconSet, type PwaAppKind } from "@/lib/pwa/config";
+import { getPwaSettings, savePwaSettings } from "@/lib/pwa/settings";
 import { requireAdminSession } from "@/lib/auth/admin-gate";
 
 export type ActionResult = { ok?: string; error?: string };
@@ -204,7 +204,15 @@ export async function savePwaAppSettings(formData: FormData): Promise<ActionResu
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  await savePwaSettings(parsed.data);
+  // APK dibawa serta dari nilai tersimpan, BUKAN dari form.
+  //
+  // Form ini tidak punya field APK sama sekali (unggahannya jalur terpisah),
+  // jadi menyimpan hasil parse apa adanya akan menghapus penunjuk APK setiap
+  // kali admin menyentuh nama/warna/ikon - kehilangan yang tidak menampilkan
+  // error di mana pun, dan baru ketahuan saat ada yang mengeluh tombol
+  // unduhnya hilang.
+  const current = await getPwaSettings();
+  await savePwaSettings({ ...parsed.data, apk: current.apk });
   await logAdmin(admin.adminId, "site_setting.save_pwa", {
     ikonToko: parsed.data.toko.icon ? "kustom" : "bawaan",
     ikonAdmin: parsed.data.admin.icon ? "kustom" : "bawaan",
@@ -230,4 +238,91 @@ export async function savePwaAppSettings(formData: FormData): Promise<ActionResu
   return {
     ok: "Pengaturan aplikasi tersimpan. App yang sudah terpasang di HP memperbarui ikon & namanya sendiri dalam beberapa jam — atau langsung, kalau dihapus lalu dipasang ulang.",
   };
+}
+
+// ===== Berkas APK Android =====
+//
+// APK dibuat di komputer lewat Bubblewrap (docs/12), bukan dibangun server ini.
+// Yang dikerjakan di sini cuma menampungnya supaya bisa dibagikan tanpa Play
+// Store - berkasnya masuk Blob, dan yang disimpan di pengaturan cuma penunjuk.
+
+/**
+ * MIME sebuah APK tidak bisa dipercaya.
+ *
+ * Chrome di Android melaporkannya `application/vnd.android.package-archive`,
+ * Windows sering mengirim `application/octet-stream`, dan sebagian browser
+ * mengirim string kosong. Menolak berdasarkan MIME akan menolak berkas yang
+ * benar-benar APK, jadi yang diperiksa adalah akhiran namanya - dan itu memang
+ * satu-satunya penanda yang konsisten dikirim semua browser.
+ */
+const APK_MIME_TYPES = new Set([
+  "application/vnd.android.package-archive",
+  "application/octet-stream",
+  "application/x-zip-compressed",
+  "application/zip",
+  "",
+]);
+
+export async function uploadAndroidApk(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const kind: PwaAppKind = formData.get("kind") === "admin" ? "admin" : "toko";
+  const file = formData.get("apk");
+  const version = String(formData.get("version") ?? "").trim().slice(0, 20);
+
+  if (!(file instanceof File) || file.size === 0) return { error: "Berkas APK tidak ditemukan." };
+  if (!file.name.toLowerCase().endsWith(".apk")) {
+    return { error: "Berkas harus berakhiran .apk" };
+  }
+  if (!APK_MIME_TYPES.has(file.type)) {
+    return { error: `Jenis berkas tidak dikenali (${file.type}).` };
+  }
+
+  const result = await uploadToBlob(
+    "android-apk",
+    `${kind}-${Date.now()}`,
+    file,
+    new Set([file.type]),
+  );
+  if (result.error || !result.url) return { error: result.error ?? "Gagal mengunggah APK." };
+
+  const current = await getPwaSettings();
+  await savePwaSettings({
+    ...current,
+    apk: {
+      ...current.apk,
+      [kind]: {
+        url: result.url,
+        version,
+        sizeBytes: file.size,
+        uploadedAt: new Date().toISOString(),
+      },
+    },
+  });
+
+  await logAdmin(admin.adminId, "site_setting.upload_apk", { app: kind, versi: version });
+  revalidatePath("/admin/mobile-app");
+  revalidatePath("/account");
+  return { ok: `APK ${kind === "admin" ? "Admin" : "Toko"} berhasil diunggah.` };
+}
+
+export async function removeAndroidApk(formData: FormData): Promise<ActionResult> {
+  "use server";
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const kind: PwaAppKind = formData.get("kind") === "admin" ? "admin" : "toko";
+  const current = await getPwaSettings();
+  // Berkas di Blob sengaja TIDAK ikut dihapus: tautan lama mungkin sudah
+  // tersebar di grup WhatsApp, dan mematikannya berarti orang yang menekan
+  // tautan itu menerima galat alih-alih berkas. Yang dicabut cuma tombol
+  // unduhnya di situs.
+  await savePwaSettings({ ...current, apk: { ...current.apk, [kind]: null } });
+
+  await logAdmin(admin.adminId, "site_setting.remove_apk", { app: kind });
+  revalidatePath("/admin/mobile-app");
+  revalidatePath("/account");
+  return { ok: "Tombol unduh APK dicabut dari situs." };
 }

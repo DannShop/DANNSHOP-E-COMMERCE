@@ -45,28 +45,47 @@ function parseFingerprints(raw: string | undefined): string[] {
     .filter((s) => FINGERPRINT_RE.test(s));
 }
 
+/**
+ * Nama paket yang dipercaya. Boleh LEBIH DARI SATU, dipisah koma.
+ *
+ * Ada dua app Android di proyek ini (toko & admin) dengan nama paket berbeda,
+ * dan keduanya membuka domain yang sama - jadi keduanya harus disebut di sini.
+ * Menyebut satu saja membuat app yang lain menampilkan address bar Chrome,
+ * tanpa pesan galat apa pun yang menjelaskan sebabnya.
+ */
+function parsePackageNames(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    // Nama paket Android: minimal dua bagian dipisah titik, huruf kecil.
+    .filter((s) => /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/i.test(s));
+}
+
 export async function GET() {
-  const packageName = process.env.TWA_PACKAGE_NAME?.trim();
+  const packageNames = parsePackageNames(process.env.TWA_PACKAGE_NAME);
   const fingerprints = parseFingerprints(process.env.TWA_SHA256_FINGERPRINTS);
 
   // Belum dikonfigurasi = 404, BUKAN array kosong. Array kosong adalah jawaban
   // yang sah menurut spesifikasi dan berarti "tidak ada app yang saya percayai",
   // jadi Chrome berhenti mencoba dan meng-cache penolakan itu. 404 membuatnya
   // memperlakukan ini sebagai "belum siap" dan mencoba lagi nanti.
-  if (!packageName || fingerprints.length === 0) {
+  if (packageNames.length === 0 || fingerprints.length === 0) {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  const statements = [
-    {
-      relation: ["delegate_permission/common.handle_all_urls"],
-      target: {
-        namespace: "android_app",
-        package_name: packageName,
-        sha256_cert_fingerprints: fingerprints,
-      },
+  // Semua sidik jari berlaku untuk semua paket. Itu benar SELAMA app-app ini
+  // ditandatangani keystore yang sama - yang memang kasusnya di sini, dan
+  // memisahkannya per paket menuntut env berpasangan yang jauh lebih mudah
+  // salah diisi daripada manfaatnya.
+  const statements = packageNames.map((packageName) => ({
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: {
+      namespace: "android_app",
+      package_name: packageName,
+      sha256_cert_fingerprints: fingerprints,
     },
-  ];
+  }));
 
   return NextResponse.json(statements, {
     headers: {

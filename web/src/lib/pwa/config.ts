@@ -75,9 +75,32 @@ export interface PwaAppSettings {
   splash: PwaSplashSettings;
 }
 
+/**
+ * Berkas APK Android yang sudah diunggah admin.
+ *
+ * Ini SATU-SATUNYA bagian aplikasi mobile yang tidak dibangun dari web: APK
+ * dibuat di komputer lewat Bubblewrap (lihat docs/12), lalu diunggah ke sini
+ * supaya bisa dibagikan tanpa Play Store. Yang disimpan cuma penunjuk ke
+ * berkasnya di Blob — berkasnya sendiri tidak pernah masuk repo.
+ */
+export interface AndroidApkInfo {
+  url: string;
+  /** Ditulis admin, mis. "1.0.0". Ditampilkan supaya pengunduh tahu ini versi berapa. */
+  version: string;
+  sizeBytes: number;
+  /** ISO string. Dipakai menampilkan "diunggah 3 hari lalu". */
+  uploadedAt: string;
+}
+
 export interface PwaSettings {
   toko: PwaAppSettings;
   admin: PwaAppSettings;
+  /**
+   * APK per aplikasi. Dipisah karena keduanya app Android yang berbeda dengan
+   * nama paket berbeda — APK admin membuka /admin dan tidak ada gunanya
+   * dibagikan ke pembeli.
+   */
+  apk: Record<PwaAppKind, AndroidApkInfo | null>;
 }
 
 // Ikon bawaan. Sudah ada di repo sejak deploy pertama, jadi app SELALU bisa
@@ -188,15 +211,37 @@ function parseApp(raw: unknown, kind: PwaAppKind, legacy: { theme: string; backg
  * diam-diam pada deploy yang memisahkannya - kegagalan yang tidak menampilkan
  * error di mana pun dan baru ketahuan dari layar pembuka yang berubah sendiri.
  */
+/**
+ * Membaca penunjuk APK, menyaring yang tidak masuk akal.
+ *
+ * URL WAJIB https: berkas ini dipasang orang ke HP-nya, dan tautan http
+ * terbuka terhadap penyisipan di tengah jalan — persis berkas yang paling
+ * tidak boleh ditukar diam-diam.
+ */
+function parseApk(raw: unknown): AndroidApkInfo | null {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const url = typeof o.url === "string" ? o.url.trim() : "";
+  if (!url.startsWith("https://")) return null;
+  const sizeBytes = typeof o.sizeBytes === "number" && o.sizeBytes > 0 ? Math.round(o.sizeBytes) : 0;
+  return {
+    url,
+    version: typeof o.version === "string" ? o.version.trim().slice(0, 20) : "",
+    sizeBytes,
+    uploadedAt: typeof o.uploadedAt === "string" ? o.uploadedAt : "",
+  };
+}
+
 export function parsePwaSettings(raw: unknown): PwaSettings {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const legacy = {
     theme: sanitizeHexColor(o.themeColor, ""),
     background: sanitizeHexColor(o.backgroundColor, ""),
   };
+  const apk = (o.apk && typeof o.apk === "object" ? o.apk : {}) as Record<string, unknown>;
   return {
     toko: parseApp(o.toko, "toko", legacy),
     admin: parseApp(o.admin, "admin", legacy),
+    apk: { toko: parseApk(apk.toko), admin: parseApk(apk.admin) },
   };
 }
 
