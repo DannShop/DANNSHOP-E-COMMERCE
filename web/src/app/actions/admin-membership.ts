@@ -37,7 +37,6 @@ function parseBenefitsInput(formData: FormData): string[] {
 const tierFieldsSchema = z.object({
   name: z.string().trim().min(1, "Nama tier wajib diisi").max(50),
   price: z.coerce.bigint().min(0n, "Harga tidak boleh negatif"),
-  durationDays: z.coerce.number().int().min(1, "Durasi minimal 1 hari").max(3650, "Durasi maksimal 3650 hari"),
   discountPercent: z.coerce.number().int().min(0, "Diskon tidak boleh negatif").max(10_000, "Diskon maksimal 100%"),
   depositBonusPercent: z.coerce.number().int().min(0, "Bonus deposit tidak boleh negatif").max(10_000, "Bonus deposit maksimal 100%"),
   badgeColor: hexColorSchema,
@@ -58,7 +57,6 @@ export async function createMembershipTier(formData: FormData): Promise<ActionRe
     slug: formData.get("slug"),
     name: formData.get("name"),
     price: formData.get("price"),
-    durationDays: formData.get("durationDays"),
     discountPercent: formData.get("discountPercent"),
     depositBonusPercent: formData.get("depositBonusPercent"),
     badgeColor: formData.get("badgeColor") || "#a3a3a3",
@@ -74,9 +72,14 @@ export async function createMembershipTier(formData: FormData): Promise<ActionRe
   const tier = await db.membershipTier.create({
     data: {
       slug: parsed.data.slug,
+      // Kolom USANG: paket reseller sekali bayar, berlaku selamanya, jadi tidak
+      // ada satu pun kode yang membacanya lagi. Diisi 0 dari sini alih-alih
+      // dijadikan kolom di form - angka yang diketik admin lalu tidak pernah
+      // dipakai cuma menunggu untuk salah dipercaya. Kolomnya sendiri baru bisa
+      // dihapus lewat migrasi tersendiri.
+      durationDays: 0,
       name: parsed.data.name,
       price: parsed.data.price,
-      durationDays: parsed.data.durationDays,
       discountPercent: parsed.data.discountPercent,
       depositBonusPercent: parsed.data.depositBonusPercent,
       badgeColor: parsed.data.badgeColor,
@@ -102,7 +105,6 @@ export async function updateMembershipTier(formData: FormData): Promise<ActionRe
     id: formData.get("id"),
     name: formData.get("name"),
     price: formData.get("price"),
-    durationDays: formData.get("durationDays"),
     discountPercent: formData.get("discountPercent"),
     depositBonusPercent: formData.get("depositBonusPercent"),
     badgeColor: formData.get("badgeColor") || "#a3a3a3",
@@ -117,7 +119,6 @@ export async function updateMembershipTier(formData: FormData): Promise<ActionRe
     data: {
       name: parsed.data.name,
       price: parsed.data.price,
-      durationDays: parsed.data.durationDays,
       discountPercent: parsed.data.discountPercent,
       depositBonusPercent: parsed.data.depositBonusPercent,
       badgeColor: parsed.data.badgeColor,
@@ -165,14 +166,19 @@ export async function deleteMembershipTier(formData: FormData): Promise<ActionRe
 
 const grantSchema = z.object({
   email: z.string().trim().toLowerCase().email("Email tidak valid"),
-  tierId: z.string().min(1, "Pilih tier"),
-  days: z.coerce.number().int().min(1).max(3650).optional(),
+  tierId: z.string().min(1, "Pilih paket"),
 });
 
-// Grant manual - dipakai CS untuk kompensasi customer, hadiah promo, dsb.
-// tanpa memotong saldo user. pricePaid = 0 menandai baris ini bukan hasil
-// pembelian (dibedakan lewat `source`, dan tampil sebagai "Pemberian Admin" di
-// riwayat, bukan seolah-olah user membayar).
+// Memberi paket reseller TANPA pembayaran - kompensasi, hadiah promo, atau
+// menaikkan reseller yang sudah membayar lewat jalur lain.
+//
+// ⚠️ DITULIS KE ResellerAccount, bukan UserMembership.
+//
+// Sejak program membership diganti program reseller (2026-08-17),
+// getMembershipContext() membaca ResellerAccount dan TIDAK PERNAH menyentuh
+// UserMembership lagi. Versi sebelumnya masih menulis ke tabel lama, jadi
+// tombol ini melaporkan sukses sementara harga orangnya tidak berubah sedikit
+// pun - kegagalan senyap yang persis paling sulit ditemukan.
 export async function grantMembership(formData: FormData): Promise<ActionResult> {
   "use server";
   const admin = await requireAdmin();
@@ -181,42 +187,51 @@ export async function grantMembership(formData: FormData): Promise<ActionResult>
   const parsed = grantSchema.safeParse({
     email: formData.get("email"),
     tierId: formData.get("tierId"),
-    days: formData.get("days") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const [user, tier] = await Promise.all([
-    db.user.findUnique({ where: { email: parsed.data.email } }),
+    db.user.findUnique({
+      where: { email: parsed.data.email },
+      select: { id: true, email: true, name: true, resellerAccount: { select: { id: true, activatedAt: true } } },
+    }),
     db.membershipTier.findUnique({ where: { id: parsed.data.tierId } }),
   ]);
   if (!user) return { error: `User dengan email ${parsed.data.email} tidak ditemukan.` };
-  if (!tier) return { error: "Tier tidak ditemukan." };
+  if (!tier) return { error: "Paket tidak ditemukan." };
+  if (!user.resellerAccount) {
+    // Paket hanya berarti untuk reseller - diskonnya dibaca dari
+    // ResellerAccount. Membuatkan barisnya diam-diam di sini akan melewati
+    // formulir data usaha DAN verifikasi email yang jadi syarat aktivasi.
+    return { error: `${user.email} belum terdaftar sebagai reseller. Minta dia mendaftar dulu lewat menu Reseller.` };
+  }
 
-  const now = new Date();
-  const days = parsed.data.days ?? tier.durationDays;
-  const current = await db.userMembership.findFirst({
-    where: { userId: user.id, expiresAt: { gt: now } },
-    orderBy: { expiresAt: "desc" },
-  });
-  const baseStart = current && current.tierId === tier.id ? current.expiresAt : now;
-  const expiresAt = new Date(baseStart.getTime() + days * 24 * 60 * 60 * 1000);
-
-  const membership = await db.userMembership.create({
+  await db.resellerAccount.update({
+    where: { id: user.resellerAccount.id },
     data: {
-      userId: user.id,
       tierId: tier.id,
-      startedAt: now,
-      expiresAt,
-      pricePaid: 0n,
-      durationDaysSnapshot: days,
-      source: "manual_grant",
+      // tierPricePaid = HARGA PAKET, bukan 0, walau pemberian ini gratis.
+      // Angka ini adalah dasar kredit saat orangnya naik paket nanti
+      // (lib/reseller/upgrade.ts). Mengisinya 0 berarti dia harus membayar
+      // penuh untuk naik - pemberian yang justru merugikannya.
+      tierPricePaid: tier.price,
+      // Pemberian paket sekaligus mengaktifkan akun resellernya kalau belum:
+      // admin yang memberi paket jelas sudah mengenal orangnya, dan menahannya
+      // di layar "tunggu aktivasi" setelah diberi paket cuma membingungkan.
+      ...(user.resellerAccount.activatedAt ? {} : { activatedAt: new Date() }),
     },
   });
-  await logAdmin(admin.adminId, "membership.grant", membership.id, {
-    userId: user.id, userEmail: user.email, tierId: tier.id, tierName: tier.name, days,
+
+  await logAdmin(admin.adminId, "reseller.grant_tier", user.resellerAccount.id, {
+    userId: user.id,
+    userEmail: user.email,
+    tierId: tier.id,
+    tierName: tier.name,
+    tierPrice: tier.price.toString(),
   });
   revalidatePath("/admin/membership-tiers");
-  return { ok: `Tier "${tier.name}" diberikan ke ${user.email} sampai ${expiresAt.toLocaleDateString("id-ID")}.` };
+  revalidatePath("/admin/reseller");
+  return { ok: `Paket "${tier.name}" diberikan ke ${user.email}. Berlaku selamanya, tanpa pembayaran.` };
 }
 
 // ===== Preview harga per tier =====

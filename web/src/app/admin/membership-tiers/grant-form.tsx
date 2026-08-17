@@ -47,12 +47,11 @@ export function GrantMembershipForm({
           </SelectContent>
         </Select>
       </div>
-      <div className="w-28 space-y-1.5">
-        <Label htmlFor="grant-days" className="text-xs">Durasi (hari)</Label>
-        <Input id="grant-days" name="days" type="number" min={1} max={3650} placeholder="default tier" />
-      </div>
+      {/* Kolom durasi DIHAPUS: paket reseller sekali bayar, berlaku selamanya.
+          Kolom yang tampil tapi tidak dibaca apa pun cuma menunggu untuk salah
+          dipercaya. */}
       <Button type="submit" disabled={pending}>
-        {pending ? "Memberikan..." : "Beri Tier"}
+        {pending ? "Memberikan..." : "Beri Paket"}
       </Button>
       {(state.ok || state.error) && (
         <p className={`w-full text-xs ${state.error ? "text-destructive" : "text-emerald-700"}`}>

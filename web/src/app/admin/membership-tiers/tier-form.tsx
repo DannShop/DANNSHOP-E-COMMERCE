@@ -26,7 +26,6 @@ export function TierForm({
     slug: string;
     name: string;
     price: string;
-    durationDays: number;
     discountPercent: number;
     depositBonusPercent: number;
     badgeColor: string;
@@ -74,18 +73,6 @@ export function TierForm({
           <div className="space-y-1.5">
             <Label htmlFor={`price-${tier.id}`} className="text-xs">Harga (Rp)</Label>
             <Input id={`price-${tier.id}`} name="price" type="number" min={0} defaultValue={tier.price} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`durationDays-${tier.id}`} className="text-xs">Masa berlaku (hari)</Label>
-            <Input
-              id={`durationDays-${tier.id}`}
-              name="durationDays"
-              type="number"
-              min={1}
-              max={3650}
-              defaultValue={tier.durationDays}
-              required
-            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`badgeColor-${tier.id}`} className="text-xs">Warna lencana</Label>

@@ -156,7 +156,18 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   // tidak tersedia", padahal barangnya justru selalu tersedia (dikirim admin).
   const isManual = item.product.fulfillmentMode === "MANUAL";
   if (!isManual) {
-    const decision = selectFulfillmentSku({ sellingPrice: price }, item.providerSkus, activeProviders);
+    // Yang diadu dengan modal adalah harga SETELAH voucher — uang yang
+    // benar-benar akan masuk. Sebelumnya `price` (sebelum voucher) yang
+    // dikirim, dan itu membuat penjaga anti-jual-rugi bisa dilewati: voucher
+    // 90% pada item bermargin tipis lolos pemeriksaan lalu diproses rugi,
+    // tanpa satu pun peringatan. Diskon tier tidak punya masalah ini karena
+    // sudah dijepit memberPrice di effectivePrice(), tapi voucher memotong
+    // SETELAH lantai itu.
+    const decision = selectFulfillmentSku(
+      { sellingPrice: netPrice(price, voucher) },
+      item.providerSkus,
+      activeProviders,
+    );
     if (!decision.ok) return { error: "Item ini sedang tidak tersedia untuk dibeli, coba lagi nanti." };
   }
 

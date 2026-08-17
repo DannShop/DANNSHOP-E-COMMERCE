@@ -31,10 +31,6 @@ export function NewTierForm({ action }: { action: (formData: FormData) => Promis
           <Label htmlFor="new-tier-price" className="text-xs">Harga (Rp)</Label>
           <Input id="new-tier-price" name="price" type="number" min={0} placeholder="150000" required />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="new-tier-duration" className="text-xs">Masa berlaku (hari)</Label>
-          <Input id="new-tier-duration" name="durationDays" type="number" min={1} max={3650} placeholder="30" required />
-        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -8,11 +8,21 @@ import {
   Coins,
   ShoppingBag,
   Scale,
+  Percent,
+  Users,
+  Store,
+  Plug,
+  UserCheck,
+  BarChart3,
+  TicketPercent,
+  Server,
   ArrowUpRight,
 } from "lucide-react";
 import { db } from "@/lib/db";
-import { getSalesSummary, startOfDay, endOfDay } from "@/lib/reports/sales";
+import { getOverview } from "@/lib/reports/overview";
 import { CRON_STALE_MINUTES, getCronHealth } from "@/lib/jobs/heartbeat";
+import { StatCard, Panel, RangePicker, resolveRange } from "@/components/admin/stat-card";
+import { RevenueProfitChart, OrdersChart } from "@/components/admin/charts";
 
 const DATE_FMT = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" });
 
@@ -24,56 +34,29 @@ function formatRupiah(amount: bigint): string {
   }).format(Number(amount));
 }
 
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  href,
-}: {
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
-  href?: string;
-}) {
-  const content = (
-    <div className="glass-card group/stat relative h-full overflow-hidden rounded-2xl p-5 transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10">
-      <div className="flex items-start justify-between gap-3">
-        <span className="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-500/15 text-indigo-600 ring-1 ring-indigo-500/20 dark:text-indigo-300">
-          <Icon className="size-[18px]" />
-        </span>
-        {href && (
-          <ArrowUpRight
-            className="size-4 shrink-0 text-muted-foreground/50 transition-[transform,color] duration-300 ease-out group-hover/stat:translate-x-0.5 group-hover/stat:-translate-y-0.5 group-hover/stat:text-foreground"
-            aria-hidden="true"
-          />
-        )}
-      </div>
-      <p className="mt-4 text-xs font-medium tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 font-heading text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-    </div>
-  );
-  return href ? (
-    <Link href={href} className="block h-full">
-      {content}
-    </Link>
-  ) : (
-    content
-  );
-}
-
 const QUICK_LINKS = [
   { href: "/admin/orders", label: "Kelola Order", icon: ClipboardList },
   { href: "/admin/products", label: "Kelola Produk", icon: Boxes },
+  { href: "/admin/reseller", label: "Reseller", icon: Store },
   { href: "/admin/wallet-ledger", label: "Mutasi Saldo", icon: Wallet },
-  { href: "/admin/reports", label: "Laporan Lengkap", icon: ReceiptText },
+  { href: "/admin/vouchers", label: "Kode Promo", icon: TicketPercent },
+  { href: "/admin/providers", label: "Providers", icon: Server },
+  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/admin/reports", label: "Laporan Penjualan", icon: ReceiptText },
 ];
 
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
+  const params = await searchParams;
+  const { from, to, activeDays } = resolveRange(params, 30);
   const today = new Date();
 
-  const [todaySummary, needsReviewCount, refundPendingCount, lowBalanceProviders, cronHealth, overdueJobs] =
+  const [overview, needsReviewCount, refundPendingCount, lowBalanceProviders, cronHealth, overdueJobs] =
     await Promise.all([
-      getSalesSummary(startOfDay(today), endOfDay(today)),
+      getOverview(from, to),
       db.order.count({ where: { status: "NEEDS_REVIEW" } }),
       db.order.count({ where: { status: "REFUND_PENDING" } }),
       db.providerConfig.findMany({
@@ -81,23 +64,25 @@ export default async function AdminDashboardPage() {
         select: { displayName: true, balance: true },
       }),
       getCronHealth(today),
-      // Job yang jatuh tempo lebih dari ambang basi. Angka ini yang menerjemahkan
-      // "cron mati" jadi kerugian yang konkret bagi admin: sekian pekerjaan
-      // menumpuk dan tidak ada yang mengerjakannya.
       db.job.count({
         where: { status: "PENDING", runAt: { lt: new Date(today.getTime() - CRON_STALE_MINUTES * 60_000) } },
       }),
     ]);
 
+  const { totals, people, daily, topProducts, byCategory, paymentMix } = overview;
   const hasAlerts = needsReviewCount > 0 || refundPendingCount > 0 || lowBalanceProviders.length > 0;
+  const marginLabel = totals.revenueWithCost > 0n ? `${(totals.marginBp / 100).toFixed(1)}%` : "—";
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8">
-      <div>
-        <h2 className="font-heading text-2xl font-bold tracking-tight">Selamat datang kembali</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Ringkasan performa toko hari ini.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="font-heading text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ringkasan performa toko untuk rentang yang dipilih.
+          </p>
+        </div>
+        <RangePicker basePath="/admin" from={from} to={to} activeDays={activeDays} />
       </div>
 
       {/* ===== Cron mati =====
@@ -201,38 +186,120 @@ export default async function AdminDashboardPage() {
       )}
 
       <section>
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h3 className="text-sm font-semibold tracking-wide">Hari ini</h3>
-          <Link
-            href="/admin/reports"
-            className="text-xs text-muted-foreground underline-offset-4 transition-colors duration-200 ease-out hover:text-foreground hover:underline"
-          >
-            Lihat laporan lengkap
-          </Link>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <h3 className="mb-3 text-sm font-semibold tracking-wide">Uang</h3>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Omzet" value={formatRupiah(totals.totalRevenue)} icon={Coins} href="/admin/reports" />
           <StatCard
-            label="Omzet Hari Ini"
-            value={formatRupiah(todaySummary.totalRevenue)}
-            icon={Coins}
-            href="/admin/reports"
-          />
-          <StatCard
-            label="Order Hari Ini"
-            value={String(todaySummary.orderCount)}
-            icon={ShoppingBag}
-            href="/admin/orders"
-          />
-          <StatCard
-            label="Rata-rata per Order"
-            value={formatRupiah(
-              todaySummary.orderCount > 0
-                ? todaySummary.totalRevenue / BigInt(todaySummary.orderCount)
-                : 0n,
-            )}
+            label="Laba bersih"
+            value={formatRupiah(totals.profit)}
             icon={Scale}
+            hint={
+              totals.ordersWithoutCost > 0
+                ? `${totals.ordersWithoutCost} order belum tercatat modalnya`
+                : "Semua order sudah tercatat modalnya"
+            }
+          />
+          <StatCard
+            label="Margin"
+            value={marginLabel}
+            icon={Percent}
+            hint={totals.revenueWithCost > 0n ? `dari ${formatRupiah(totals.revenueWithCost)} bermodal` : undefined}
+          />
+          <StatCard label="Order" value={String(totals.orderCount)} icon={ShoppingBag} href="/admin/orders" />
+        </div>
+
+        {/* Modal yang belum diisi diberi tahu terang-terangan, bukan disembunyikan.
+            Angka laba yang dihitung dari sebagian order gampang dibaca sebagai
+            laba seluruh toko - dan selisihnya bisa sangat besar. */}
+        {totals.ordersWithoutCost > 0 && (
+          <p className="mt-3 rounded-xl bg-amber-500/10 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
+            Laba dihitung dari {totals.orderCount - totals.ordersWithoutCost} order yang modalnya tercatat.{" "}
+            <strong>{totals.ordersWithoutCost} order</strong> ({formatRupiah(totals.revenueWithoutCost)}) belum punya
+            catatan modal — biasanya produk manual yang kolom modalnya masih kosong.{" "}
+            <Link href="/admin/products" className="font-medium underline underline-offset-4">
+              Isi modal produk
+            </Link>
+          </p>
+        )}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <Panel
+          title="Omzet & laba harian"
+          action={
+            <Link href="/admin/reports" className="text-xs text-muted-foreground underline-offset-4 hover:underline">
+              Laporan lengkap
+            </Link>
+          }
+        >
+          <RevenueProfitChart data={daily} />
+        </Panel>
+        <Panel title="Order harian">
+          <OrdersChart data={daily} />
+        </Panel>
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-sm font-semibold tracking-wide">Orang</h3>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Pembeli aktif"
+            value={String(people.buyersTransacting)}
+            icon={UserCheck}
+            hint="Punya order dibayar di rentang ini"
+          />
+          <StatCard
+            label="Member berkunjung"
+            value={String(people.membersVisiting)}
+            icon={Users}
+            hint={`${people.newUsers} member baru`}
+            href="/admin/users"
+          />
+          <StatCard
+            label="Reseller"
+            value={String(people.resellersTotal)}
+            icon={Store}
+            hint={`${people.resellersPaid} pakai paket berbayar`}
+            href="/admin/reseller"
+          />
+          <StatCard
+            label="Mitra H2H"
+            value={String(people.partnersTotal)}
+            icon={Plug}
+            hint={`${people.partnersActive} aktif`}
+            href="/admin/partners"
           />
         </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Panel title="Produk terlaris">
+          <RankedList
+            rows={topProducts.map((p) => ({
+              label: p.productName,
+              primary: formatRupiah(p.revenue),
+              secondary: `${p.orders} order`,
+            }))}
+          />
+        </Panel>
+        <Panel title="Per kategori">
+          <RankedList
+            rows={byCategory.map((c) => ({
+              label: c.name,
+              primary: formatRupiah(c.revenue),
+              secondary: `${c.orders} order`,
+            }))}
+          />
+        </Panel>
+        <Panel title="Metode pembayaran">
+          <RankedList
+            rows={paymentMix.map((m) => ({
+              label: m.method,
+              primary: formatRupiah(m.revenue),
+              secondary: `${m.orders} order`,
+            }))}
+          />
+        </Panel>
       </section>
 
       <section>
@@ -257,5 +324,25 @@ export default async function AdminDashboardPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+/** Daftar peringkat sederhana. Teks, bukan grafik — di sini yang dibaca angkanya. */
+function RankedList({ rows }: { rows: { label: string; primary: string; secondary: string }[] }) {
+  if (rows.length === 0) {
+    return <p className="px-2 py-8 text-center text-sm text-muted-foreground">Belum ada data.</p>;
+  }
+  return (
+    <ul className="divide-y">
+      {rows.slice(0, 8).map((r) => (
+        <li key={r.label} className="flex items-center justify-between gap-3 px-2 py-2.5">
+          <span className="min-w-0 flex-1 truncate text-sm">{r.label}</span>
+          <span className="shrink-0 text-right">
+            <span className="block text-sm font-medium tabular-nums">{r.primary}</span>
+            <span className="block text-xs text-muted-foreground tabular-nums">{r.secondary}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

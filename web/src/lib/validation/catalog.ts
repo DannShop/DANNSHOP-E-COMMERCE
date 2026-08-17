@@ -187,6 +187,36 @@ export const productItemSchema = z
     if (data.flashStartAt !== null && data.flashEndAt !== null && data.flashStartAt >= data.flashEndAt) {
       ctx.addIssue({ code: "custom", path: ["flashEndAt"], message: "Jadwal selesai flash sale harus setelah jadwal mulai." });
     }
+
+    // ===== Penjaga anti-jual-rugi untuk produk MANUAL =====
+    //
+    // Produk otomatis punya penjaganya sendiri di select-provider.ts (modal
+    // provider diadu dengan harga saat checkout). Produk manual TIDAK PUNYA
+    // jalur itu sama sekali - modalnya cuma ada di sini, jadi satu-satunya
+    // kesempatan menahan harga rugi adalah saat item disimpan.
+    //
+    // Yang diadu `memberPrice`, bukan `sellingPrice`: memberPrice adalah LANTAI
+    // harga (lihat effective-price.ts) - serendah-rendahnya diskon tier bisa
+    // menekan harga. Kalau lantainya sendiri sudah di bawah modal, diskon tier
+    // yang cukup besar akan menjual rugi tanpa satu pun peringatan.
+    if (data.costPrice !== null && data.memberPrice < data.costPrice) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["memberPrice"],
+        message:
+          "Batas bawah harga tidak boleh di bawah modal — diskon tier bisa menekan harga sampai ke batas ini dan menjualnya rugi.",
+      });
+    }
+    if (data.costPrice !== null && data.flashPrice !== null && data.flashPrice < data.costPrice) {
+      // Flash sale menang di atas SEMUA diskon lain dan TIDAK dijepit lantai
+      // harga - jadi ia satu-satunya jalur yang bisa menembus modal walau
+      // memberPrice sudah benar.
+      ctx.addIssue({
+        code: "custom",
+        path: ["flashPrice"],
+        message: "Harga flash di bawah modal — ini menjual rugi. Flash sale tidak dibatasi batas bawah harga.",
+      });
+    }
   });
 
 export const productItemGroupSchema = z.object({

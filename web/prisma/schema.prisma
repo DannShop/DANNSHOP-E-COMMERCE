@@ -334,6 +334,8 @@ model MembershipTier {
   slug                String           @unique
   // Harga beli/perpanjang paket tier ini.
   price               BigInt
+  /// USANG sejak paket reseller jadi sekali-bayar seumur hidup (2026-08-17):
+  /// tidak ada kode yang membacanya. Selalu ditulis 0. Jangan tampilkan di form.
   durationDays        Int
   // Basis point (100 = 1.00%), pola sama dengan PaymentMethodConfig.feePercent
   // - potongan harga produk untuk pemegang tier ini, diterapkan di atas
