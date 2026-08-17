@@ -21,7 +21,6 @@ export interface LiveSnapshot {
   pageviewsLastHour: number;
   ordersLastHour: number;
   revenueLastHour: bigint;
-  recentPaths: { path: string; views: number }[];
   recentOrders: {
     orderNumber: string;
     productName: string;
@@ -40,19 +39,12 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   const online = new Date(now.getTime() - ONLINE_WINDOW_MS);
   const hourAgo = new Date(now.getTime() - 60 * 60_000);
 
-  const [onlineSessions, pageviewsLastHour, recentPathRows, orderAgg, recentOrders] = await Promise.all([
+  const [onlineSessions, pageviewsLastHour, orderAgg, recentOrders] = await Promise.all([
     // groupBy sessionId, bukan count() biasa: yang dicari jumlah ORANG, bukan
     // jumlah halaman yang dibuka. Satu pengunjung yang menjelajah cepat bisa
     // menghasilkan sepuluh baris dalam lima menit.
     db.pageView.groupBy({ by: ["sessionId"], where: { createdAt: { gte: online } } }),
     db.pageView.count({ where: { createdAt: { gte: hourAgo } } }),
-    db.pageView.groupBy({
-      by: ["path"],
-      where: { createdAt: { gte: hourAgo } },
-      _count: true,
-      orderBy: { _count: { path: "desc" } },
-      take: 8,
-    }),
     db.order.aggregate({
       where: { status: { in: REVENUE_STATUSES }, createdAt: { gte: hourAgo } },
       _sum: { total: true },
@@ -70,7 +62,6 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
     pageviewsLastHour,
     ordersLastHour: orderAgg._count,
     revenueLastHour: orderAgg._sum.total ?? 0n,
-    recentPaths: recentPathRows.map((r) => ({ path: r.path, views: r._count })),
     recentOrders: recentOrders.map((o) => ({
       orderNumber: o.orderNumber,
       productName: o.productName,

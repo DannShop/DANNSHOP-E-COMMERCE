@@ -14,7 +14,7 @@ import {
   Shield,
   LogOut,
   Receipt,
-  Crown,
+  Store,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -86,13 +86,16 @@ export function CategoryDrawer({
                 <Receipt className="size-4 text-muted-foreground" aria-hidden="true" />
                 Cek Transaksi
               </Link>
+              {/* Pintu masuk PUBLIK satu-satunya ke program reseller. Menunjuk
+                  ke halaman pendaftaran, bukan ke menu di dalam akun: pengunjung
+                  yang belum punya akun harus bisa sampai ke sana juga. */}
               <Link
-                href="/membership"
+                href="/daftar-reseller"
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted"
               >
-                <Crown className="size-4 text-muted-foreground" aria-hidden="true" />
-                Membership
+                <Store className="size-4 text-muted-foreground" aria-hidden="true" />
+                Reseller
               </Link>
             </div>
 

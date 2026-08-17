@@ -78,9 +78,9 @@ export default async function AccountPage() {
         </Link>
       </section>
 
-      {/* ===== Kartu status tier ===== */}
+      {/* ===== Kartu status paket reseller ===== */}
       <Link
-        href="/membership"
+        href="/account/reseller"
         className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/60 px-5 py-4 transition-colors duration-200 ease-out hover:bg-foreground/[0.04]"
       >
         <span className="flex items-center gap-3">
@@ -93,16 +93,18 @@ export default async function AccountPage() {
           <span>
             {membership.tier ? (
               <>
-                <span className="block text-sm font-semibold">Tier {membership.tier.name}</span>
-                <span className="block text-xs text-muted-foreground">
-                  Berlaku sampai {membership.expiresAt ? formatTanggal(membership.expiresAt) : "-"}
-                </span>
+                <span className="block text-sm font-semibold">Paket {membership.tier.name}</span>
+                {/* Paket reseller sekali bayar, berlaku selamanya - tidak ada
+                    tanggal habis untuk ditampilkan. Sebelumnya baris ini membaca
+                    `expiresAt` yang sekarang SELALU null, jadi yang terbaca
+                    pengguna adalah "Berlaku sampai -". */}
+                <span className="block text-xs text-muted-foreground">Berlaku selamanya</span>
               </>
             ) : (
               <>
-                <span className="block text-sm font-semibold">Belum punya tier member</span>
+                <span className="block text-sm font-semibold">Belum punya paket reseller</span>
                 <span className="block text-xs text-muted-foreground">
-                  Upgrade untuk diskon harga produk & benefit tambahan
+                  Ambil paket untuk harga lebih murah di setiap transaksi
                 </span>
               </>
             )}

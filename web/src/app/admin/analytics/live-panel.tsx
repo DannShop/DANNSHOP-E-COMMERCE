@@ -10,7 +10,6 @@ interface LiveData {
   pageviewsLastHour: number;
   ordersLastHour: number;
   revenueLastHour: string;
-  recentPaths: { path: string; views: number }[];
   recentOrders: {
     orderNumber: string;
     productName: string;
@@ -91,23 +90,14 @@ export function LivePanel() {
         <LiveStat label="Omzet 1 jam" value={rupiah(data?.revenueLastHour ?? 0)} icon={Coins} />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-xl ring-1 ring-foreground/10">
-          <p className="border-b px-3 py-2 text-sm font-semibold">Halaman aktif (1 jam terakhir)</p>
-          <ul className="divide-y">
-            {(data?.recentPaths ?? []).length === 0 ? (
-              <li className="px-3 py-6 text-center text-sm text-muted-foreground">Belum ada kunjungan.</li>
-            ) : (
-              data!.recentPaths.map((p) => (
-                <li key={p.path} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                  <span className="truncate font-mono text-xs">{p.path}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{p.views}</span>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-
+      {/* Panel "Halaman aktif (1 jam terakhir)" DIHAPUS: isinya pertanyaan yang
+          sama dengan "Halaman terpopuler" di bawah halaman ini, yang menjawabnya
+          lebih baik karena memakai rentang tanggal pilihan admin. Pada toko yang
+          trafiknya belum ramai, versi satu-jam praktis selalu menampilkan satu
+          baris "/" — terlihat seperti panel yang rusak, padahal datanya benar.
+          Yang tersisa di sini murni sinyal LANGSUNG: siapa yang sedang online
+          dan order apa yang baru masuk. */}
+      <div className="grid gap-3">
         <div className="rounded-xl ring-1 ring-foreground/10">
           <p className="border-b px-3 py-2 text-sm font-semibold">Order terbaru</p>
           <ul className="divide-y">

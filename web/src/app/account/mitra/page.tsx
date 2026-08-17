@@ -135,8 +135,8 @@ export default async function AccountMitraPage() {
           <li>
             • Harga mengikuti tier akun kamu. Sekarang kamu di{" "}
             <span className="font-medium text-foreground">{membership.tier?.name ?? "Free"}</span>
-            {membership.tier ? "" : " — naik tier untuk harga yang lebih baik"}.{" "}
-            <Link href="/membership" className="font-medium text-primary underline-offset-4 hover:underline">
+            {membership.tier ? "" : " — ambil paket reseller untuk harga yang lebih baik"}.{" "}
+            <Link href="/account/reseller" className="font-medium text-primary underline-offset-4 hover:underline">
               Lihat tier
             </Link>
           </li>
