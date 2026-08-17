@@ -10,6 +10,7 @@ import { withThemeTransition } from "@/lib/theme-transition";
 import { RefreshButton } from "@/components/admin/refresh-button";
 import { InstallButton } from "@/components/pwa/install-button";
 import { AdminSidebar } from "./admin-sidebar";
+import type { Permission } from "@/lib/rbac/permissions";
 import { resolvePageTitle } from "./nav-config";
 
 const COLLAPSE_STORAGE_KEY = "dannshop.admin.sidebarCollapsed";
@@ -39,6 +40,7 @@ export function AdminShell({
   children,
   userEmail,
   userRole,
+  permissions,
   logoUrl,
   logoType,
   faviconUrl,
@@ -47,6 +49,8 @@ export function AdminShell({
   children: React.ReactNode;
   userEmail: string;
   userRole: string;
+  /** Izin karyawan; dipakai HANYA untuk menyembunyikan menu. Penegakannya di proxy.ts. */
+  permissions: Permission[];
   /** true = akun ini belum memasang 2FA; spanduk peringatan ditampilkan. */
   needsTwoFactor?: boolean;
   /** Logo situs dari Admin > Pengaturan Situs - sumber yang sama dengan storefront. */
@@ -153,6 +157,7 @@ export function AdminShell({
           onToggleCollapse={toggleCollapse}
           userEmail={userEmail}
           userRole={userRole}
+          permissions={permissions}
           logoUrl={logoUrl}
           logoType={logoType}
           faviconUrl={faviconUrl}
@@ -182,6 +187,7 @@ export function AdminShell({
           onNavigate={() => setMobileOpen(false)}
           userEmail={userEmail}
           userRole={userRole}
+          permissions={permissions}
           logoUrl={logoUrl}
           logoType={logoType}
           faviconUrl={faviconUrl}

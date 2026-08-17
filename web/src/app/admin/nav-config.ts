@@ -18,6 +18,7 @@ import {
   Activity,
   Crown,
   Users,
+  UserCog,
   Palette,
   ReceiptText,
   BarChart3,
@@ -100,6 +101,9 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Sistem",
     items: [
+      // Hanya terlihat oleh pemilik toko (role ADMIN) - disaring
+      // canAccessAdminPath lewat aturan adminOnly di lib/rbac/access.ts.
+      { href: "/admin/staff", label: "Karyawan & Peran", icon: UserCog },
       { href: "/admin/partnership", label: "Pengajuan Mitra", icon: Handshake },
       { href: "/admin/partners", label: "API Partner", icon: Plug },
       { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { verifySecondFactor } from "@/lib/auth/two-factor";
 import { loginSchema } from "@/lib/validation/auth";
+import type { UserRole } from "@/lib/rbac/access";
 
 // SATU tempat yang memutuskan apakah sepasang kredensial boleh masuk.
 //
@@ -21,7 +22,7 @@ import { loginSchema } from "@/lib/validation/auth";
 
 export type CredentialCheck =
   /** Password benar, faktor kedua (kalau ada) sudah terpenuhi. */
-  | { kind: "ok"; user: { id: string; email: string; name: string; role: "USER" | "ADMIN"; updatedAt: number } }
+  | { kind: "ok"; user: { id: string; email: string; name: string; role: UserRole; updatedAt: number } }
   /** Password salah, akun tidak ada, akun ditangguhkan, ATAU kode 2FA salah. */
   | { kind: "invalid" }
   /** Password BENAR, tapi akun ini memakai 2FA dan kodenya belum diisi. */

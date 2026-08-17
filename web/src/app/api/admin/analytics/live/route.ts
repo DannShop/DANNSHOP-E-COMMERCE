@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 import { getLiveSnapshot } from "@/lib/analytics/query";
 
 // Sumber data "tampilan langsung" di panel analytics. Di-poll klien tiap
@@ -14,20 +13,16 @@ import { getLiveSnapshot } from "@/lib/analytics/query";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) {
-    return NextResponse.json({ error: "Tidak diizinkan" }, { status: 403 });
-  }
-  // Dicek ulang ke DB, bukan percaya klaim di JWT: JWT bersifat stateless
-  // dengan masa berlaku 8 jam, jadi sesi admin yang perannya sudah dicabut
-  // (atau akunnya di-ban) tetap membawa role "ADMIN" sampai token kedaluwarsa.
-  // Pola yang sama dipakai requireAdmin() di seluruh server action.
-  const fresh = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, bannedAt: true },
-  });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.bannedAt) {
-    return NextResponse.json({ error: "Tidak diizinkan" }, { status: 403 });
+  // Gerbang yang sama persis dengan seluruh server action - termasuk pengecekan
+  // ulang ke DB, karena JWT di sini stateless dan berumur panjang, jadi sesi
+  // yang perannya sudah dicabut tetap membawa role lama sampai kedaluwarsa.
+  //
+  // Sebelum disatukan, route ini memeriksa `bannedAt` sementara dua route admin
+  // lainnya memeriksa `updatedAt` - persis jenis penyimpangan yang membuat 16
+  // salinan gerbang berbahaya. Sekarang keduanya diperiksa, di satu tempat.
+  const admin = await requireAdminSession("system.manage");
+  if ("error" in admin) {
+    return NextResponse.json({ error: admin.error }, { status: 403 });
   }
 
   const snapshot = await getLiveSnapshot();

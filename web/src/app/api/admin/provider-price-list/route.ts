@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { ProviderKey } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 import { db } from "@/lib/db";
 import { selectBrandsWithinBudget } from "@/lib/catalog/bulk-import";
 
@@ -30,13 +30,12 @@ const BRAND_ROW_BUDGET = 300;
 //    mengimpor per brand; brand setengah di sana berarti produk yang diam-diam
 //    kekurangan denominasi (lihat selectBrandsWithinBudget).
 export async function GET(request: Request) {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) {
-    return NextResponse.json({ error: "Tidak diizinkan" }, { status: 403 });
-  }
-  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return NextResponse.json({ error: "Tidak diizinkan" }, { status: 403 });
+  // Gerbang bersama - lihat lib/auth/admin-gate.ts. Termasuk cek ulang ke DB,
+  // karena JWT di sini stateless dan sesi yang haknya sudah dicabut tetap
+  // membawa role lama sampai tokennya kedaluwarsa.
+  const admin = await requireAdminSession("payments.manage");
+  if ("error" in admin) {
+    return NextResponse.json({ error: admin.error }, { status: 403 });
   }
   const url = new URL(request.url);
   const provider = url.searchParams.get("provider") as ProviderKey | null;

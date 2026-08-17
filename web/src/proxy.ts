@@ -5,6 +5,13 @@ import { db } from "@/lib/db";
 import { checkRateLimit, extractIp } from "@/lib/rate-limit";
 import { isAuthorizedCron } from "@/lib/jobs/cron-auth";
 import { isMaintenanceModeOn } from "@/lib/site-settings";
+import {
+  canAccessAdminPath,
+  canEnterAdmin,
+  firstAllowedAdminPath,
+  type UserRole,
+} from "@/lib/rbac/access";
+import { parsePermissions } from "@/lib/rbac/permissions";
 
 const { auth } = NextAuth(authConfig);
 
@@ -73,12 +80,48 @@ export default auth(async (req) => {
   const isAdminManifest = nextUrl.pathname === "/admin/app.webmanifest";
 
   if (nextUrl.pathname.startsWith("/admin") && !isAdminManifest) {
-    if (!user || user.role !== "ADMIN") {
+    if (!user || !canEnterAdmin(user.role)) {
       return Response.redirect(new URL("/login", nextUrl));
     }
-    const fresh = await db.user.findUnique({ where: { id: user.id }, select: { role: true, updatedAt: true } });
-    if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== user.updatedAt) {
+    const fresh = await db.user.findUnique({
+      where: { id: user.id },
+      select: {
+        role: true,
+        updatedAt: true,
+        // Izin ikut dibaca di sini, BUKAN diambil dari JWT. Token di sini
+        // stateless dan berumur panjang, jadi izin yang disimpan di dalamnya
+        // akan tetap berlaku setelah dicabut sampai tokennya kedaluwarsa -
+        // pencabutan hak harus berlaku pada request berikutnya, bukan 12 jam
+        // lagi. Query ini memang sudah ada sebelumnya untuk penegakan ban;
+        // yang ditambahkan cuma kolomnya, bukan query baru.
+        staffRole: { select: { permissions: true, isActive: true } },
+      },
+    });
+    if (!fresh || !canEnterAdmin(fresh.role) || fresh.updatedAt.getTime() !== user.updatedAt) {
       return Response.redirect(new URL("/login", nextUrl));
+    }
+
+    // INILAH penegakan izin per halaman. Ada di middleware, bukan di layout,
+    // karena layout Next.js TIDAK dijalankan ulang saat berpindah halaman dari
+    // dalam aplikasi - gerbang berbasis route di layout menyala tidak konsisten
+    // dan sudah pernah mengunci admin di produksi. Middleware selalu tahu
+    // pathname dan selalu jalan.
+    const viewer = {
+      role: fresh.role as UserRole,
+      permissions:
+        fresh.staffRole && fresh.staffRole.isActive ? parsePermissions(fresh.staffRole.permissions) : [],
+    };
+    if (!canAccessAdminPath(viewer, nextUrl.pathname)) {
+      // Diantar ke halaman pertama yang boleh dia buka, bukan ditolak
+      // mentah-mentah. Tujuan yang paling sering ditolak adalah `/admin` itu
+      // sendiri - halaman yang otomatis dituju setiap kali karyawan login.
+      const target = firstAllowedAdminPath(viewer);
+      // Penjaga anti-putar: kalau tujuannya sama dengan yang barusan ditolak,
+      // mengalihkan ke sana akan mengulang keputusan yang sama selamanya.
+      if (target === nextUrl.pathname) {
+        return new Response("Tidak diizinkan", { status: 403 });
+      }
+      return Response.redirect(new URL(target, nextUrl));
     }
   }
 
@@ -191,7 +234,12 @@ export default auth(async (req) => {
     nextUrl.pathname.startsWith("/admin") &&
     !nextUrl.pathname.startsWith("/admin/keamanan") &&
     !isAdminManifest &&
-    user?.role === "ADMIN"
+    // Karyawan ikut WAJIB 2FA, bukan cuma pemilik toko. Akun karyawan memegang
+    // akses ke pesanan, harga, dan data pembeli - password saja tidak cukup,
+    // dan justru akun karyawanlah yang paling mungkin passwordnya dipakai ulang
+    // di tempat lain.
+    user &&
+    canEnterAdmin(user.role)
   ) {
     const me = await db.user.findUnique({ where: { id: user.id }, select: { totpEnabledAt: true } });
     // Dibaca dari DATABASE, bukan dari isi sesi: JWT di sini stateless dengan

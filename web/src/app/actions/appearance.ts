@@ -2,22 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { SLOT_KEYS, saveStorefrontAppearance } from "@/lib/storefront/appearance";
 import { sanitizeHtml } from "@/lib/storefront/sanitize-html";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 
 export type ActionResult = { ok?: string; error?: string };
 
-async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
-  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return { error: "Tidak diizinkan" };
-  }
-  return { adminId: session.user.id };
-}
+const requireAdmin = () => requireAdminSession("storefront.manage");
 
 const appearanceSchema = z.object({
   primaryColor: z.string().optional().transform((v) => (v ?? "").trim()),

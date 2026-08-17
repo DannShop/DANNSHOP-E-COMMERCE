@@ -2,18 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AdminSidebar } from "@/app/admin/admin-sidebar";
 import { NAV_GROUPS, resolvePageTitle } from "@/app/admin/nav-config";
+import { PERMISSIONS } from "@/lib/rbac/permissions";
 
 // logoutAction adalah Server Action; berkasnya menarik auth + Prisma begitu
 // di-import, dan tidak satu pun dari itu relevan untuk memastikan menunya
 // tampil. Yang diuji di sini bentuk sidebar-nya, bukan proses keluarnya.
 vi.mock("@/app/actions/auth", () => ({ logoutAction: vi.fn() }));
 
+// Pemilik toko: role ADMIN lolos semua izin tanpa perlu dicentang, jadi
+// daftar izinnya sengaja KOSONG di sini. Kalau tes ini harus mengisinya supaya
+// menunya muncul, artinya ADMIN sudah berhenti otomatis punya semua akses -
+// dan itu jalan tercepat bagi pemilik toko mengunci dirinya sendiri.
 const PROPS = {
   pathname: "/admin",
   collapsed: false,
   onToggleCollapse: () => {},
   userEmail: "admin@dannshop.id",
   userRole: "ADMIN",
+  permissions: [],
   logoUrl: null,
   logoType: "image" as const,
   faviconUrl: null,
@@ -80,6 +86,60 @@ describe("AdminSidebar", () => {
     for (const item of NAV_GROUPS.flatMap((g) => g.items)) {
       expect(screen.getByRole("link", { name: item.label })).toBeInTheDocument();
     }
+  });
+});
+
+/**
+ * Penyaringan menu untuk karyawan.
+ *
+ * Bukan fitur keamanan — menu yang disembunyikan tetap bisa diketik langsung di
+ * address bar, dan yang menolaknya adalah proxy.ts. Yang diuji di sini bahwa
+ * karyawan tidak dihadapkan pada menu yang setiap kali diklik menolaknya, dan
+ * bahwa penyaringnya memakai aturan yang SAMA dengan gerbang route-nya.
+ */
+describe("AdminSidebar - penyaringan izin karyawan", () => {
+  const asStaff = (permissions: string[]) => ({
+    ...PROPS,
+    userRole: "STAFF",
+    permissions: permissions as never,
+  });
+
+  it("hanya menampilkan menu yang boleh dibuka karyawan itu", () => {
+    render(<AdminSidebar {...asStaff(["orders.view"])} />);
+
+    expect(screen.getByRole("link", { name: "Orders" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Produk & Harga" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Laporan Penjualan" })).not.toBeInTheDocument();
+    // Dashboard = ringkasan omzet, jadi ikut tertutup tanpa finance.view.
+    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
+  });
+
+  it("membuang judul grup yang seluruh isinya tersaring", () => {
+    render(<AdminSidebar {...asStaff(["orders.view"])} />);
+
+    expect(screen.getByText("Transaksi")).toBeInTheDocument();
+    // Tidak ada satu pun menu Katalog yang boleh dibuka - judulnya tidak boleh
+    // menggantung sendirian di atas ruang kosong.
+    expect(screen.queryByText("Katalog")).not.toBeInTheDocument();
+  });
+
+  it("tidak pernah menampilkan Karyawan & Peran ke karyawan", () => {
+    // Dicoba dengan SELURUH izin sekaligus: halaman ini dikunci ke role, bukan
+    // ke izin, justru supaya tidak bisa didelegasikan.
+    render(<AdminSidebar {...asStaff([...PERMISSIONS])} />);
+    expect(screen.queryByRole("link", { name: "Karyawan & Peran" })).not.toBeInTheDocument();
+  });
+
+  it("menampilkannya untuk pemilik toko", () => {
+    render(<AdminSidebar {...PROPS} />);
+    expect(screen.getByRole("link", { name: "Karyawan & Peran" })).toBeInTheDocument();
+  });
+
+  it("karyawan tanpa izin sama sekali tetap bisa mencapai halaman keamanan", () => {
+    // Gerbang 2FA mewajibkan pemasangan 2FA sebelum bisa ke mana-mana, dan
+    // satu-satunya tempat memasangnya ada di menu itu.
+    render(<AdminSidebar {...asStaff([])} />);
+    expect(screen.getByRole("link", { name: "Keamanan Akun" })).toBeInTheDocument();
   });
 });
 

@@ -1,30 +1,29 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
 import { retryOrderFulfillment, retryOrderRefund } from "@/lib/order/fulfillment";
 import { truncateNote } from "@/lib/order/status-note";
 import { enqueuePartnerCallback } from "@/lib/partner/callback";
 import { sendOrderCompletedEmail, sendOrderFailedEmail } from "@/lib/notify/email";
 import { cancelPendingOrder } from "@/lib/order/cancel";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 
 export interface ActionResult {
   ok?: string;
   error?: string;
 }
 
-// Duplikasi requireAdmin/logAdmin dari catalog.ts/providers.ts sengaja
-// dipertahankan (bukan diimpor) - file "use server" di Next.js 16 hanya
-// boleh mengekspor async function, jadi helper non-async tidak bisa dipakai
-// lintas file "use server". Pola sama persis di catalog.ts:21-27, providers.ts:27-33.
-async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
-  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return { error: "Tidak diizinkan" };
-  }
-  return { adminId: session.user.id };
-}
+// DUA gerbang, dan pemisahannya adalah inti dari izin di berkas ini.
+//
+// `requireAdmin` untuk menjalankan pesanan: membuka daftar, mengulang
+// pengiriman yang gagal, menandai pesanan manual selesai. Itu pekerjaan harian
+// CS dan tidak mengeluarkan uang sepeser pun.
+//
+// `requireRefunder` untuk yang MENGELUARKAN UANG: membatalkan pesanan dan
+// mengembalikan dana ke saldo pembeli. Orang yang boleh memproses pesanan tidak
+// otomatis boleh melakukan ini - kalau digabung, satu-satunya cara memberi
+// seseorang akses ke daftar pesanan adalah sekalian memberinya kunci brankas.
+const requireAdmin = () => requireAdminSession("orders.view");
+const requireRefunder = () => requireAdminSession("orders.refund");
 
 async function logAdmin(adminId: string, action: string, targetId: string, detail?: object) {
   await db.adminActionLog.create({
@@ -34,7 +33,9 @@ async function logAdmin(adminId: string, action: string, targetId: string, detai
 
 export async function cancelOrderAction(formData: FormData): Promise<ActionResult> {
   "use server";
-  const admin = await requireAdmin();
+  // Membatalkan melepas kuota voucher & stok, DAN membatalkan transaksi
+  // Midtrans-nya. Itu keputusan uang, bukan sekadar mengubah status.
+  const admin = await requireRefunder();
   if ("error" in admin) return admin;
 
   const orderId = formData.get("orderId");
@@ -71,7 +72,7 @@ export async function retryFulfillmentAction(formData: FormData): Promise<Action
 
 export async function retryRefundAction(formData: FormData): Promise<ActionResult> {
   "use server";
-  const admin = await requireAdmin();
+  const admin = await requireRefunder();
   if ("error" in admin) return admin;
 
   const orderId = formData.get("orderId");
@@ -146,7 +147,7 @@ export async function markCompletedManualAction(formData: FormData): Promise<Act
 
 export async function markRefundedAction(formData: FormData): Promise<ActionResult> {
   "use server";
-  const admin = await requireAdmin();
+  const admin = await requireRefunder();
   if ("error" in admin) return admin;
 
   const orderId = formData.get("orderId");

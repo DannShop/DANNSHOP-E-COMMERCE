@@ -7,6 +7,8 @@ import { logoutAction } from "@/app/actions/auth";
 import { SiteLogo } from "@/components/site-logo";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, isNavItemActive } from "./nav-config";
+import { canAccessAdminPath, type UserRole } from "@/lib/rbac/access";
+import type { Permission } from "@/lib/rbac/permissions";
 
 export function AdminSidebar({
   pathname,
@@ -15,6 +17,7 @@ export function AdminSidebar({
   onNavigate,
   userEmail,
   userRole,
+  permissions,
   logoUrl,
   logoType,
   faviconUrl,
@@ -26,12 +29,25 @@ export function AdminSidebar({
   onNavigate?: () => void;
   userEmail: string;
   userRole: string;
+  /**
+   * Izin karyawan. Dipakai HANYA untuk menyembunyikan menu yang tidak berguna
+   * baginya - INI BUKAN PENEGAKAN. Menu yang disembunyikan tetap bisa diketik
+   * langsung di address bar, dan yang benar-benar menolaknya adalah proxy.ts
+   * (route) serta gerbang di tiap server action.
+   */
+  permissions: Permission[];
   /** Logo yang diunggah admin di Pengaturan Situs; null = belum pernah diisi. */
   logoUrl: string | null;
   logoType: "image" | "video";
   /** Favicon situs (dipaksa persegi saat diunggah); null = belum pernah diisi. */
   faviconUrl: string | null;
 }) {
+  const viewer = { role: userRole as UserRole, permissions };
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => canAccessAdminPath(viewer, item.href)),
+  })).filter((group) => group.items.length > 0);
+
   return (
     <div className="flex h-full flex-col">
       {/* ===== Brand ===== */}
@@ -97,9 +113,15 @@ export function AdminSidebar({
           Provider membungkus seluruh daftar supaya delay-nya BERSAMA: begitu
           satu tooltip terbuka, pindah ke item lain langsung tampil tanpa
           menunggu ulang - persis perilaku menu di macOS. */}
+      {/* Disaring dengan canAccessAdminPath - fungsi yang SAMA PERSIS dipakai
+          proxy.ts untuk menolak route. Kalau menu punya aturannya sendiri,
+          cepat atau lambat keduanya menyimpang, dan gejalanya menu yang terlihat
+          tapi selalu menolak saat diklik (atau lebih buruk: menu tersembunyi
+          untuk halaman yang sebenarnya boleh dibuka). Grup yang seluruh isinya
+          tersaring ikut hilang, supaya tidak ada judul grup menggantung. */}
       <Tooltip.Provider delay={350} closeDelay={0}>
         <nav className="no-scrollbar flex-1 overflow-y-auto px-3 pb-3">
-          {NAV_GROUPS.map((group, groupIndex) => (
+          {visibleGroups.map((group, groupIndex) => (
             <div key={group.label || "root"} className={cn(groupIndex > 0 && "mt-5")}>
               {group.label &&
                 (collapsed ? (

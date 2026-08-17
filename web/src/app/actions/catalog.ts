@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { ProviderKey } from "@prisma/client";
 import { put } from "@vercel/blob";
-import { auth } from "@/lib/auth";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 import { db } from "@/lib/db";
 import { productSchema, productItemSchema, productItemGroupSchema, bulkImportSchema } from "@/lib/validation/catalog";
 import { applyMarkup } from "@/lib/catalog/bulk-import";
@@ -29,20 +29,12 @@ export type ActionResult = { ok?: string; error?: string };
 // Catatan: "use server" sengaja dipasang inline per-fungsi (bukan di baris pertama
 // file), pola yang sama seperti actions/providers.ts — karena file ber-directive
 // "use server" di level file hanya boleh meng-export async function, sementara
-// ActionResult (type) harus tetap di-export dari file ini. requireAdmin/logAdmin
-// didefinisikan lokal (bukan di-import dari providers.ts) karena keduanya bukan
-// async function yang di-export, dan providers.ts sendiri sudah "use server" per
-// fungsi sehingga tidak bisa mengekspor helper biasa untuk diimpor di sini.
-
-async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
-  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return { error: "Tidak diizinkan" };
-  }
-  return { adminId: session.user.id };
-}
+// ActionResult (type) harus tetap di-export dari file ini.
+//
+// Gerbangnya sendiri TIDAK lagi didefinisikan lokal: satu-satunya salinan ada di
+// lib/auth/admin-gate.ts. Membatasi ekspor tidak pernah membatasi impor, jadi
+// alasan lama untuk menyalinnya ke tiap berkas memang tidak berlaku.
+const requireAdmin = () => requireAdminSession("catalog.manage");
 
 async function logAdmin(adminId: string, action: string, targetId: string, detail?: object) {
   await db.adminActionLog.create({

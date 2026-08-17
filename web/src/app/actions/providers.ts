@@ -1,7 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ProviderKey } from "@prisma/client";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { encryptJson, decryptJson } from "@/lib/crypto";
 import type { DigiflazzCredentials } from "@/lib/providers/digiflazz";
@@ -10,6 +9,7 @@ import { getAdapter } from "@/lib/providers/registry";
 import { isRelayConfigured } from "@/lib/providers/relay";
 import { applyBalanceAlert } from "@/lib/providers/balance-sync";
 import { runPriceSync } from "@/lib/catalog/price-sync";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 
 export const digiflazzCredentialsSchema = z.object({
   username: z.string().min(1, "Username wajib diisi"),
@@ -113,15 +113,7 @@ export const balanceThresholdSchema = z.object({
 // Pola ini didokumentasikan resmi di Next.js (lihat use-server.md § "Using use
 // server inline"). Logika tiap action tidak berubah dari spec.
 
-async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
-  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return { error: "Tidak diizinkan" };
-  }
-  return { adminId: session.user.id };
-}
+const requireAdmin = () => requireAdminSession("payments.manage");
 
 async function logAdmin(adminId: string, action: string, targetId: string, detail?: object) {
   await db.adminActionLog.create({

@@ -1,6 +1,5 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   saveMidtransConfig,
@@ -20,6 +19,7 @@ import { MIN_EXPIRY_MINUTES } from "@/lib/payment/rules";
 import { savePaymentRules } from "@/lib/payment/rules";
 import { getBaseUrl } from "@/lib/base-url";
 import { MAX_UNIQUE_CODE } from "@/lib/payment/fee";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 
 export type ActionResult = { ok?: string; error?: string };
 
@@ -28,15 +28,7 @@ export type ActionResult = { ok?: string; error?: string };
 // "use server" per-fungsi tidak bisa mengekspor helper biasa untuk diimpor
 // lintas file. Lihat catalog.ts untuk penjelasan lengkap.
 
-async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
-  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return { error: "Tidak diizinkan" };
-  }
-  return { adminId: session.user.id };
-}
+const requireAdmin = () => requireAdminSession("payments.manage");
 
 async function logAdmin(adminId: string, action: string, detail?: object) {
   await db.adminActionLog.create({

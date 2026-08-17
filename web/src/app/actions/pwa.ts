@@ -1,10 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadToBlob } from "@/lib/blob-upload";
 import { SHORT_NAME_MAX, type PwaImage, type PwaIconSet } from "@/lib/pwa/config";
 import { savePwaSettings } from "@/lib/pwa/settings";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 
 export type ActionResult = { ok?: string; error?: string };
 
@@ -20,18 +20,7 @@ const ALLOWED_SPLASH_TYPES = new Set(["image/jpeg"]);
 /** Batas yang sama dipakai parsePwaSettings saat membaca kembali dari DB. */
 const MAX_IMAGE_SIDE = 10000;
 
-async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
-  const fresh = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, updatedAt: true },
-  });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return { error: "Tidak diizinkan" };
-  }
-  return { adminId: session.user.id };
-}
+const requireAdmin = () => requireAdminSession("system.manage");
 
 async function logAdmin(adminId: string, action: string, detail?: object) {
   await db.adminActionLog.create({ data: { adminId, action, targetType: "site_setting", detail } });

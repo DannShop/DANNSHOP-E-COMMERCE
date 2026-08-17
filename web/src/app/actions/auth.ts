@@ -13,7 +13,35 @@ import { checkCredentials } from "@/lib/auth/credentials";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { registerSchema } from "@/lib/validation/auth";
-import { checkRateLimit, extractIp } from "@/lib/rate-limit";
+import {
+  checkLoginLockout,
+  clearLoginFailures,
+  extractIp,
+  formatRetryAfter,
+  recordLoginFailure,
+} from "@/lib/rate-limit";
+
+/**
+ * Apakah lemparan ini berasal dari `redirect()`, bukan dari kegagalan sungguhan?
+ *
+ * Ditulis sendiri karena Next.js tidak mengekspor pemeriksa ini secara publik
+ * (`next/navigation` cuma punya `unstable_rethrow`, yang MELEMPAR ULANG alih-alih
+ * menjawab ya/tidak - tidak bisa dipakai untuk memutuskan sesuatu sebelum
+ * melempar). Yang dipakai di sini digest `NEXT_REDIRECT`, yang memang
+ * didokumentasikan sebagai perilaku `redirect()`.
+ *
+ * Kalau suatu saat penanda ini berubah, akibatnya jinak: rentetan kegagalan
+ * tidak terhapus setelah login berhasil, jadi orangnya bisa terkunci lebih
+ * cepat dari seharusnya - bukan lubang yang membiarkan orang masuk.
+ */
+function isRedirectError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    typeof (err as { digest?: unknown }).digest === "string" &&
+    (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
 
 // Password dummy dipakai HANYA untuk membuang waktu (samakan cost bcrypt),
 // tidak pernah dibandingkan/disimpan - mencegah timing side-channel di registerAction
@@ -34,9 +62,26 @@ export async function loginAction(
   formData: FormData
 ): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
+
+  // Kunci setelah 5 KEGAGALAN, bukan setelah 20 percobaan.
+  //
+  // Menggantikan batas lama `login:email` 20/jam, yang menghitung setiap
+  // ketukan termasuk yang berhasil. Batas itu punya dua cacat nyata: orang yang
+  // passwordnya benar ikut terhitung, dan sejak login jadi dua langkah satu
+  // login akun ber-2FA memakan DUA jatah sekaligus - jadi jatah efektifnya
+  // separuh dari yang tertulis. Lajunya sendiri tidak dilonggarkan: 5 kegagalan
+  // per 15 menit = 20 kegagalan per jam, sama persis dengan batas lama, tapi
+  // sekarang cuma menghukum yang memang gagal.
+  //
+  // Dicek PALING AWAL supaya akun yang sedang terkunci tidak menghabiskan satu
+  // putaran bcrypt untuk setiap ketukan.
   if (email) {
-    const emailLimit = await checkRateLimit(`login:email:${email}`, 20, 60 * 60_000);
-    if (!emailLimit.allowed) return { error: "Terlalu banyak percobaan login untuk akun ini, coba lagi nanti." };
+    const lockout = await checkLoginLockout(email);
+    if (lockout.locked) {
+      return {
+        error: `Terlalu banyak percobaan gagal. Akun ini dikunci sementara, coba lagi dalam ${formatRetryAfter(lockout.retryAfterMs)}.`,
+      };
+    }
   }
 
   // ===== Langkah pertama: email + password saja =====
@@ -95,6 +140,15 @@ export async function loginAction(
     return {};
   } catch (err) {
     if (err instanceof AuthError) {
+      // Satu-satunya tempat kegagalan login dicatat. Mencakup password salah,
+      // akun tidak ada, akun ditangguhkan, DAN kode 2FA salah - semuanya lewat
+      // authorize() yang sama, jadi tidak ada jalur gagal yang luput dihitung.
+      //
+      // `totp_required` di langkah pertama TIDAK sampai ke sini: itu bukan
+      // kegagalan, itu keadaan normal separuh jalan. Kalau ikut dihitung, tiap
+      // login akun ber-2FA yang mulus akan mengisi jatah kuncinya sendiri.
+      await recordLoginFailure(email);
+
       // Di langkah KEDUA, pesannya boleh menyebut kode — form hanya sampai ke
       // sana setelah passwordnya terbukti benar, jadi tidak ada rahasia baru
       // yang dibocorkan, dan "email/password salah" di layar yang cuma meminta
@@ -108,6 +162,15 @@ export async function loginAction(
       }
       return { error: "Email atau password salah." };
     }
+
+    // Bukan AuthError berarti signIn berhasil dan melempar redirect()-nya. Itu
+    // satu-satunya penanda sukses yang tersedia di sini - signIn tidak pernah
+    // "kembali" pada jalur yang berhasil.
+    //
+    // Rentetan kegagalan dihapus HANYA pada penanda itu, bukan pada setiap
+    // lemparan non-AuthError: galat database yang kebetulan lewat sini tidak
+    // boleh diam-diam mengosongkan hitungan kunci.
+    if (isRedirectError(err)) await clearLoginFailures(email);
     throw err; // redirect() dari signIn dilempar sebagai error — biarkan lewat
   }
 }

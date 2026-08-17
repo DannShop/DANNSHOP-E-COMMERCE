@@ -12,6 +12,37 @@ datasource db {
 enum Role {
   USER
   ADMIN
+  /// Karyawan panel. Boleh masuk /admin, tapi HANYA sejauh izin di StaffRole-nya.
+  STAFF
+}
+
+/// Peran karyawan yang dibuat sendiri oleh pemilik toko.
+///
+/// Yang bisa dikarang admin adalah PERAN-nya (nama + kumpulan izin); daftar
+/// izin yang bisa dipilih DIDEFINISIKAN DI KODE (lib/rbac/permissions.ts),
+/// karena tiap izin harus benar-benar diperiksa oleh sesuatu - izin yang cuma
+/// bisa dicentang tapi tidak pernah dicek adalah pagar bohongan.
+///
+/// `permissions` disimpan sebagai JSON array string, BUKAN tabel join. Pola yang
+/// sama dipakai MembershipTier.benefits, dengan alasan sama: katalognya kecil,
+/// tertutup, dan ditentukan kode - tabel join di sini cuma menambah kerumitan
+/// tanpa satu pun pertanyaan baru yang bisa dijawabnya.
+///
+/// Menghapus peran TIDAK menghapus karyawannya: relasinya opsional, jadi user
+/// yang perannya dihapus kehilangan seluruh izin (jatuh ke nol) alih-alih ikut
+/// terhapus bersama akunnya.
+model StaffRole {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?  @db.Text
+  /// Array key izin. Disaring ulang saat dibaca oleh parsePermissions().
+  permissions Json
+  /// Peran nonaktif tidak bisa dipasang ke karyawan baru; yang sudah memakainya
+  /// TETAP kehilangan izinnya seketika - lihat resolveViewer di lib/auth/admin-gate.ts.
+  isActive    Boolean  @default(true)
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 enum ProviderKey {
@@ -141,6 +172,15 @@ model User {
   totpSecretEnc     String?            @db.Text
   totpEnabledAt     DateTime?
   totpRecoveryCodes TotpRecoveryCode[]
+
+  // ===== Peran karyawan =====
+  // Hanya berarti untuk role STAFF. NULL pada STAFF = karyawan tanpa izin sama
+  // sekali (masih bisa masuk panel, tapi tidak ada satu halaman pun yang
+  // terbuka selain keamanan akunnya sendiri) - keadaan yang disengaja supaya
+  // menghapus peran tidak pernah berubah jadi menghapus akses secara diam-diam
+  // ke arah yang lebih longgar.
+  staffRoleId String?
+  staffRole   StaffRole? @relation(fields: [staffRoleId], references: [id], onDelete: SetNull)
 
   wallet              Wallet?
   orders              Order[]

@@ -1,19 +1,11 @@
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { requireAdminSession } from "@/lib/auth/admin-gate";
 
 export type ActionResult = { ok?: string; error?: string };
 
-async function requireAdmin(): Promise<{ adminId: string } | { error: string }> {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN" || !session.user.id) return { error: "Tidak diizinkan" };
-  const fresh = await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, updatedAt: true } });
-  if (!fresh || fresh.role !== "ADMIN" || fresh.updatedAt.getTime() !== session.user.updatedAt) {
-    return { error: "Tidak diizinkan" };
-  }
-  return { adminId: session.user.id };
-}
+const requireAdmin = () => requireAdminSession("catalog.manage");
 
 async function logAdmin(adminId: string, action: string, targetId: string, detail?: object) {
   await db.adminActionLog.create({

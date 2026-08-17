@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import type { UserRole } from "@/lib/rbac/access";
 
 /**
  * Masa hidup sesi, DIBEDAKAN per peran.
@@ -33,7 +34,7 @@ export const authConfig = {
     jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as { role?: "USER" | "ADMIN" }).role ?? "USER";
+        token.role = (user as { role?: UserRole }).role ?? "USER";
         token.updatedAt = (user as { updatedAt?: number }).updatedAt ?? 0;
       }
 
@@ -50,7 +51,7 @@ export const authConfig = {
     session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as "USER" | "ADMIN";
+        session.user.role = token.role as UserRole;
         session.user.updatedAt = token.updatedAt as number;
       }
       return session;

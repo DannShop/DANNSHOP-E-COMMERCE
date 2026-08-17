@@ -7,6 +7,8 @@ import { getInvoiceBranding } from "@/lib/invoice/branding";
 import { getPwaSettings } from "@/lib/pwa/settings";
 import { resolveAppNames, resolveIcon } from "@/lib/pwa/config";
 import { appearanceVersion, buildStartupImages } from "@/lib/pwa/splash";
+import { canEnterAdmin } from "@/lib/rbac/access";
+import { parsePermissions } from "@/lib/rbac/permissions";
 import { AdminShell } from "./admin-shell";
 
 // Panel admin adalah aplikasi mobile KEDUA, terpisah dari app toko.
@@ -59,7 +61,12 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") redirect("/login");
+  // Karyawan (STAFF) ikut boleh masuk; sejauh mana dia boleh melangkah di
+  // dalamnya ditentukan izin per route di proxy.ts, bukan di sini. Layout
+  // TIDAK dijalankan ulang antar-navigasi, jadi gerbang berbasis route di sini
+  // akan bocor - itu sudah pernah terjadi dan alasannya ditulis panjang di
+  // proxy.ts. Yang di sini cuma "boleh masuk panel sama sekali atau tidak".
+  if (!session?.user?.id || !canEnterAdmin(session.user.role)) redirect("/login");
 
   // Admin yang belum memasang 2FA diarahkan ke halaman Keamanan dan tidak bisa
   // ke mana-mana sebelum memasangnya.
@@ -74,7 +81,14 @@ export default async function AdminLayout({
   // keadaan lama sampai kedaluwarsa. Pola yang sama dipakai penegakan ban.
   const me = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { totpEnabledAt: true },
+    select: {
+      totpEnabledAt: true,
+      // Izin dibaca di sini HANYA untuk menyembunyikan menu yang tidak berguna
+      // bagi karyawan ini. Ini BUKAN penegakan - penegakannya ada di proxy.ts
+      // (route) dan di tiap server action (aksi). Menu yang tersembunyi tapi
+      // tetap bisa dibuka lewat URL sudah tertutup di dua lapis itu.
+      staffRole: { select: { permissions: true, isActive: true } },
+    },
   });
   //
   // PENGALIHANNYA TIDAK DI SINI — ada di middleware (proxy.ts), yang selalu tahu
@@ -83,6 +97,12 @@ export default async function AdminLayout({
   // dijalankan ulang saat berpindah halaman dari dalam aplikasi, jadi penegakan
   // di sini menyala tidak konsisten dan sempat mengunci admin di produksi.
   const needsTwoFactor = !me?.totpEnabledAt;
+
+  // Peran yang dinonaktifkan langsung dianggap nol izin, aturan yang sama
+  // dipakai requireAdminSession(). Kalau berbeda, karyawan akan melihat menu
+  // yang setiap kali diklik menolaknya.
+  const permissions =
+    me?.staffRole && me.staffRole.isActive ? parsePermissions(me.staffRole.permissions) : [];
 
   // Sengaja SETELAH gerbang admin, bukan di-Promise.all bareng auth(): pengunjung
   // yang tidak berhak tidak perlu memicu query apa pun sebelum ditendang.
@@ -95,6 +115,7 @@ export default async function AdminLayout({
     <AdminShell
       userEmail={session.user.email ?? "admin"}
       userRole={session.user.role}
+      permissions={permissions}
       logoUrl={settings.logoUrl}
       logoType={settings.logoType}
       faviconUrl={settings.faviconUrl}
