@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { parseBenefits, hasBenefit, type BenefitKey } from "@/lib/membership/benefits";
+import { getPartnerPackage } from "@/lib/partner/package";
 
 // Konteks tier seorang user pada satu titik waktu - satu-satunya bentuk yang
 // boleh dibaca checkout/deposit/harga. JANGAN baca UserMembership/
@@ -62,13 +63,56 @@ export const NO_MEMBERSHIP: MembershipContext = {
 // resellernya sudah terlanjur membelinya - isActive cuma mengunci PEMBELIAN
 // BARU, bukan mencabut sesuatu yang sudah dibayar. Yang mencabut hak adalah
 // `ResellerAccount.isActive`, dan itu keputusan terhadap orangnya.
+// Identitas tier untuk mitra H2H. Bukan baris database - paket mitra hanya ada
+// satu dan disimpan sebagai pengaturan (lihat lib/partner/package.ts), tapi
+// pemanggil yang menampilkan badge tidak perlu tahu itu: bentuknya dibuat sama
+// persis dengan tier reseller supaya semua pembaca terus bekerja apa adanya.
+const PARTNER_TIER = {
+  id: "partner",
+  name: "Mitra H2H",
+  slug: "partner",
+  badgeColor: "#0EA5E9",
+} as const;
+
 export async function getMembershipContext(userId: string | null): Promise<MembershipContext> {
   if (!userId) return NO_MEMBERSHIP;
 
-  const reseller = await db.resellerAccount.findUnique({
-    where: { userId },
-    include: { tier: true },
+  // SATU query untuk dua kemungkinan sumber. Dipisah jadi dua query berarti
+  // setiap checkout pembeli biasa membayar satu perjalanan ke database hanya
+  // untuk memastikan dia bukan mitra - dan pembeli biasa adalah mayoritasnya.
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      partnerAccount: { select: { isActive: true } },
+      resellerAccount: { include: { tier: true } },
+    },
   });
+  if (!user) return NO_MEMBERSHIP;
+
+  // ===== MITRA MENANG DI ATAS RESELLER =====
+  //
+  // Seorang mitra boleh saja juga punya akun reseller. Kalau keduanya dibaca,
+  // harga yang berlaku jadi bergantung pada mana yang kebetulan lebih besar -
+  // dan itu mustahil dijelaskan ke mitra yang menandatangani kesepakatan H2H
+  // dengan angka tertentu. Paket mitra adalah kesepakatan eksplisit berbayar,
+  // jadi ia yang dipakai; diskonnya TIDAK pernah ditumpuk dengan tier reseller.
+  //
+  // Akun mitra baru terbit setelah biaya join lunas, jadi keberadaannya sendiri
+  // sudah membuktikan paketnya dibayar - tidak ada pengecekan pembayaran kedua
+  // yang perlu dilakukan di sini.
+  if (user.partnerAccount?.isActive) {
+    const pkg = await getPartnerPackage();
+    return {
+      tier: PARTNER_TIER,
+      discountBp: pkg.discountPercent,
+      discountFlat: pkg.discountFlatManual,
+      depositBonusBp: hasBenefit(pkg.benefits, "deposit_bonus") ? pkg.depositBonusPercent : 0,
+      benefits: pkg.benefits,
+      expiresAt: null,
+    };
+  }
+
+  const reseller = user.resellerAccount;
   if (!reseller || !reseller.isActive || !reseller.activatedAt || !reseller.tier) {
     return NO_MEMBERSHIP;
   }

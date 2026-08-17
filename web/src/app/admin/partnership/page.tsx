@@ -1,11 +1,18 @@
 import { db } from "@/lib/db";
-import { approvePartnerApplicationAction, rejectPartnerApplicationAction } from "@/app/actions/partners";
+import {
+  approvePartnerApplicationAction,
+  rejectPartnerApplicationAction,
+  savePartnerPackageAction,
+} from "@/app/actions/partners";
 import { suggestPartnerUsername } from "@/lib/partner/application";
+import { getPartnerPackage } from "@/lib/partner/package";
 import { PartnershipClient, type ApplicationRow } from "./partnership-client";
+import { PartnerPackageForm } from "./package-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function PartnershipPage() {
+  const partnerPackage = await getPartnerPackage();
   const applications = await db.partnerApplication.findMany({
     include: {
       user: {
@@ -66,12 +73,15 @@ export default async function PartnershipPage() {
   return (
     <div className="max-w-5xl space-y-8">
       <div>
-        <h1 className="text-xl font-semibold">Pengajuan Mitra</h1>
+        <h1 className="text-xl font-semibold">Mitra H2H</h1>
         <p className="text-sm text-muted-foreground">
-          Antrean member yang mendaftar jadi mitra H2H lewat Akun → Mitra. Menyetujui akan langsung menerbitkan
-          kredensial API; mitra melihatnya sendiri di portal mereka, kamu tidak perlu mengirim apa pun.
+          Atur paket mitra di bawah, lalu tinjau antrean pengajuannya. Mitra yang melunasi biaya
+          join mendapat kredensial API secara otomatis — kamu tidak perlu menyetujui apa pun.
+          Tombol setujui di antrean tetap ada untuk mitra yang membayar di luar sistem.
         </p>
       </div>
+
+      <PartnerPackageForm initial={partnerPackage} action={savePartnerPackageAction} />
 
       <div className="rounded-lg border-l-2 border-sky-500/50 bg-sky-500/5 p-3 text-xs text-muted-foreground">
         <strong className="text-foreground">Yang perlu diperiksa sebelum menyetujui:</strong> riwayat akun pemohon

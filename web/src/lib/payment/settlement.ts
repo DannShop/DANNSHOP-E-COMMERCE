@@ -5,6 +5,7 @@ import { getMidtransCreds } from "@/lib/payment/gateway-config";
 import { dispatchFulfillment, escalateOrder } from "@/lib/order/fulfillment";
 import { formatDepositPaidMessage, formatOrderPaidMessage, notifyTelegram } from "@/lib/notify/telegram";
 import { describeOrderTarget } from "@/lib/order/customer-no";
+import { activatePartnerFromApplication, resolveAvailableUsername } from "@/lib/partner/activate";
 
 // Logika settlement pembayaran Midtrans - dipindahkan ke sini dari
 // api/webhooks/midtrans/route.ts karena sekarang punya DUA pemanggil:
@@ -302,6 +303,107 @@ async function settleTierPurchase(
 
 // Titik masuk tunggal untuk kedua pemanggil (webhook & lazy reconcile).
 //
+/**
+ * Biaya join mitra H2H lunas -> akun mitra terbit OTOMATIS.
+ *
+ * Tidak ada persetujuan manual di jalur ini, dan itu disengaja (keputusan
+ * Wildan 2026-08-18): pembayaran adalah penyaringnya. Data usaha di formulir
+ * tetap tersimpan sebagai jejak, dan admin tetap bisa menonaktifkan mitra kapan
+ * saja lewat panel.
+ *
+ * Penerbitan akun dan klaim pembayaran berada dalam SATU transaksi. Kalau
+ * dipisah, kegagalan di antara keduanya meninggalkan keadaan terburuk yang
+ * mungkin: uang sudah masuk, mitra tidak punya akun, dan tidak ada yang tahu.
+ */
+async function settlePartnerJoin(
+  application: {
+    id: string;
+    userId: string;
+    businessName: string;
+    callbackUrl: string | null;
+    serverIps: string | null;
+    joinTotal: bigint | null;
+    joinPaidAt: Date | null;
+  },
+  confirmed: MidtransStatusResult,
+): Promise<string> {
+  const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
+  if (mapped !== "paid") return mapped;
+
+  // Tagihan yang tidak pernah diterbitkan tidak boleh diselesaikan. Ini menutup
+  // pembayaran yang order_id-nya kebetulan cocok dengan id pengajuan tapi
+  // nominalnya tidak pernah kita tentukan.
+  if (application.joinTotal === null) {
+    console.error("settlePartnerJoin: pembayaran masuk tanpa tagihan terbit", {
+      applicationId: application.id,
+    });
+    return "no_invoice";
+  }
+
+  if (BigInt(Math.round(Number(confirmed.grossAmount))) !== application.joinTotal) {
+    console.error("settlePartnerJoin: nominal tidak cocok, akun mitra TIDAK diterbitkan", {
+      applicationId: application.id,
+      expected: application.joinTotal.toString(),
+      received: confirmed.grossAmount,
+    });
+    await notifyTelegram(
+      "system_anomaly",
+      `⚠️ Biaya join mitra ${application.id} nominal settlement TIDAK COCOK (ditagih Rp ${application.joinTotal.toString()}, diterima ${confirmed.grossAmount}) - akun mitra TIDAK diterbitkan, perlu investigasi manual.`,
+    );
+    return "amount_mismatch";
+  }
+
+  // Username disiapkan DI LUAR transaksi: mencarinya butuh query sendiri, dan
+  // menahan transaksi selama itu memperbesar jendela kunci tanpa alasan.
+  const username = await resolveAvailableUsername(application.businessName);
+
+  let claimed = 0;
+  try {
+    await db.$transaction(async (tx) => {
+      // Klaim atomik lewat `joinPaidAt: null`. Webhook Midtrans mengirim ulang
+      // notifikasi yang sama berkali-kali; tanpa ini, akun mitra kedua akan
+      // dicoba dibuat dan gagal di unique constraint - yang berarti webhook
+      // kedua membalas galat padahal semuanya sudah benar.
+      const result = await tx.partnerApplication.updateMany({
+        where: { id: application.id, joinPaidAt: null },
+        data: { joinPaidAt: new Date() },
+      });
+      claimed = result.count;
+      if (claimed === 0) return;
+
+      await activatePartnerFromApplication(tx, {
+        applicationId: application.id,
+        userId: application.userId,
+        username,
+        callbackUrl: application.callbackUrl,
+        serverIps: application.serverIps,
+        reviewedById: null,
+      });
+    });
+  } catch (e) {
+    console.error("settlePartnerJoin: gagal menerbitkan akun mitra", {
+      applicationId: application.id,
+      error: e,
+    });
+    await notifyTelegram(
+      "system_anomaly",
+      `🔴 Biaya join mitra ${application.id} SUDAH LUNAS tapi akun mitranya GAGAL diterbitkan. Terbitkan manual lewat /admin/partnership.`,
+    );
+    return "activation_failed";
+  }
+
+  if (claimed === 0) {
+    // Sudah pernah lunas sebelumnya - webhook ulangan. Bukan galat.
+    return "paid";
+  }
+
+  await notifyTelegram(
+    "partner_joined",
+    `🤝 Mitra baru aktif: ${application.businessName} (username: ${username}). Biaya join Rp ${application.joinTotal.toString()} lunas.`,
+  );
+  return "paid";
+}
+
 // `externalRef` adalah order_id di sisi Midtrans, yang di sistem kita berarti
 // Order.orderNumber ATAU Deposit.id - keduanya dicoba, sesuai cara webhook
 // selama ini bekerja (Deposit tidak punya nomor publik terpisah seperti Order).
@@ -337,6 +439,23 @@ export async function settleFromMidtrans(externalRef: string): Promise<string> {
   if (purchase) {
     const confirmed = await getTransactionStatus(externalRef, creds);
     return settleTierPurchase(purchase, confirmed);
+  }
+
+  const application = await db.partnerApplication.findUnique({
+    where: { id: externalRef },
+    select: {
+      id: true,
+      userId: true,
+      businessName: true,
+      callbackUrl: true,
+      serverIps: true,
+      joinTotal: true,
+      joinPaidAt: true,
+    },
+  });
+  if (application) {
+    const confirmed = await getTransactionStatus(externalRef, creds);
+    return settlePartnerJoin(application, confirmed);
   }
 
   return "order_not_found";

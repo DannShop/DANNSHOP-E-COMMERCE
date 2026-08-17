@@ -1255,6 +1255,33 @@ model PartnerApplication {
   // orang luar - bukan catatan internal.
   reviewNote   String?   @db.Text
 
+  // ===== Biaya join =====
+  //
+  // Ditaruh di sini, BUKAN tabel pembelian terpisah seperti TierPurchase, dan
+  // itu karena bentuk hubungannya berbeda: reseller bisa membeli paket
+  // berkali-kali (naik tingkat), sementara mitra membayar biaya join TEPAT
+  // SEKALI - satu pengajuan, satu pembayaran. Tabel terpisah untuk hubungan 1:1
+  // cuma menambah join di setiap pembacaan tanpa menjawab pertanyaan apa pun.
+  //
+  // Pembayaran yang gagal/kedaluwarsa MENIMPA kolom-kolom ini saat pemohon
+  // mencoba lagi; tidak ada riwayat percobaan yang disimpan, karena yang perlu
+  // diketahui cuma "sudah lunas atau belum".
+  //
+  // Semua null = pengajuan lama (sebelum biaya join ada) atau tagihan belum
+  // pernah diterbitkan. `paidAt` yang terisi adalah SATU-SATUNYA penanda lunas.
+  /// Snapshot harga paket saat tagihan dibuat. Harga paket boleh berubah
+  /// kapan saja; yang ditagihkan tidak boleh ikut bergeser di tengah jalan.
+  joinPrice        BigInt?
+  joinFee          BigInt?
+  joinUniqueCode   Int?
+  /// joinPrice + joinFee + joinUniqueCode. Yang benar-benar ditagihkan.
+  joinTotal        BigInt?
+  joinPaymentMethod String?
+  joinRawResponse  Json?
+  joinExpiredAt    DateTime?
+  /// Terisi HANYA lewat settlement Midtrans. Penanda tunggal bahwa mitra lunas.
+  joinPaidAt       DateTime?
+
   partnerAccount PartnerAccount?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt

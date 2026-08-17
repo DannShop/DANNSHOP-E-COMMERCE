@@ -37,7 +37,7 @@ export function reportChargeFailure(
   // bukan diberi pelaporan sendiri: ketiga jalur uang harus terbaca serupa di
   // log & Telegram, kalau tidak yang paling baru selalu jadi yang paling sulit
   // didiagnosis saat gateway bermasalah.
-  context: { scope: "checkout" | "deposit" | "tier-purchase"; refId: string; method: string },
+  context: { scope: "checkout" | "deposit" | "tier-purchase" | "partner-join"; refId: string; method: string },
   e: unknown,
 ): ChargeFailureReport {
   const failure = describeMidtransFailure(e);

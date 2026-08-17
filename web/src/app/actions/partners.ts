@@ -7,6 +7,9 @@ import { db } from "@/lib/db";
 import { encryptJson } from "@/lib/crypto";
 import { randomToken } from "@/lib/random-token";
 import { requireAdminSession } from "@/lib/auth/admin-gate";
+import { activatePartnerFromApplication } from "@/lib/partner/activate";
+import { parsePartnerBenefits } from "@/lib/membership/benefits";
+import { savePartnerPackage, type PartnerPackage } from "@/lib/partner/package";
 
 export type ActionResult = { ok?: string; error?: string };
 /** Kredensial dikembalikan SEKALI di sini dan tidak pernah bisa dibaca lagi lewat UI. */
@@ -226,32 +229,23 @@ export async function approvePartnerApplicationAction(formData: FormData): Promi
   if (application.user.bannedAt) return { error: "User ini sedang ditangguhkan." };
   if (application.user.role === "ADMIN") return { error: "Akun admin tidak boleh dipakai sebagai akun partner." };
 
-  const apiKey = randomToken(API_KEY_LENGTH);
-  const callbackSecret = randomToken(CALLBACK_SECRET_LENGTH);
-
   try {
+    // Penerbitan akunnya sendiri ada di lib/partner/activate.ts, dipakai bersama
+    // dengan jalur otomatis (pelunasan biaya join lewat Midtrans). Dua salinan
+    // yang menyimpang di sini berarti mitra yang lahir lewat jalur berbeda
+    // mendapat akun yang diam-diam tidak sama.
+    //
+    // Jalur ini SENGAJA dipertahankan walau biaya join sudah otomatis: admin
+    // tetap perlu bisa menerbitkan akun tanpa pembayaran (mitra yang membayar
+    // di luar sistem, kesepakatan khusus, demo).
     await db.$transaction(async (tx) => {
-      await tx.partnerAccount.create({
-        data: {
-          userId: application.userId,
-          username,
-          apiKeyEnc: encryptJson(apiKey),
-          callbackSecretEnc: encryptJson(callbackSecret),
-          // Data teknis yang sudah diisi di formulir dipakai langsung — menanyakan
-          // ulang hal yang sudah dijawab adalah cara tercepat membuat mitra baru
-          // tertahan rc 12 di panggilan pertamanya.
-          callbackUrl: application.callbackUrl,
-          ipWhitelist: application.serverIps,
-          applicationId: application.id,
-        },
-      });
-      // Dompet dibuat di depan supaya mitra bisa langsung isi saldo — tanpa ini,
-      // baris Wallet baru lahir saat deposit pertama dan cek saldo membalas 0
-      // tanpa penjelasan.
-      await tx.wallet.upsert({ where: { userId: application.userId }, create: { userId: application.userId }, update: {} });
-      await tx.partnerApplication.update({
-        where: { id: application.id },
-        data: { status: "APPROVED", reviewedById: admin.adminId, reviewedAt: new Date(), reviewNote: null },
+      await activatePartnerFromApplication(tx, {
+        applicationId: application.id,
+        userId: application.userId,
+        username,
+        callbackUrl: application.callbackUrl,
+        serverIps: application.serverIps,
+        reviewedById: admin.adminId,
       });
     });
   } catch (e) {
@@ -334,4 +328,60 @@ export async function regenerateCallbackSecretAction(formData: FormData): Promis
     console.error("regenerateCallbackSecretAction: gagal", { error: e });
     return { error: "Gagal membuat secret callback baru." };
   }
+}
+
+/**
+ * Menyimpan paket mitra.
+ *
+ * Persen diterima dari form dalam satuan PERSEN (mis. "2,5") lalu disimpan
+ * sebagai basis point (250) - satuan yang sama dengan MembershipTier
+ * .discountPercent, supaya effectivePrice() tidak perlu tahu dari mana angkanya
+ * datang.
+ */
+export async function savePartnerPackageAction(
+  _prev: ActionResult | undefined,
+  formData: FormData,
+): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  if ("error" in admin) return admin;
+
+  const toBigInt = (raw: FormDataEntryValue | null): bigint => {
+    const n = Number(String(raw ?? "0").replace(/[^\d]/g, ""));
+    return Number.isFinite(n) && n > 0 ? BigInt(Math.round(n)) : 0n;
+  };
+  const toBp = (raw: FormDataEntryValue | null): number => {
+    const n = Number(String(raw ?? "0").replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.min(Math.round(n * 100), 10_000);
+  };
+
+  const benefits = parsePartnerBenefits(formData.getAll("benefits").map(String));
+
+  const pkg: PartnerPackage = {
+    joinPrice: toBigInt(formData.get("joinPrice")),
+    discountPercent: toBp(formData.get("discountPercent")),
+    discountFlatManual: toBigInt(formData.get("discountFlatManual")),
+    depositBonusPercent: toBp(formData.get("depositBonusPercent")),
+    benefits,
+    isOpen: formData.get("isOpen") === "on",
+  };
+
+  try {
+    await savePartnerPackage(pkg);
+  } catch (e) {
+    console.error("savePartnerPackageAction: gagal menyimpan", { error: e });
+    return { error: "Gagal menyimpan paket mitra." };
+  }
+
+  await logAdmin(admin.adminId, "partner.save_package", "partner_package", {
+    biayaJoin: pkg.joinPrice.toString(),
+    diskonBp: pkg.discountPercent,
+    dibuka: pkg.isOpen,
+  });
+  revalidatePath("/admin/partnership");
+  return {
+    ok: pkg.isOpen
+      ? "Paket mitra tersimpan. Harga baru langsung berlaku untuk semua mitra."
+      : "Paket mitra tersimpan. Pendaftaran mitra baru sedang DITUTUP.",
+  };
 }

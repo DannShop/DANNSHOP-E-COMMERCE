@@ -8,8 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getMembershipContext } from "@/lib/membership/tier";
+import QRCode from "qrcode";
 import { labelForBusinessType, labelForMonthlyVolume, labelForPlatform } from "@/lib/partner/application";
+import { getPartnerPackage } from "@/lib/partner/package";
+import { getSnapBrowserConfig } from "@/lib/payment/gateway-config";
+import { payPartnerJoinFee } from "@/app/actions/partner-application";
+import type { PaymentActions } from "@/lib/midtrans/client";
 import { PartnerApplicationForm } from "./application-form";
+import { JoinPaymentPanel } from "./join-payment";
 import { CancelApplicationButton } from "./cancel-button";
 
 export const metadata: Metadata = { title: "Gabung Mitra" };
@@ -39,10 +45,16 @@ export default async function AccountMitraPage() {
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const [partnerAccount, latestApplication, membership] = await Promise.all([
+  const [partnerAccount, latestApplication, membership, partnerPackage, methods] = await Promise.all([
     db.partnerAccount.findUnique({ where: { userId }, select: { username: true, isActive: true } }),
     db.partnerApplication.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } }),
     getMembershipContext(userId),
+    getPartnerPackage(),
+    db.paymentMethodConfig.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+      select: { code: true, label: true },
+    }),
   ]);
 
   // ===== Wajah 1: sudah jadi mitra =====
@@ -66,6 +78,30 @@ export default async function AccountMitraPage() {
       </div>
     );
   }
+
+  // Tagihan biaya join yang masih hidup. Kedaluwarsa dibandingkan di sini
+  // (bukan di klien) supaya instruksi bayar tidak pernah tampil untuk tagihan
+  // yang sudah mati — nomor VA yang sudah tidak menerima uang jauh lebih buruk
+  // daripada tombol bayar yang meminta membuat tagihan baru.
+  // `now` dihitung SEKALI di sini, bukan dipanggil di dalam perbandingan:
+  // aturan react-hooks/purity menganggap Date.now() di badan komponen tidak
+  // murni, dan lint menolaknya. Lihat docs/06-TROUBLESHOOTING-DEPLOY.md §3.8.
+  const now = new Date();
+  const hasLiveInvoice =
+    latestApplication?.joinExpiredAt !== null &&
+    latestApplication?.joinExpiredAt !== undefined &&
+    latestApplication.joinExpiredAt.getTime() > now.getTime() &&
+    latestApplication.joinPaidAt === null &&
+    latestApplication.joinTotal !== null;
+
+  const joinActions = hasLiveInvoice
+    ? (latestApplication.joinRawResponse as PaymentActions | null)
+    : null;
+  const qrDataUri =
+    joinActions?.kind === "qris" && joinActions.qrString
+      ? await QRCode.toDataURL(joinActions.qrString, { width: 240, margin: 1 })
+      : null;
+  const snapConfig = joinActions?.kind === "snap" ? await getSnapBrowserConfig() : null;
 
   // ===== Wajah 2: pengajuan sedang ditinjau =====
   if (latestApplication?.status === "PENDING") {
@@ -95,6 +131,21 @@ export default async function AccountMitraPage() {
 
           <CancelApplicationButton />
         </div>
+
+        {/* Pembayaran biaya join. Muncul hanya kalau pendaftaran sedang dibuka —
+            paket yang belum dikonfigurasi admin (isOpen false) tidak boleh
+            menawarkan tagihan yang harganya belum ditentukan. */}
+        {partnerPackage.isOpen && (
+          <JoinPaymentPanel
+            joinPrice={partnerPackage.joinPrice}
+            pendingTotal={hasLiveInvoice ? latestApplication.joinTotal : null}
+            pendingActions={hasLiveInvoice ? joinActions : null}
+            qrDataUri={qrDataUri}
+            snapConfig={snapConfig}
+            methods={methods}
+            action={payPartnerJoinFee}
+          />
+        )}
       </div>
     );
   }

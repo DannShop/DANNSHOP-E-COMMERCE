@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { requireActiveAccount } from "@/lib/account/user-status";
 import { normalizeIpList, partnerApplicationSchema } from "@/lib/partner/application";
+import { startPartnerJoinPayment } from "@/lib/partner/join-purchase";
+import type { PaymentActions } from "@/lib/midtrans/client";
 
 export type ApplicationResult = { ok?: string; error?: string };
 
@@ -111,4 +113,31 @@ export async function cancelPartnerApplication(): Promise<ApplicationResult> {
     console.error("cancelPartnerApplication: gagal membatalkan", { userId: session.user.id, error: e });
     return { error: "Gagal membatalkan pengajuan." };
   }
+}
+
+export type PayJoinResult = { error?: string; applicationId?: string; actions?: PaymentActions };
+
+/**
+ * Menerbitkan tagihan biaya join mitra.
+ *
+ * Begitu lunas, akun mitra terbit OTOMATIS lewat settleFromMidtrans() - tidak
+ * ada langkah persetujuan admin di antaranya. Lihat settlePartnerJoin().
+ */
+export async function payPartnerJoinFee(
+  _prev: PayJoinResult | undefined,
+  formData: FormData,
+): Promise<PayJoinResult> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "Kamu harus login dulu." };
+  // Gerbang yang sama dengan seluruh jalur uang lain - akun yang ditangguhkan
+  // tidak boleh menerbitkan tagihan.
+  const blocked = await requireActiveAccount(session.user.id, session.user.updatedAt);
+  if (blocked) return { error: blocked };
+
+  const methodCode = String(formData.get("paymentMethod") ?? "");
+  if (!methodCode) return { error: "Pilih metode pembayaran dulu." };
+
+  const result = await startPartnerJoinPayment({ userId: session.user.id, methodCode });
+  if (!result.error) revalidatePath("/account/mitra");
+  return result;
 }

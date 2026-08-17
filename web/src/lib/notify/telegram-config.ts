@@ -25,6 +25,7 @@ export const TELEGRAM_EVENTS = {
   order_manual: "Order manual masuk (perlu dikirim admin)",
   deposit_paid: "Deposit saldo member masuk",
   user_registered: "User baru mendaftar",
+  partner_joined: "Mitra H2H baru aktif (biaya join lunas)",
   provider_balance: "Saldo provider menipis / pulih",
   system_anomaly: "Anomali sistem & settlement",
 } as const;
@@ -43,6 +44,10 @@ const DEFAULT_ENABLED_EVENTS: TelegramEvent[] = [
   "order_needs_review",
   "order_manual",
   "deposit_paid",
+  // Mitra baru jarang terjadi tapi berarti uang masuk dan ada akses API yang
+  // terbit tanpa campur tangan siapa pun - justru yang paling perlu diketahui
+  // pemilik toko saat kejadian, bukan saat ditemukan belakangan di panel.
+  "partner_joined",
   "provider_balance",
   "system_anomaly",
 ];
