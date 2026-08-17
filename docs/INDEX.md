@@ -2,7 +2,7 @@
 
 Dokumentasi teknis lengkap untuk project **DannShop** — platform PPOB/digital goods store, dibangun dengan Next.js 16. Ditulis untuk developer solo yang butuh referensi detail, bukan cuma gambaran umum.
 
-> **Semua path file di dokumen-dokumen ini ditulis lengkap dari root repo** (`D:\Coding VSC\DannShop-PPOB`). Aplikasi Next.js aktif ada di folder `web/` — repo root juga berisi aplikasi PHP/Laravel lama yang **tidak dipakai lagi**, abaikan folder `app/`, `bootstrap/`, `config/`, `database/`, `resources/`, `routes/`, `vendor/` di level root.
+> **Semua path file di dokumen-dokumen ini ditulis lengkap dari root repo** (`D:\Coding VSC\DannShop-PPOB`). Aplikasi Next.js aktif ada di folder `web/`. Sisa aplikasi PHP/Laravel lama **sudah dihapus seluruhnya** (2026-08-18) — kalau dokumen lama masih menyebut `app/`, `routes/`, `resources/`, `artisan`, atau `composer.json` di level root, itu peninggalan yang tidak ada lagi. Root sekarang hanya berisi `web/` (aplikasi), `relay/` (relay PHP ber-IP tetap yang MASIH DIPAKAI produksi), dan `docs/`.
 
 ## Daftar Isi
 
