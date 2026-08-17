@@ -131,6 +131,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             name: item.name,
             description: item.description ?? "",
             manualSkuCode: item.manualSkuCode ?? "",
+            costPrice: item.costPrice?.toString() ?? "",
             stock: item.stock === null ? "" : String(item.stock),
             heldStock: heldStock.get(item.id) ?? 0,
             sellingPrice: item.sellingPrice.toString(),

@@ -39,6 +39,7 @@ export interface ProductItemData {
   name: string;
   description: string; // "" kalau tidak diisi
   manualSkuCode: string; // "" kalau tidak diisi - hanya relevan untuk produk MANUAL
+  costPrice: string; // "" = belum diisi. Hanya relevan untuk produk MANUAL.
   /** "" = stok tak terbatas. Dibedakan dari "0" yang berarti habis. */
   stock: string;
   /** Berapa jatah stok yang sedang dipegang order berjalan (lib/catalog/stock.ts). */
@@ -480,12 +481,33 @@ function ItemRow({
                       </p>
                     </div>
                   )}
-                  {/* Produk non-manual tidak menampilkan kolom kode SKU, tapi
-                      nilainya tetap ikut dikirim. Tanpa ini, menyunting item
-                      pada produk yang PERNAH manual akan menghapus kodenya
+                  {isManual && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`costPrice-${item.id}`}>Modal (opsional)</Label>
+                      <Input
+                        id={`costPrice-${item.id}`}
+                        name="costPrice"
+                        inputMode="numeric"
+                        defaultValue={item.costPrice}
+                        placeholder="Kosongkan kalau belum tahu"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Harga belimu untuk item ini. Dipakai menghitung laba di laporan. Produk otomatis
+                        tidak punya kolom ini — modalnya datang sendiri dari provider.
+                      </p>
+                    </div>
+                  )}
+                  {/* Produk non-manual tidak menampilkan kolom kode SKU & modal,
+                      tapi nilainya tetap ikut dikirim. Tanpa ini, menyunting item
+                      pada produk yang PERNAH manual akan menghapusnya
                       diam-diam - field yang tidak dirender terbaca sebagai
                       kosong oleh parser, dan kosong berarti "hapus". */}
-                  {!isManual && <input type="hidden" name="manualSkuCode" value={item.manualSkuCode} />}
+                  {!isManual && (
+                    <>
+                      <input type="hidden" name="manualSkuCode" value={item.manualSkuCode} />
+                      <input type="hidden" name="costPrice" value={item.costPrice} />
+                    </>
+                  )}
                   {groups.length > 0 && (
                     <div className="space-y-1.5">
                       <Label htmlFor={`groupId-${item.id}`}>Grup</Label>
@@ -711,13 +733,27 @@ function AddItemForm({
           <Input id="new-item-sort" name="sortOrder" inputMode="numeric" defaultValue={0} />
         </div>
         {isManual && (
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="new-item-sku">Kode SKU (opsional)</Label>
-            <Input id="new-item-sku" name="manualSkuCode" maxLength={64} placeholder="NETFLIX-PRIV-1B" />
-            <p className="text-xs text-muted-foreground">
-              Label buatanmu untuk mencocokkan stok. Tidak dikirim ke provider mana pun.
-            </p>
-          </div>
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-item-cost">Modal (opsional)</Label>
+              <Input
+                id="new-item-cost"
+                name="costPrice"
+                inputMode="numeric"
+                placeholder="Kosongkan kalau belum tahu"
+              />
+              <p className="text-xs text-muted-foreground">
+                Harga belimu. Dipakai menghitung laba di laporan.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-item-sku">Kode SKU (opsional)</Label>
+              <Input id="new-item-sku" name="manualSkuCode" maxLength={64} placeholder="NETFLIX-PRIV-1B" />
+              <p className="text-xs text-muted-foreground">
+                Label buatanmu untuk mencocokkan stok. Tidak dikirim ke provider mana pun.
+              </p>
+            </div>
+          </>
         )}
       </div>
       <label className="flex w-fit items-center gap-2 text-sm">

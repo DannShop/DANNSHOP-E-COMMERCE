@@ -670,6 +670,16 @@ model ProductItem {
   // simpan karena kode kembar cuma akan menghalangi pekerjaan tanpa melindungi
   // apa pun.
   manualSkuCode String?
+  // Modal (harga beli) untuk produk MANUAL. Produk AUTO tidak memakainya sama
+  // sekali - modalnya hidup di ProviderSku.costPrice, per provider, dan diisi
+  // sync harga. Dua sumber untuk satu angka akan menyimpang diam-diam, jadi
+  // kolom ini HANYA ditampilkan & dibaca untuk produk manual.
+  //
+  // null = belum diisi, dan itu SAH: barang yang belum dibeli memang belum
+  // punya modal pasti. Order dari item tanpa modal masuk laporan laba sebagai
+  // "modal belum tercatat" - laporan jujur bilang tidak tahu, bukan diam-diam
+  // menganggap modalnya nol dan labanya 100%.
+  costPrice    BigInt?
   sellingPrice BigInt
   memberPrice  BigInt
   // Stok tersedia. null = TAK TERBATAS, dan itu bawaannya - jadi migrasi ini
@@ -789,6 +799,18 @@ model Order {
   total             BigInt
   fee               BigInt               @default(0)
   uniqueCode        Int                  @default(0)
+  // SNAPSHOT modal order ini - SATU-SATUNYA kolom yang boleh dibaca laporan
+  // laba. Diisi dari dua arah, sekali saja:
+  //   - MANUAL: saat checkout, dari ProductItem.costPrice (ikut null kalau
+  //     admin belum mengisi modalnya).
+  //   - AUTO:   saat percobaan fulfillment BERHASIL, dari costPrice attempt itu
+  //     (lib/order/fulfillment.ts). Bukan saat checkout, karena failover bisa
+  //     mengirim lewat provider lain dengan modal berbeda - yang benar adalah
+  //     modal provider yang BENAR-BENAR memproses, bukan yang dicoba pertama.
+  // null = modal tidak tercatat (order lama sebelum kolom ini ada, item manual
+  // tanpa modal, atau order yang belum/gagal terkirim). Laporan menghitungnya
+  // terpisah sebagai "belum tercatat", tidak pernah dianggap nol.
+  costPrice         BigInt?
   paymentMethod     String?
   expiredAt         DateTime?
   completedAt       DateTime?

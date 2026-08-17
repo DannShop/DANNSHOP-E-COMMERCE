@@ -24,6 +24,7 @@ import { effectivePrice, isFlashActive } from "@/lib/pricing/effective-price";
 import { evaluateVoucher } from "@/lib/voucher/evaluate";
 import { buildVoucherRedemption, netPrice, type AppliedVoucher } from "@/lib/voucher/apply";
 import { getMembershipContext, type MembershipContext } from "@/lib/membership/tier";
+import { initialOrderCostPrice } from "@/lib/order/cost-snapshot";
 import { hasBenefit } from "@/lib/membership/benefits";
 import { requireActiveAccount } from "@/lib/account/user-status";
 import { generatePublicToken } from "@/lib/order/public-token";
@@ -213,7 +214,7 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
 async function createBalanceOrder(input: {
   userId: string;
   orderNumber: string;
-  item: { id: string; product: { name: string }; name: string };
+  item: { id: string; product: { name: string }; name: string; costPrice: bigint | null };
   price: bigint;
   voucher: AppliedVoucher | null;
   target: Record<string, string>;
@@ -237,6 +238,7 @@ async function createBalanceOrder(input: {
     // lebih murah. Yang didebit dari saldo adalah `total` di bawah.
     sellingPrice: input.price,
     total: netPrice(input.price, input.voucher),
+    costPrice: initialOrderCostPrice(input.fulfillmentMode, input.item.costPrice),
     paymentMethod: "balance",
     fulfillmentMode: input.fulfillmentMode,
     ...buildVoucherRedemption(input.voucher, input.userId),
@@ -307,7 +309,7 @@ async function createBalanceOrder(input: {
 async function createMidtransOrder(input: {
   userId: string | null;
   orderNumber: string;
-  item: { id: string; product: { name: string }; name: string };
+  item: { id: string; product: { name: string }; name: string; costPrice: bigint | null };
   price: bigint;
   voucher: AppliedVoucher | null;
   target: Record<string, string>;
@@ -361,6 +363,7 @@ async function createMidtransOrder(input: {
     fee,
     uniqueCode,
     total,
+    costPrice: initialOrderCostPrice(input.fulfillmentMode, input.item.costPrice),
     paymentMethod: method.code,
     expiredAt,
     fulfillmentMode: input.fulfillmentMode,

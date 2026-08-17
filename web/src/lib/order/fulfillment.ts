@@ -323,7 +323,17 @@ export async function applyFulfillmentResult(fulfillmentId: string, result: Prov
     // itu akan bikin histori order jadi salah/ambigu walau tidak ada dampak uang di sini.
     const claimedOrder = await db.order.updateMany({
       where: { id: fulfillment.orderId, status: { notIn: [...ORDER_STATUSES_NOT_OVERWRITABLE_BY_AUTOMATION] } },
-      data: { status: "COMPLETED", completedAt: new Date() },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        // Modal dicatat DI SINI, bukan saat checkout, dan yang dipakai adalah
+        // modal percobaan yang BENAR-BENAR berhasil. Failover bisa memindahkan
+        // pengiriman ke provider lain dengan modal berbeda; mencatatnya saat
+        // checkout berarti membukukan modal provider yang tidak pernah
+        // memproses apa pun. Ditulis di dalam klaim atomik yang sama supaya
+        // hasil yang datang telat (job recheck) tidak bisa menimpanya.
+        costPrice: fulfillment.costPrice,
+      },
     });
     if (claimedOrder.count === 0) {
       console.error("applyFulfillmentResult: hasil SUCCESS datang untuk order yang sudah final di status lain (mis. sudah ditandai selesai manual oleh admin), dilewati", {

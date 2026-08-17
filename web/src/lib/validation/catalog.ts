@@ -152,6 +152,11 @@ export const productItemSchema = z
     description: nullableTextField(500, "Deskripsi item maksimal 500 karakter"),
     manualSkuCode: nullableTextField(64, "Kode SKU maksimal 64 karakter"),
     stock: nullableStockField,
+    // Modal produk MANUAL. Boleh kosong (keputusan Wildan 2026-08-18): barang
+    // yang belum dibeli memang belum punya modal pasti, dan memaksa isi cuma
+    // menghasilkan tebakan yang lalu dibaca laporan sebagai fakta. Order dari
+    // item tanpa modal dihitung terpisah sebagai "modal belum tercatat".
+    costPrice: nullableBigIntField("Modal harus > 0"),
     sellingPrice: z.coerce.bigint().positive("Harga jual harus > 0"),
     // Nama field DB tetap `memberPrice` (mengubahnya menuntut migrasi tanpa
     // manfaat perilaku). Yang dilabeli ke admin: "Harga modal" - sejak Fase B
