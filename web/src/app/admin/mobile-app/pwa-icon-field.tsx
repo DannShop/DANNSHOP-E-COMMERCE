@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildAppIcons, isSupportedIconFile } from "@/lib/pwa/icon-builder";
-import { DEFAULT_ICONS, type PwaAppKind, type PwaIconSet } from "@/lib/pwa/config";
+import {
+  DEFAULT_ICONS,
+  isIconBackgroundStale,
+  type PwaAppKind,
+  type PwaIconSet,
+} from "@/lib/pwa/config";
 
 /**
  * Pengunggah ikon aplikasi.
@@ -28,6 +33,7 @@ export function PwaIconField({
   value,
   onChange,
   backgroundColor,
+  onBackgroundColorChange,
   upload,
   onUploadingChange,
 }: {
@@ -38,6 +44,8 @@ export function PwaIconField({
   onChange: (icon: PwaIconSet | null) => void;
   /** Warna latar yang dicat di belakang logo. Ikut kotak warna di form induk. */
   backgroundColor: string;
+  /** Dipakai tombol perbaikan sekali-klik saat ikon bawaan tidak sewarna latar app. */
+  onBackgroundColorChange: (value: string) => void;
   upload: (formData: FormData) => Promise<{ icon?: PwaIconSet; error?: string }>;
   onUploadingChange?: (uploading: boolean) => void;
 }) {
@@ -46,6 +54,14 @@ export function PwaIconField({
 
   const effective = value ?? DEFAULT_ICONS[kind];
   const isCustom = value !== null;
+
+  // Aturan yang sama persis dengan yang dipakai di tempat lain - sengaja tidak
+  // ditulis ulang di sini. Ikon adalah PNG yang latarnya SUDAH TERCAT ke dalam
+  // berkasnya, jadi begitu warna latar app berbeda, batas kotak ikon terlihat
+  // di layar pembuka. Untuk ikon bawaan hal itu bisa dibereskan sekali klik
+  // (warna app yang menyesuaikan); untuk ikon unggahan, berkasnya harus dibuat
+  // ulang karena warnanya sudah terlanjur menyatu di dalam gambar.
+  const staleBackground = isIconBackgroundStale({ icon: value, backgroundColor }, kind);
 
   const setBusy = useCallback(
     (busy: boolean) => {
@@ -73,6 +89,11 @@ export function PwaIconField({
       fd.set("kind", kind);
       fd.set("any", icons.any);
       fd.set("maskable", icons.maskable);
+      // Warna yang barusan dicat ke dalam berkasnya ikut dikirim supaya nanti
+      // bisa dibandingkan dengan warna latar yang berlaku - lihat peringatan di
+      // bawah. Ikon adalah PNG yang dibekukan, warnanya tidak ikut berubah
+      // sendiri kalau pengaturannya diganti.
+      fd.set("background", backgroundColor);
 
       const result = await upload(fd);
       if (result.error) setError(result.error);
@@ -127,6 +148,30 @@ export function PwaIconField({
                 : "Sedang memakai ikon bawaan. Unggah logo persegi (minimal 512×512) untuk menggantinya."}
           </p>
           {error && <p className="text-xs text-destructive">{error}</p>}
+          {staleBackground && !error && (
+            <div className="space-y-1.5 rounded-lg bg-amber-500/10 p-2.5">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Latar ikon ini <span className="font-mono">{effective.background}</span>, sedangkan
+                warna latar app <span className="font-mono">{backgroundColor}</span>. Selama beda,
+                logo akan terlihat sebagai kotak yang ditempel di layar pembuka.
+              </p>
+              {isCustom ? (
+                <p className="text-xs text-muted-foreground">
+                  Warnanya sudah menyatu di dalam berkas ikon — unggah ulang logonya setelah warna
+                  latar disetel.
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => onBackgroundColorChange(effective.background)}
+                >
+                  Samakan warna latar app dengan ikon
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
         {isCustom && !uploading && (
@@ -140,6 +185,7 @@ export function PwaIconField({
           ikut tombol Simpan form induk, sama pola dengan LogoForm/FaviconForm. */}
       <input type="hidden" name={`${kind}.icon.any`} value={value?.any ?? ""} />
       <input type="hidden" name={`${kind}.icon.maskable`} value={value?.maskable ?? ""} />
+      <input type="hidden" name={`${kind}.icon.background`} value={value?.background ?? ""} />
     </div>
   );
 }

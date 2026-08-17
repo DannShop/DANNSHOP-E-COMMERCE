@@ -75,8 +75,12 @@ export function buildManifest(
     // orientation SENGAJA tidak dikunci. Tabel pesanan & harga di panel admin
     // jauh lebih terbaca dalam mode lanskap, dan memaksa portrait menghilangkan
     // satu-satunya cara membacanya di HP.
-    theme_color: settings.themeColor,
-    background_color: settings.backgroundColor,
+    // Warna diambil dari app-nya sendiri, bukan dari satu pasang global. Dua app
+    // ini punya ikon dengan warna dominan yang berbeda, dan warna latar yang
+    // tidak cocok dengan ikonnya adalah penyebab langsung layar pembuka terlihat
+    // seperti logo kecil yang ditempel di atas kotak berbeda warna.
+    theme_color: app.themeColor,
+    background_color: app.backgroundColor,
     lang: "id",
     dir: "ltr",
     categories: kind === "admin" ? ["business", "productivity"] : ["shopping", "finance"],

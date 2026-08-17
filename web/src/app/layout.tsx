@@ -7,9 +7,12 @@ import { ToastProvider } from "@/components/ui/toast";
 import { getSiteSettings } from "@/lib/site-settings";
 import { StorefrontTheme } from "@/components/storefront-theme";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
+import { AppSplash } from "@/components/pwa/app-splash";
+import { SplashBoot } from "@/components/pwa/splash-boot";
 import { getInvoiceBranding } from "@/lib/invoice/branding";
 import { getPwaSettings } from "@/lib/pwa/settings";
 import { resolveAppNames, resolveIcon } from "@/lib/pwa/config";
+import { appearanceVersion, buildStartupImages } from "@/lib/pwa/splash";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -68,6 +71,11 @@ export async function generateMetadata(): Promise<Metadata> {
       // Dengan "default", iOS menyisakan ruang untuk bilah statusnya sendiri
       // dan tata letak yang sudah ada tidak perlu diubah sama sekali.
       statusBarStyle: "default",
+      // Tanpa ini, app terpasang di iOS membuka LAYAR KOSONG PUTIH sampai
+      // halamannya selesai dimuat - iOS tidak punya splash bawaan seperti
+      // Android dan hanya membaca daftar ini. Gambarnya dibuat on-demand oleh
+      // /pwa/splash, jadi daftar sepanjang apa pun tetap nol berkas di repo.
+      startupImage: buildStartupImages("toko", appearanceVersion(pwa.toko)),
     },
   };
 }
@@ -76,9 +84,13 @@ export async function generateMetadata(): Promise<Metadata> {
 // supaya satu tempat (panel Aplikasi Mobile) mengatur warna di manifest DAN di
 // meta tag sekaligus - dua sumber yang berbeda akan terlihat sebagai kedipan
 // warna saat app dibuka.
+//
+// Yang dipakai di sini warna app TOKO. Panel admin menimpanya lewat
+// generateViewport miliknya sendiri, karena kedua app memang punya warna
+// terpisah sejak ikon bawaannya berbeda warna dominan.
 export async function generateViewport(): Promise<Viewport> {
   const pwa = await getPwaSettings();
-  return { themeColor: pwa.themeColor };
+  return { themeColor: pwa.toko.themeColor };
 }
 
 export default async function RootLayout({
@@ -97,8 +109,15 @@ export default async function RootLayout({
             pertama - kalau di <body>, halaman sempat berkedip memakai warna
             bawaan lebih dulu sebelum warna toko masuk. */}
         <StorefrontTheme />
+        {/* Alasan yang sama, dan lebih ketat lagi: menandai <html> sebagai app
+            terpasang HARUS terjadi sebelum body dicat, kalau tidak layar
+            pembukanya muncul setelah halamannya sudah terlihat. */}
+        <SplashBoot />
       </head>
       <body className="min-h-full flex flex-col">
+        {/* Anak PERTAMA body, sebelum apa pun yang lain: ini menutupi seluruh
+            layar dan yang menentukan apa yang terlihat pada cat pertama. */}
+        <AppSplash />
         <ThemeProvider>
           {/* Dipasang di layout ROOT, bukan di layout admin: toast dipakai
               panel admin, portal mitra, dan storefront (mis. konfirmasi beli

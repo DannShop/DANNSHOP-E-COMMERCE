@@ -1,6 +1,6 @@
 import { getInvoiceBranding } from "@/lib/invoice/branding";
 import { getPwaSettings } from "@/lib/pwa/settings";
-import { savePwaAppSettings, uploadPwaIcon } from "@/app/actions/pwa";
+import { savePwaAppSettings, uploadPwaIcon, uploadPwaSplash } from "@/app/actions/pwa";
 import { MobileAppForm } from "./mobile-app-form";
 import { InstallStatus } from "./install-status";
 
@@ -24,6 +24,7 @@ export default async function MobileAppPage() {
         brandName={branding.brandName}
         action={savePwaAppSettings}
         uploadIcon={uploadPwaIcon}
+        uploadSplash={uploadPwaSplash}
       />
 
       <div className="rounded-lg border border-dashed p-4">
@@ -51,6 +52,14 @@ export default async function MobileAppPage() {
             <strong className="font-semibold text-foreground">Mengganti ikon atau nama:</strong> app
             yang sudah terpasang memperbarui dirinya sendiri dalam beberapa jam. Kalau ingin langsung
             kelihatan, hapus lalu pasang ulang dari HP.
+          </p>
+          <p>
+            <strong className="font-semibold text-foreground">Soal layar pembuka:</strong> ada dua
+            yang berbeda. Yang pertama dirakit sendiri oleh HP sebelum app sempat berjalan — di
+            Android dari warna latar + ikon (tidak bisa diganti gambar), di iPhone/iPad dari gambar
+            yang kamu unggah di sini. Yang kedua ada di dalam app dan itulah yang memakai gambarmu di
+            kedua sistem. Karena itu warna latar sebaiknya senada dengan gambarnya, supaya peralihan
+            dari yang pertama ke yang kedua tidak terlihat sebagai kedipan warna.
           </p>
         </div>
       </div>

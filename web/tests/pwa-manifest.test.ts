@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_COLORS,
   DEFAULT_ICONS,
-  DEFAULT_THEME_COLOR,
   SHORT_NAME_MAX,
   defaultPwaSettings,
   parsePwaSettings,
@@ -15,17 +14,50 @@ describe("parsePwaSettings", () => {
   it("jatuh ke default untuk nilai yang bukan objek", () => {
     for (const bad of [null, undefined, "bukan objek", 42, []]) {
       const s = parsePwaSettings(bad);
-      expect(s.themeColor).toBe(DEFAULT_THEME_COLOR);
-      expect(s.backgroundColor).toBe(DEFAULT_BACKGROUND_COLOR);
+      expect(s.toko.themeColor).toBe(DEFAULT_COLORS.toko.themeColor);
+      expect(s.admin.backgroundColor).toBe(DEFAULT_COLORS.admin.backgroundColor);
       expect(s.toko.icon).toBeNull();
       expect(s.admin.icon).toBeNull();
     }
   });
 
+  // Warna bawaan tiap app diambil dari warna dominan ikon bawaannya. Kalau
+  // keduanya menyimpang, layar pembuka kembali terlihat seperti logo yang
+  // ditempel di atas kotak berbeda warna - keluhan yang memulai fitur ini.
+  it("memberi tiap app warna latar yang cocok dengan ikon bawaannya", () => {
+    const s = defaultPwaSettings();
+    expect(s.toko.backgroundColor).toBe(DEFAULT_ICONS.toko.background);
+    expect(s.admin.backgroundColor).toBe(DEFAULT_ICONS.admin.background);
+    expect(s.toko.backgroundColor).not.toBe(s.admin.backgroundColor);
+  });
+
   it("menolak warna yang bukan hex", () => {
-    const s = parsePwaSettings({ themeColor: "javascript:alert(1)", backgroundColor: "red" });
-    expect(s.themeColor).toBe(DEFAULT_THEME_COLOR);
-    expect(s.backgroundColor).toBe(DEFAULT_BACKGROUND_COLOR);
+    const s = parsePwaSettings({
+      toko: { themeColor: "javascript:alert(1)", backgroundColor: "red" },
+    });
+    expect(s.toko.themeColor).toBe(DEFAULT_COLORS.toko.themeColor);
+    expect(s.toko.backgroundColor).toBe(DEFAULT_COLORS.toko.backgroundColor);
+  });
+
+  // Warna dulu tersimpan sekali di tingkat atas untuk dua app sekaligus. Baris
+  // SiteSetting yang sudah ada di produksi masih berbentuk itu, dan kalau
+  // dibaca sebagai "tidak ada", warna yang sudah disetel admin hilang diam-diam
+  // pada deploy pertama setelah pemisahan.
+  it("membaca warna bentuk lama sebagai bawaan kedua app", () => {
+    const s = parsePwaSettings({ themeColor: "#123456", backgroundColor: "#ABCDEF" });
+    expect(s.toko.themeColor).toBe("#123456");
+    expect(s.admin.themeColor).toBe("#123456");
+    expect(s.toko.backgroundColor).toBe("#ABCDEF");
+    expect(s.admin.backgroundColor).toBe("#ABCDEF");
+  });
+
+  it("mendahulukan warna per app daripada warna bentuk lama", () => {
+    const s = parsePwaSettings({
+      themeColor: "#123456",
+      admin: { themeColor: "#000000" },
+    });
+    expect(s.toko.themeColor).toBe("#123456");
+    expect(s.admin.themeColor).toBe("#000000");
   });
 
   // Ini penjaga utamanya: manifest yang menunjuk ke satu URL ikon yang tidak
@@ -43,7 +75,13 @@ describe("parsePwaSettings", () => {
     const s = parsePwaSettings({
       toko: { icon: { any: "https://x/a.png", maskable: "https://x/m.png" } },
     });
-    expect(s.toko.icon).toEqual({ any: "https://x/a.png", maskable: "https://x/m.png" });
+    expect(s.toko.icon).toEqual({
+      any: "https://x/a.png",
+      maskable: "https://x/m.png",
+      // Ikon tersimpan dari versi kode sebelum warnanya dicatat. Harus terbaca
+      // sebagai "tidak diketahui", bukan memicu peringatan warna basi.
+      background: "",
+    });
   });
 
   it("memotong nama pendek yang kepanjangan", () => {
@@ -85,10 +123,8 @@ describe("resolveAppNames", () => {
 
 describe("resolveIcon", () => {
   it("jatuh ke ikon bawaan per jenis app", () => {
-    expect(resolveIcon({ name: "", shortName: "", icon: null }, "toko")).toEqual(DEFAULT_ICONS.toko);
-    expect(resolveIcon({ name: "", shortName: "", icon: null }, "admin")).toEqual(
-      DEFAULT_ICONS.admin,
-    );
+    expect(resolveIcon({ icon: null }, "toko")).toEqual(DEFAULT_ICONS.toko);
+    expect(resolveIcon({ icon: null }, "admin")).toEqual(DEFAULT_ICONS.admin);
   });
 });
 
@@ -136,11 +172,17 @@ describe("buildManifest", () => {
     expect(m.icons?.map((i) => i.src)).toEqual(["https://blob/a.png", "https://blob/m.png"]);
   });
 
-  it("meneruskan warna dari pengaturan", () => {
-    const warna = parsePwaSettings({ themeColor: "#123456", backgroundColor: "#ABCDEF" });
-    const m = buildManifest("toko", warna, "DannShop");
-    expect(m.theme_color).toBe("#123456");
-    expect(m.background_color).toBe("#ABCDEF");
+  it("meneruskan warna milik app itu sendiri, bukan warna app sebelah", () => {
+    const warna = parsePwaSettings({
+      toko: { themeColor: "#123456", backgroundColor: "#ABCDEF" },
+      admin: { themeColor: "#654321", backgroundColor: "#FEDCBA" },
+    });
+    const toko = buildManifest("toko", warna, "DannShop");
+    const admin = buildManifest("admin", warna, "DannShop");
+    expect(toko.theme_color).toBe("#123456");
+    expect(toko.background_color).toBe("#ABCDEF");
+    expect(admin.theme_color).toBe("#654321");
+    expect(admin.background_color).toBe("#FEDCBA");
   });
 
   it("mengunci app admin di dalam /admin", () => {

@@ -423,6 +423,92 @@
       0 16px 40px -16px rgba(0, 0, 0, 0.8);
   }
 }
+/* ===== Layar pembuka aplikasi terpasang =====
+   Menutup jeda antara "splash bawaan sistem selesai" dan "halaman siap". Bagian
+   yang berubah-ubah (warna & gambar tiap app) disuntikkan sebagai <style> oleh
+   components/pwa/app-splash.tsx; yang di bawah ini bentuk & perilakunya saja.
+
+   Tiga hal yang menentukan seluruh rancangannya:
+
+   1. HANYA muncul di app terpasang. Bawaannya display:none, dan yang
+      menyalakannya adalah atribut data-standalone yang dipasang skrip di <head>
+      SEBELUM body dicat. Kalau ditunggu sampai React hidrasi, layar pembukanya
+      justru muncul SETELAH halaman terlihat - berkedip, bukan menutup jeda.
+   2. Menghilangnya CSS MURNI, bukan menunggu JavaScript. Layar penuh yang
+      bergantung pada JS untuk pergi adalah layar yang bisa menetap selamanya
+      kalau bundel gagal dimuat - dan halaman di baliknya tidak bisa disentuh
+      sama sekali. Animasi dengan fill-mode `both` menyembunyikannya sendiri,
+      bahkan pada halaman yang JS-nya mati total.
+   3. Dua app berbagi satu elemen. Sisi mana yang dipakai ditentukan atribut
+      data-app dari skrip yang sama. Sisi yang tidak terpakai tetap display:none,
+      dan gambar latar pada elemen display:none tidak pernah diunduh browser -
+      jadi app toko tidak ikut mengunduh gambar splash admin. */
+#app-splash {
+  display: none;
+}
+
+#app-splash .app-splash-face {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+/* Logo pada layar pembuka OTOMATIS (admin belum mengunggah gambar sendiri).
+   Dipatok ke sisi terpendek supaya tidak melebar keluar layar saat perangkat
+   dimiringkan. Sudutnya dibulatkan supaya terbaca sebagai ikon aplikasi. */
+#app-splash .app-splash-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(42vw, 42vh);
+  height: min(42vw, 42vh);
+  transform: translate(-50%, -50%);
+  border-radius: 22%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+html[data-standalone] #app-splash {
+  display: block;
+  position: fixed;
+  inset: 0;
+  /* Di atas segalanya termasuk portal Base UI, yang memakai z-index tinggi. */
+  z-index: 2147483000;
+  animation: app-splash-out 420ms ease 700ms both;
+}
+
+html[data-standalone][data-app="toko"] #app-splash .app-splash-face[data-face="toko"],
+html[data-standalone][data-app="admin"] #app-splash .app-splash-face[data-face="admin"] {
+  display: block;
+}
+
+/* Pengaman lapis kedua, dipasang skrip yang sama setelah 2,5 detik. Animasi di
+   atas sudah cukup sendirian; ini menjaga kasus di mana animasi CSS dimatikan
+   sepenuhnya oleh kebijakan perangkat atau ekstensi. */
+html[data-splash="done"] #app-splash {
+  display: none !important;
+}
+
+@keyframes app-splash-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* Durasi dipendekkan, TIDAK dimatikan. `animation: none` di sini berarti layar
+   pembukanya tidak pernah pergi - persis kebalikan dari yang diminta. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-standalone] #app-splash {
+    animation-duration: 1ms;
+    animation-delay: 350ms;
+  }
+}
+
 /* ===== Cetak struk =====
    Halaman struk memakai kertas termal 58/80 mm, yang lebih sempit dari apa pun
    yang pernah dirancang untuk layar. Aturan di bawah membuang seluruh kromnya

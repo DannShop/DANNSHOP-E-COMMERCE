@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -6,6 +6,7 @@ import { getSiteSettings } from "@/lib/site-settings";
 import { getInvoiceBranding } from "@/lib/invoice/branding";
 import { getPwaSettings } from "@/lib/pwa/settings";
 import { resolveAppNames, resolveIcon } from "@/lib/pwa/config";
+import { appearanceVersion, buildStartupImages } from "@/lib/pwa/splash";
 import { AdminShell } from "./admin-shell";
 
 // Panel admin adalah aplikasi mobile KEDUA, terpisah dari app toko.
@@ -31,8 +32,25 @@ export async function generateMetadata(): Promise<Metadata> {
       icon: settings.faviconUrl ?? "/favicon.ico",
       apple: resolveIcon(pwa.admin, "admin").any,
     },
-    appleWebApp: { capable: true, title: shortName, statusBarStyle: "default" },
+    appleWebApp: {
+      capable: true,
+      title: shortName,
+      statusBarStyle: "default",
+      // Daftar milik app ADMIN, bukan warisan dari layout root: penggabungan
+      // metadata Next.js bersifat dangkal, jadi menyebut `appleWebApp` di sini
+      // sudah menghapus seluruh milik root — termasuk startupImage-nya. Yang
+      // benar memang begitu, app admin punya warna & ikonnya sendiri.
+      startupImage: buildStartupImages("admin", appearanceVersion(pwa.admin)),
+    },
   };
+}
+
+// Menimpa warna bilah status milik layout root untuk seluruh /admin. Panel ini
+// app yang berbeda dengan palet yang berbeda; tanpa ini bilah statusnya memakai
+// warna toko dan terlihat seperti masih berada di dalam app yang salah.
+export async function generateViewport(): Promise<Viewport> {
+  const pwa = await getPwaSettings();
+  return { themeColor: pwa.admin.themeColor };
 }
 
 export default async function AdminLayout({

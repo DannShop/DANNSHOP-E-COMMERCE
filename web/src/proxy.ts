@@ -117,15 +117,20 @@ export default auth(async (req) => {
   //     yang terpasang kehilangan nama serta ikonnya secara permanen sampai
   //     dipasang ulang;
   //   - /sw.js -> pendaftaran service worker gagal (tipe MIME salah);
-  //   - /icons/* -> ikon berubah jadi kotak kosong.
+  //   - /icons/* -> ikon berubah jadi kotak kosong;
+  //   - /pwa/splash -> iOS menerima HTML sebagai gambar, dan layar pembuka app
+  //     terpasang kembali kosong putih.
   // Yang bocor dari pengecualian ini cuma nama toko dan warna — tidak ada
   // satu pun halaman yang bisa dibelanjakan.
   //
   // /admin/app.webmanifest tidak perlu disebut: seluruh /admin sudah dikecualikan.
+  // /pwa/splash SENGAJA di luar /admin walau juga melayani app admin — sama
+  // seperti manifest, iOS mengambilnya tanpa cookie sesi sama sekali.
   const isPwaAsset =
     nextUrl.pathname === "/manifest.webmanifest" ||
     nextUrl.pathname === "/sw.js" ||
     nextUrl.pathname === "/offline" ||
+    nextUrl.pathname === "/pwa/splash" ||
     nextUrl.pathname.startsWith("/icons/");
 
   // Jalur pemulihan/identitas akun. Dikecualikan dengan alasan yang sama persis
