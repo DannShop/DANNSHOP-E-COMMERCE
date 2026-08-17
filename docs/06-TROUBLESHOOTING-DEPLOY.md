@@ -35,7 +35,9 @@ Buka `http://localhost:3000`.
 | `npm run build` | Build production (juga dipakai Vercel saat deploy). |
 | `npm run start` | Jalankan hasil build (`npm run build` dulu). |
 | `npm run lint` | ESLint. |
-| `npm run test` | Jalankan semua unit test (Vitest, `web/tests/`). |
+| `npm run test:unit` | Test unit (Vitest, project `unit`, jalan di Node). |
+| `npm run test:components` | Test komponen React (Vitest, project `components`, jalan di jsdom). |
+| `npm run test` | Jalankan **kedua** project sekaligus — ⚠️ lihat §3.11, di RAM 4GB ini bisa gagal start worker. |
 | `npx tsc --noEmit` | Cek error TypeScript tanpa build penuh (paling cepat untuk cek kesalahan tipe). |
 | `npx prisma studio` | Buka GUI browser untuk lihat/edit isi database langsung. |
 
@@ -91,8 +93,8 @@ Cek `web/.env.example` untuk daftar lengkap + penjelasan tiap variabel. Semua di
 - **Checklist sebelum/setelah push kalau ada migrasi baru:**
   1. `npx prisma migrate dev` di lokal (bikin migrasi).
   2. Push kode ke `main`.
-  3. **`cd web && npx dotenv -e .env.production -- npx prisma migrate deploy`** — WAJIB, jangan diskip.
-  4. Verifikasi: buka situs production, cek halaman yang pakai kolom/tabel baru benar-benar berfungsi (bukan cuma "situsnya kebuka", karena build lama pun akan tetap "kebuka").
+  3. 🔴 **`cd web && npm run migrate:prod`** — WAJIB, jangan diskip, dan **jangan** diganti `npx prisma migrate deploy` polos. Perintah polos itu membaca `.env` lokal (mengarah ke `127.0.0.1`), jadi ia memigrasi database **lokal** dan melapor sukses padahal database production tidak tersentuh — sudah pernah menyebabkan insiden. `migrate:prod` menjalankan `scripts/assert-prod-db.mjs` dulu untuk memastikan koneksinya benar-benar ke TiDB Cloud. Detail di `docs/05-CARA-TAMBAH-FITUR.md` §6.
+  4. Verifikasi: buka situs production, cek halaman yang pakai kolom/tabel baru benar-benar berfungsi (bukan cuma "situsnya kebuka", karena build lama pun akan tetap "kebuka"). Atau jalankan `npm run migrate:status:prod` untuk mengecek tanpa mengubah apa pun.
 
 ## 3. Masalah Umum & Solusinya
 
@@ -187,6 +189,49 @@ Lalu `npm install` ulang, dan verifikasi dengan `npm ls <nama-package>` (harus b
 
 Cek halaman admin `/admin/jobs` — kalau ada job berstatus "Gagal" (`FAILED`) untuk tipe `recheck-fulfillment`, itu tandanya proses cek ulang status ke provider PPOB terus gagal. Cek juga `/admin/webhooks` untuk lihat apakah notifikasi dari Midtrans benar-benar masuk. Detail alur lengkap: `docs/04-INTEGRASI-PAYMENT-PPOB.md`.
 
+### 3.11 Suite test penuh gagal start worker (RAM 4GB)
+
+**Gejala:** `npm run test` (menjalankan kedua project Vitest sekaligus) macet atau crash saat mencoba men-start worker komponen, di mesin dengan RAM terbatas (≈4GB).
+
+**Penyebab:** dua project Vitest (`unit` di Node, `components` di jsdom) berebut memori kalau dijalankan bersamaan lewat satu proses `vitest run`.
+
+**Solusi:** jalankan **terpisah**, bukan sekaligus:
+```bash
+npm run test:unit
+npm run test:components
+```
+
+### 3.12 🐛 Admin terkunci total setelah form 2FA/multi-langkah "salah kode" padahal kodenya benar
+
+**Gejala:** langkah kedua form login (kode 2FA) selalu ditolak dengan pesan kode salah, walau kodenya sudah benar — dan ini terjadi ke **semua** admin sekaligus setelah deploy tertentu.
+
+**Penyebab akar:** **React 19 me-reset input yang tidak *controlled* setiap kali sebuah form action selesai.** Form login dua langkah menyimpan email+password di input langkah pertama; kalau input itu tidak `controlled` (tidak diberi `value` + `onChange`, hanya `defaultValue`), React mengosongkannya begitu action langkah pertama selesai — jadi submit langkah kedua (kode 2FA) mengirim kode yang benar **tanpa** email & password sama sekali. Pesan galatnya menuduh kodenya salah, padahal yang hilang adalah data langkah pertama.
+
+**Solusi:** semua input di form multi-langkah **wajib** controlled. Cek `web/src/app/login/login-form.tsx` sebagai contoh yang sudah benar. Berlaku untuk **setiap** form baru yang punya lebih dari satu langkah submit, bukan cuma login — lihat `docs/05-CARA-TAMBAH-FITUR.md` §5a.
+
+### 3.13 🐛 403 + "An unexpected response was received from the server" di action admin
+
+**Gejala:** Server Action admin tiba-tiba membalas 403 dengan pesan generik itu, padahal sebelumnya normal dan admin yakin izinnya cukup.
+
+**Penyebab akar:** **kode yang menulis ke tabel `User` (`db.user.update()`) menaikkan `updatedAt`.** `proxy.ts` dan `requireAdminSession()` membandingkan `updatedAt` di database dengan yang tersimpan di JWT (mekanisme penegakan ban/pencabutan sesi) — begitu tidak cocok, request dianggap sesi basi dan ditolak. Kalau kode barumu menulis ke `User` (bahkan untuk field yang kelihatannya tidak berhubungan sama sekali dengan sesi), admin yang sedang login akan **langsung ter-logout** di request berikutnya.
+
+**Solusi:** kalau memang perlu menulis ke `User` tanpa efek "tendang sesi" (mis. field internal murni), tulis lewat `$executeRaw`. Detail lengkap & alasan desainnya: `docs/03-BACKEND-API.md` §5.2.
+
+### 3.14 Route yang baca database tetap ter-prerender STATIS
+
+**Gejala:** halaman yang jelas-jelas query Prisma (mis. manifest PWA, endpoint yang seharusnya per-request) tetap menampilkan data BASI di production, seolah di-cache selamanya.
+
+**Penyebab akar:** Next.js bisa memutuskan untuk **prerender statis** sebuah route sekalipun isinya memanggil Prisma, kalau tidak ada sinyal eksplisit bahwa route itu harus dinamis. Ini pernah terjadi pada manifest PWA — halamannya "kerja" di lokal (dev server selalu dinamis) tapi beku di production.
+
+**Cara mendeteksi:** perhatikan output `npm run build` — kolom di depan tiap route menandai tipe render-nya:
+```
+○  (Static)   — di-generate saat build, sama untuk semua orang
+ƒ  (Dynamic)  — di-render tiap request
+```
+Route yang seharusnya baca data segar tapi muncul sebagai `○` adalah bug.
+
+**Solusi:** tambahkan `export const dynamic = "force-dynamic";` di `page.tsx`/`route.ts` yang bersangkutan. Setelah menambah field/logic baru yang membaca database di route manapun, **selalu cek ulang output build** untuk simbol ini — build tidak memberi peringatan atau error, cuma diam-diam memilih render statis.
+
 ---
 
 ## Cheat Sheet — Deploy & Troubleshooting
@@ -202,4 +247,8 @@ Cek halaman admin `/admin/jobs` — kalau ada job berstatus "Gagal" (`FAILED`) u
 | Lint error "impure function" | Hitung `new Date()` sekali di atas fungsi, jangan berulang |
 | Email tidak terkirim | Cek `/admin/settings` sudah dikonfigurasi + domain terverifikasi (Resend) |
 | Order macet | Cek `/admin/jobs` dan `/admin/webhooks` |
-| **Push kode dengan migrasi baru** | **JANGAN LUPA** `npx dotenv -e .env.production -- npx prisma migrate deploy` |
+| **Push kode dengan migrasi baru** | 🔴 **JANGAN LUPA** `npm run migrate:prod` — BUKAN `prisma migrate deploy` polos, itu memigrasi DB lokal |
+| Suite test crash/macet (RAM 4GB) | Jalankan `test:unit` dan `test:components` terpisah, jangan `npm run test` sekaligus |
+| Admin terkunci, 2FA selalu "kode salah" | Cek input form multi-langkah — wajib controlled, lihat §3.12 |
+| 403 "unexpected response" di action admin | Ada kode yang menulis ke tabel `User` dan menendang sesi — lihat §3.13 |
+| Halaman baca-DB tampil data basi di production | Cek simbol `○`/`ƒ` di output `npm run build`, tambahkan `force-dynamic` — lihat §3.14 |

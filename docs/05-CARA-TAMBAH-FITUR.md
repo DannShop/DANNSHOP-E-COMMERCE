@@ -54,33 +54,57 @@ Ini butuh kode baru, karena tiap `payment_type` Midtrans punya bentuk request/re
 
 ---
 
-## 4. Cara Menambah Endpoint API Baru
+## 4. Cara Menambah Halaman Admin Baru
+
+Sama seperti halaman storefront (§3), tapi dengan **satu langkah tambahan yang wajib**, dan sengaja ditulis terpisah karena melewatkannya tidak menghasilkan error apa pun.
+
+1. Buat folder+`page.tsx` di `web/src/app/admin/<nama>/`. Untuk pola halaman admin sederhana, contoh: `web/src/app/admin/wallet-ledger/`.
+2. 🔴 **Daftarkan route-nya di `ADMIN_ROUTE_RULES`** (`web/src/lib/rbac/access.ts`) — tentukan izin (`Permission`) apa yang dibutuhkan, atau `adminOnly: true` kalau memang harus role `ADMIN` murni tanpa bisa didelegasikan.
+
+   **Kalau langkah ini dilewatkan, halamannya tetap bisa dibuka dan tetap terlihat berfungsi** — tapi jatuh ke aturan fallback `/admin` yang butuh izin `finance.view`. Karyawan dengan izin lain (mis. `catalog.manage`) akan ditolak diam-diam dan diantar ke halaman lain, tanpa satu pun pesan error yang menjelaskan kenapa. Ini disengaja sebagai *fail-closed* (bawaan yang salah-arah lebih baik menutup daripada membuka), tapi artinya QA manual biasa **tidak akan menangkap** kesalahan ini kalau yang mencobanya kebetulan role `ADMIN` (yang selalu lolos semua izin). Detail lengkap tabelnya ada di `docs/03-BACKEND-API.md` §5.3.
+3. Kalau halamannya perlu muncul di sidebar, tambahkan entrinya di komponen sidebar admin — item yang izinnya tidak dipunyai `viewer` otomatis disembunyikan (baca dari tabel yang sama di langkah 2, jadi tidak ada tabel kedua yang bisa menyimpang).
+4. Kalau halamannya melakukan mutasi data, server action-nya **wajib** memakai `requireAdminSession(izin)` dari `web/src/lib/auth/admin-gate.ts` — lihat pola di §4a di bawah. Gerbang route di langkah 2 cuma menjaga siapa yang bisa **membuka halamannya**; gerbang di action menjaga siapa yang bisa **memanggil mutasinya**, dan Server Action tetap bisa dipanggil langsung tanpa lewat halaman sama sekali.
+
+### 4.1 Cara Menambah Panduan Baru untuk Admin
+
+Panduan yang tampil di `/admin/panduan` **bukan** berkas di `docs/` — `docs/` ada di luar root Next.js sehingga tidak pernah ikut ter-bundle ke serverless (mulus di lokal, lalu 500 di production).
+
+1. Tulis markdown-nya di `web/src/content/panduan/<slug>.md`.
+2. Daftarkan entrinya di `PANDUAN` (`web/src/lib/panduan/registry.ts`): `slug`, `title`, `summary`, `file`, `audience`.
+3. Kalau dokumennya juga perlu dibaca mitra (seperti spesifikasi API partner), **jangan buat salinan kedua** — arahkan entri registry ke berkas yang sama yang dipakai `/mitra/dokumentasi` (`api-partner.md`). Dua salinan berarti yang dibaca admin dan yang dibaca mitra bisa menyimpang, dan yang salah justru yang dipegang mitra.
+
+---
+
+## 5. Cara Menambah Endpoint API Baru
 
 **Tanya dulu: apakah ini benar-benar butuh API Route (`route.ts`), atau cukup Server Action?**
 
 - Kalau dipanggil dari FORM di halaman aplikasi ini sendiri → **pakai Server Action** (lebih simpel, lihat §format di bawah), TIDAK perlu bikin `route.ts`.
 - Kalau dipanggil dari LUAR aplikasi (webhook pihak ketiga, cron eksternal) atau butuh polling `fetch()` manual dari komponen client → baru pakai API Route.
 
-### 4a. Menambah Server Action baru
+### 5a. Menambah Server Action baru
 
 1. Pilih file yang sesuai di `web/src/app/actions/` (atau buat file baru kalau memang kategori fitur baru), tambahkan `"use server";` di baris pertama fungsi (bukan file, kecuali filenya memang seluruhnya action).
-2. Ikuti pola: validasi input dengan Zod → (kalau admin-only) panggil `requireAdmin()` lokal → proses ke database lewat `db` (`@/lib/db`) → kalau admin, panggil `logAdmin()` → `revalidatePath(...)` kalau ada halaman yang perlu di-refresh cache-nya → return `{ ok: "..." }` atau `{ error: "..." }`.
+2. Ikuti pola: validasi input dengan Zod → (kalau admin-only) panggil `requireAdminSession(izin)` dari `web/src/lib/auth/admin-gate.ts` — **jangan** menulis gerbang lokal baru, satu-satunya gerbang sudah ada di sana (lihat `docs/03-BACKEND-API.md` §5.3 untuk kenapa 16 salinan lama diganti jadi ini) → proses ke database lewat `db` (`@/lib/db`) → kalau admin, panggil `logAdminAction()` → `revalidatePath(...)` kalau ada halaman yang perlu di-refresh cache-nya → return `{ ok: "..." }` atau `{ error: "..." }`.
 3. Panggil dari komponen: server action bisa langsung dipakai sebagai `action` prop pada `<form>`, atau lewat `useActionState` di komponen client (lihat pola `withPrevState` di banyak komponen client admin, mis. `web/src/app/admin/settings/favicon-form.tsx`).
 
-### 4b. Menambah API Route baru
+   ⚠️ **Kalau form-nya multi-langkah** (mis. submit pertama menampilkan langkah kedua, seperti login 2FA), **input WAJIB *controlled*** (`value` + `onChange`, bukan `defaultValue`). React 19 me-reset input tak-terkendali setiap kali sebuah form action selesai — form yang tidak controlled akan kehilangan isian langkah pertama begitu langkah kedua di-submit. Detail insiden nyata di `docs/06-TROUBLESHOOTING-DEPLOY.md`.
+
+### 5b. Menambah API Route baru
 
 1. Buat folder+file `web/src/app/api/<path>/route.ts`.
 2. Export fungsi async sesuai method HTTP: `export async function GET(request: Request) { ... }`, `POST`, dst.
 3. **Kalau endpoint ini sensitif** (butuh diproteksi), tentukan cara proteksinya — contoh pola yang sudah ada:
-   - **Session + role** (seperti `/api/admin/provider-price-list`): panggil `auth()`, cek `role`, re-cek fresh ke DB.
+   - **Session + role/izin admin** (seperti `/api/admin/provider-price-list`): panggil `requireAdminSession(izin)` — sama persis dengan yang dipakai Server Action, jangan menulis pengecekan sendiri.
    - **Secret header** (seperti `/api/cron/tick`): cek header custom, bandingkan dengan `safeCompare` (JANGAN pakai `===` biasa untuk membandingkan secret — rentan timing attack).
-   - **Signature verification** (seperti webhook Midtrans): verifikasi tanda tangan kriptografis SEBELUM menyentuh database sama sekali.
+   - **Signature verification** (seperti webhook Midtrans/Digiflazz): verifikasi tanda tangan kriptografis SEBELUM menyentuh database sama sekali.
+   - **Tanpa signature sama sekali** (seperti webhook OkeConnect): kalau pihak eksternalnya memang tidak menandatangani callback, JANGAN mempercayai isi body untuk menetapkan status apa pun — jadikan callback itu murni **pemicu** untuk memanggil balik endpoint status resmi milik penyedia. Lihat `docs/04-INTEGRASI-PAYMENT-PPOB.md` §3.8 untuk contoh nyatanya.
 4. Kembalikan response dengan `NextResponse.json(...)`.
 5. Kalau endpoint publik yang bisa disalahgunakan (dipanggil berulang-ulang), tambahkan aturan rate-limit baru di `web/src/proxy.ts` (array `RATE_LIMITS`) DAN tambahkan path-nya ke `matcher` di bagian bawah file itu kalau belum tercakup.
 
 ---
 
-## 5. Cara Menambah Field Baru di Database (Migration)
+## 6. Cara Menambah Field Baru di Database (Migration)
 
 Ini bagian **paling penting untuk dipahami benar** — proyek ini pernah mengalami insiden production down secara senyap gara-gara langkah ini terlewat (lihat `docs/06-TROUBLESHOOTING-DEPLOY.md` §4).
 
@@ -97,9 +121,13 @@ Ini bagian **paling penting untuk dipahami benar** — proyek ini pernah mengala
 4. **Sebelum/segera setelah push ke production**, jalankan migrasi yang SAMA ke database production:
    ```
    cd web
-   npx dotenv -e .env.production -- npx prisma migrate deploy
+   npm run migrate:prod
    ```
-   **JANGAN LEWATKAN LANGKAH INI.** Proyek ini di-deploy ke Vercel, dan **Vercel TIDAK PERNAH otomatis menjalankan migrasi database** — `npx next build` di pipeline Vercel cuma membangun kode, tidak menyentuh skema database sama sekali. Kalau langkah ini terlewat dan kode baru butuh kolom/tabel yang belum ada di production, build Vercel akan **gagal secara senyap** — Vercel akan terus menyajikan build LAMA tanpa error yang terlihat siapa pun, sampai ada yang secara khusus mengecek log build Vercel. Detail lengkap kejadian nyata ini ada di `docs/06-TROUBLESHOOTING-DEPLOY.md`.
+   🔴 **WAJIB pakai skrip `migrate:prod` ini, JANGAN `npx prisma migrate deploy` polos.** Perintah polos itu membaca `.env` lokal (yang mengarah ke `127.0.0.1`) — jadi ia memigrasi database **lokal**, melapor sukses, dan database production tidak tersentuh sama sekali. Sudah pernah menyebabkan insiden production. `migrate:prod` menjalankan `scripts/assert-prod-db.mjs` lebih dulu (memastikan koneksinya benar-benar ke TiDB Cloud) baru menjalankan `prisma migrate deploy` dengan `.env.production` — ada juga `migrate:status:prod` untuk sekadar mengecek tanpa mengubah apa pun.
+
+   **JANGAN LEWATKAN LANGKAH INI SAMA SEKALI.** Proyek ini di-deploy ke Vercel, dan **Vercel TIDAK PERNAH otomatis menjalankan migrasi database** — `npx next build` di pipeline Vercel cuma membangun kode, tidak menyentuh skema database sama sekali. Kalau langkah ini terlewat dan kode baru butuh kolom/tabel yang belum ada di production, build Vercel akan **gagal secara senyap** — Vercel akan terus menyajikan build LAMA tanpa error yang terlihat siapa pun, sampai ada yang secara khusus mengecek log build Vercel. Detail lengkap kejadian nyata ini ada di `docs/06-TROUBLESHOOTING-DEPLOY.md`.
+
+   💡 Untuk memvalidasi migrasi tulisan tangan **tanpa** menyentuh database sama sekali (mis. sebelum ditinjau): `npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script`.
 
 ### Kalau perlu mengisi data awal (seed) untuk kolom/tabel baru
 
@@ -116,7 +144,10 @@ Ini bagian **paling penting untuk dipahami benar** — proyek ini pernah mengala
 | Metode pembayaran (bank VA baru, pola sudah ada) | Cukup tambah baris `PaymentMethodConfig` (migrasi) + aktifkan di `/admin/payment-methods` |
 | Metode pembayaran (pola baru, mis. GoPay/kartu) | Kode baru di `web/src/lib/midtrans/client.ts` + update UI instruksi bayar |
 | Halaman storefront baru | Folder baru di `web/src/app/(public)/`, ikuti pola Server+Client component |
-| Server Action baru | Tambah fungsi `"use server"` di `web/src/app/actions/*.ts` |
+| **Halaman admin baru** | Folder di `web/src/app/admin/<nama>/` → 🔴 **WAJIB** daftarkan di `ADMIN_ROUTE_RULES` (`web/src/lib/rbac/access.ts`), kalau tidak jatuh diam-diam ke butuh `finance.view` |
+| Panduan baru untuk `/admin/panduan` | Markdown di `web/src/content/panduan/<slug>.md` + daftarkan di `PANDUAN` (`web/src/lib/panduan/registry.ts`) — **bukan** di `docs/` |
+| Server Action baru | Tambah fungsi `"use server"` di `web/src/app/actions/*.ts`, gerbangnya `requireAdminSession()` dari `lib/auth/admin-gate.ts` |
+| Form multi-langkah (2FA, dll.) | Input **wajib controlled** — React 19 me-reset input tak-terkendali tiap form action selesai |
 | API Route baru | `web/src/app/api/<path>/route.ts`, tentukan cara proteksinya |
-| Field/tabel database baru | Edit `schema.prisma` → `prisma migrate dev` (lokal) → **`prisma migrate deploy` ke production, JANGAN LUPA** |
-| Provider PPOB baru (selain Digiflazz) | Buat class baru implement `TopupProviderAdapter` (`web/src/lib/providers/types.ts`), daftarkan di `switch` pada `web/src/lib/providers/registry.ts` `getAdapter()` |
+| Field/tabel database baru | Edit `schema.prisma` → `prisma migrate dev` (lokal) → 🔴 **`npm run migrate:prod` ke production** (BUKAN `prisma migrate deploy` polos — itu memigrasi DB lokal) |
+| Provider PPOB baru (selain Digiflazz/OkeConnect) | Buat class baru implement `TopupProviderAdapter` (`web/src/lib/providers/types.ts`), daftarkan di `switch` pada `web/src/lib/providers/registry.ts` `getAdapter()` |

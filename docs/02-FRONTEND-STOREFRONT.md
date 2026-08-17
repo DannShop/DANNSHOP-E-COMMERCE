@@ -6,6 +6,8 @@ Dokumen ini mendaftar semua halaman yang dilihat **pembeli** (bukan admin — pa
 
 ## 1. Daftar Halaman Storefront
 
+### 1.1 Publik (tanpa login)
+
 | URL | File `page.tsx` | Tipe | Isi |
 |---|---|---|---|
 | `/` | `web/src/app/(public)/page.tsx` | Server | Beranda: banner promo, produk trending, katalog per kategori (tab). |
@@ -15,24 +17,70 @@ Dokumen ini mendaftar semua halaman yang dilihat **pembeli** (bukan admin — pa
 | `/syarat-ketentuan` | `web/src/app/(public)/syarat-ketentuan/page.tsx` | Server | Syarat & Ketentuan (konten dari database). |
 | `/kebijakan-privasi` | `web/src/app/(public)/kebijakan-privasi/page.tsx` | Server | Kebijakan Privasi (konten dari database). |
 | `/kontak` | `web/src/app/(public)/kontak/page.tsx` | Server | Link WhatsApp/Telegram CS (dari database) + jam operasional (hardcode). |
-| `/login` | `web/src/app/login/page.tsx` | **Client** | Form login email+password. |
-| `/register` | `web/src/app/register/page.tsx` | **Client** | Form registrasi member baru. |
-| `/account` | `web/src/app/account/page.tsx` | Server | Dashboard member: saldo, 5 order terakhir, 3 deposit terakhir. Redirect ke `/login` kalau belum login. |
+| `/daftar-reseller` | `web/src/app/(public)/daftar-reseller/page.tsx` | Server | Halaman pemasaran program reseller + form pendaftaran. |
+
+### 1.2 Akun & identitas
+
+| URL | File `page.tsx` | Tipe | Isi |
+|---|---|---|---|
+| `/login` | `web/src/app/login/page.tsx` | Server | Membungkus `LoginForm` **(Client)**. Login **dua langkah** — lihat catatan di bawah. |
+| `/register` | `web/src/app/register/page.tsx` | Server | Membungkus `RegisterForm` **(Client)**. |
+| `/forgot-password` | `web/src/app/forgot-password/page.tsx` | Server | Minta link reset password lewat email. |
+| `/reset-password` | `web/src/app/reset-password/page.tsx` | Server | Pasang password baru. Dijaga token di URL (30 menit, sekali pakai). |
+| `/konfirmasi-email` | `web/src/app/konfirmasi-email/page.tsx` | Server | Konfirmasi pemindahan alamat email. Dijaga token. |
+| `/reseller/aktivasi` | `web/src/app/reseller/aktivasi/page.tsx` | Server | Aktivasi akun reseller lewat link email. Dijaga token. |
+
+> ⚠️ **Login di sini dua langkah, dan itu memaksa satu aturan React.** Langkah 1 kirim email+password; kalau akunnya pakai 2FA, form menampilkan kolom kode. **Input di form ini WAJIB *controlled*** — React 19 me-reset input tak-terkendali setiap kali sebuah form action selesai, jadi langkah kedua akan mengirim kode 2FA yang benar **tanpa** email & password, dan pesan galatnya menuduh kodenya yang salah. Ini pernah mengunci semua admin dari produksi. Lihat `docs/06-TROUBLESHOOTING-DEPLOY.md`.
+>
+> ⚠️ Kelima halaman bertoken di atas juga **dikecualikan dari mode maintenance** (`proxy.ts`). Link-nya masuk lewat email dan cuma hidup 30 menit — orang yang membukanya saat toko kebetulan maintenance akan mengira link-nya rusak, dan tokennya keburu mati.
+
+### 1.3 Area member (`/account/*`, wajib login)
+
+| URL | File `page.tsx` | Tipe | Isi |
+|---|---|---|---|
+| `/account` | `web/src/app/account/page.tsx` | Server | Dashboard member: saldo, order & deposit terakhir, kartu "pasang aplikasi". |
 | `/account/deposit` | `web/src/app/account/deposit/page.tsx` | Server | Form isi saldo. |
-| `/account/deposit/[depositId]` | `web/src/app/account/deposit/[depositId]/page.tsx` | Server | Status pembayaran deposit (polling real-time). |
+| `/account/deposit/[depositId]` | `.../deposit/[depositId]/page.tsx` | Server | Status pembayaran deposit (polling real-time). |
 | `/account/deposits` | `web/src/app/account/deposits/page.tsx` | Server | Riwayat lengkap semua deposit. |
 | `/account/orders` | `web/src/app/account/orders/page.tsx` | Server | Riwayat lengkap semua pesanan. |
-| `/invoice/[token]` | `web/src/app/invoice/[token]/page.tsx` | Server (`force-dynamic`) | Halaman invoice publik (tidak wajib login) — instruksi bayar + status real-time. |
-| `/maintenance` | `web/src/app/maintenance/page.tsx` | Server | Halaman "sedang maintenance" (otomatis ditampilkan lewat `proxy.ts` kalau mode maintenance aktif — lihat `docs/01-ARSITEKTUR.md`). |
+| `/account/settings` | `web/src/app/account/settings/page.tsx` | Server | Ganti nama, email, dan password. |
+| `/account/reseller` | `web/src/app/account/reseller/page.tsx` | Server | Gabung program reseller / lihat status & beli paket tier. |
+| `/account/mitra` | `web/src/app/account/mitra/page.tsx` | Server | Ajukan diri jadi mitra H2H, atau lihat status pengajuan. |
 
-**Catatan folder route group `(public)`:** halaman-halaman dengan `(public)/` di path-nya berbagi satu `layout.tsx` (`web/src/app/(public)/layout.tsx`) yang otomatis menambahkan header (`SiteHeader`), footer (`SiteFooter`), dan tombol bantuan mengambang (`FloatingSupportButton`). Halaman **di luar** `(public)/` — yaitu `account/*`, `invoice/*`, `login`, `register`, `maintenance` — **TIDAK** punya header/footer situs itu, masing-masing membangun tampilan minimalnya sendiri langsung di `page.tsx`.
+> 🔴 **Mengganti email TIDAK langsung mengubah email.** Alamat baru dititipkan di token sampai link di **inbox baru** diklik. Alasannya: email adalah identitas login **sekaligus** tujuan link reset password — satu salah ketik tanpa verifikasi = akun terkunci permanen. Alamat lama ikut dikabari, tapi **tanpa tombol konfirmasi**: kalau alamat lama bisa menyetujui, penyerang yang sudah menguasai akun tinggal menyetujui sendiri.
+
+### 1.4 Invoice & lain-lain
+
+| URL | File `page.tsx` | Tipe | Isi |
+|---|---|---|---|
+| `/invoice/[token]` | `web/src/app/invoice/[token]/page.tsx` | Server (`force-dynamic`) | Halaman invoice publik (tidak wajib login) — instruksi bayar + status real-time. |
+| `/invoice/[token]/struk` | `.../[token]/struk/page.tsx` | Server | Versi struk yang siap dicetak/di-screenshot. |
+| `/maintenance` | `web/src/app/maintenance/page.tsx` | Server | Halaman "sedang maintenance" (di-*rewrite* oleh `proxy.ts`). |
+| `/offline` | `web/src/app/offline/page.tsx` | Server | Halaman fallback PWA saat tidak ada koneksi — satu-satunya yang di-cache service worker. |
+| `/pwa/splash` | `web/src/app/pwa/splash/route.ts` | Route | **Bukan halaman.** Membuat gambar layar pembuka iOS *on-demand* lewat `next/og`, jadi tidak ada satu pun berkas gambar splash di repo. |
+
+### 1.5 Portal mitra (`/mitra/*`, wajib login + akun mitra)
+
+Permukaan keempat aplikasi, terpisah dari storefront maupun panel admin. Semua berbagi `mitra-shell.tsx`.
+
+| URL | Isi |
+|---|---|
+| `/mitra` | Ringkasan akun H2H. |
+| `/mitra/katalog` | Katalog + harga yang berlaku untuk mitra ini. |
+| `/mitra/transaksi` | Riwayat transaksi H2H. |
+| `/mitra/saldo` | Saldo prabayar & mutasinya. |
+| `/mitra/kredensial` | Lihat/putar ulang API key & callback secret. |
+| `/mitra/callback` | Log pengiriman callback + tombol kirim ulang. |
+| `/mitra/dokumentasi` | Spesifikasi API, dirender dari `web/src/content/api-partner.md`. |
+
+**Catatan folder route group `(public)`:** halaman dengan `(public)/` di path-nya berbagi satu `layout.tsx` yang otomatis menambahkan header (`SiteHeader`), footer (`SiteFooter`), dan tombol bantuan mengambang (`FloatingSupportButton`). Halaman **di luar** `(public)/` — `account/*`, `mitra/*`, `invoice/*`, `login`, `register`, `maintenance`, dan jalur bertoken — **TIDAK** punya header/footer situs itu; masing-masing membangun tampilan minimalnya sendiri (`account-shell.tsx`, `mitra-shell.tsx`, atau langsung di `page.tsx`).
 
 ## 2. Komponen per Halaman
 
 ### Beranda (`/`)
 | Komponen | File |
 |---|---|
-| `CatalogTabs` **(Client)** | `web/src/app/(public)/catalog-tabs.tsx` — tab kategori, merender grid `ProductCard`. |
+| `CatalogTabs` **(Client)** | `web/src/app/(public)/catalog-tabs.tsx` — tab kategori, merender grid `ProductCard`. Kategori aktif **disinkronkan ke URL** (`?kategori=slug`) lewat `history.replaceState` — bukan `router.replace()`, yang akan memicu render ulang seluruh route di server untuk halaman yang isinya identik. Tanpa sinkronisasi ini, refresh selalu melempar orang kembali ke tab pertama. |
 | `ProductCard` | `web/src/app/(public)/product-card.tsx` — satu kartu produk di grid katalog. |
 | `BannerCarousel` **(Client)** | `web/src/components/banner-carousel.tsx` — carousel banner promo auto-geser. |
 | `TrendingSection` | `web/src/components/trending-section.tsx` — strip produk trending. |
@@ -57,7 +105,34 @@ Dokumen ini mendaftar semua halaman yang dilihat **pembeli** (bukan admin — pa
 ### Invoice (`/invoice/[token]`)
 | Komponen | File |
 |---|---|
-| `InvoiceStatus` **(Client)** | `web/src/app/invoice/[token]/invoice-status.tsx` — polling `/api/orders/[token]/status` tiap 3 detik, tampilkan instruksi bayar/status/serial number, tombol kirim ke WhatsApp. |
+| `InvoiceStatus` **(Client)** | `web/src/app/invoice/[token]/invoice-status.tsx` — polling `/api/orders/[token]/status` tiap 3 detik, tampilkan instruksi bayar/status/serial number, tombol kirim ke WhatsApp, tombol batalkan pesanan. |
+
+### Login, daftar & pemulihan akun
+| Komponen | File |
+|---|---|
+| `LoginForm` **(Client)** | `web/src/app/login/login-form.tsx` — form dua langkah (email+password → kode 2FA). Input **wajib controlled**, lihat §1.2. |
+| `RegisterForm` **(Client)** | `web/src/app/register/register-form.tsx` |
+| `ResetPasswordForm` **(Client)** | `web/src/app/reset-password/reset-password-form.tsx` |
+| `ConfirmEmailForm` **(Client)** | `web/src/app/konfirmasi-email/confirm-email-form.tsx` |
+
+### Reseller
+| Komponen | File |
+|---|---|
+| `RegisterForm` **(Client)** | `web/src/app/(public)/daftar-reseller/register-form.tsx` — pendaftaran dari halaman publik. |
+| `JoinForm` **(Client)** | `web/src/app/account/reseller/join-form.tsx` — gabung dari akun yang sudah ada. |
+| `ResellerStatus` **(Client)** | `web/src/app/account/reseller/reseller-status.tsx` — status tier + beli/upgrade paket. |
+| `ActivateForm` **(Client)** | `web/src/app/reseller/aktivasi/activate-form.tsx` — aktivasi lewat token email. |
+
+### Mitra (pengajuan & portal)
+| Komponen | File |
+|---|---|
+| `AccountShell` | `web/src/app/account/account-shell.tsx` — kerangka semua halaman `/account/*`. |
+| `ApplicationForm` **(Client)** | `web/src/app/account/mitra/application-form.tsx` |
+| `CancelButton` **(Client)** | `web/src/app/account/mitra/cancel-button.tsx` |
+| `MitraShell` | `web/src/app/mitra/mitra-shell.tsx` — kerangka semua halaman `/mitra/*`. |
+| `CatalogClient` **(Client)** | `web/src/app/mitra/katalog/catalog-client.tsx` |
+| `CredentialsClient` **(Client)** | `web/src/app/mitra/kredensial/credentials-client.tsx` |
+| `ResendButton` **(Client)** | `web/src/app/mitra/callback/resend-button.tsx` |
 
 ## 3. Komponen Global (Dipakai Lintas Halaman)
 
@@ -74,6 +149,10 @@ Semua ada di `web/src/components/` (bukan `components/ui/`, itu primitif dasar �
 | `PaymentMethodMarquee` **(Client)** | `payment-method-marquee.tsx` | `site-footer.tsx` | Strip logo metode pembayaran yang berjalan otomatis, ada efek "magnet" saat kursor mendekat. |
 | `ThemeProvider` | `theme-provider.tsx` | `app/layout.tsx` (root) | Bungkus `next-themes`. |
 | `QueryProvider` | `query-provider.tsx` | `app/layout.tsx` (root) | Sediakan `@tanstack/react-query` client untuk seluruh app (dipakai fitur polling). |
+| `StorefrontTheme` | `storefront-theme.tsx` | `app/layout.tsx` (root) | Menimpa `--primary` & `--radius` dengan pilihan admin di `/admin/appearance`. Dipasang di **root**, jadi berlaku juga di invoice, login, dan panel admin — identitas warna toko memang seharusnya konsisten. |
+| `StorefrontSlot` | `storefront-slot.tsx` | 12 titik di halaman publik | Titik sisip HTML kustom milik admin. |
+
+**Tentang `StorefrontSlot`:** ada **12 slot** (`home_top`, `home_bottom`, `product_list`, `product_detail_top`, `product_detail_bottom`, `checkout_note`, `invoice_top`, `invoice_bottom`, `receipt_note`, `deposit_note`, `login_note`, `register_note`), diisi lewat `/admin/appearance`. HTML-nya disaring daftar-izin **dua kali** — saat disimpan **dan** saat dibaca (`web/src/lib/storefront/sanitize-html.ts`). Komponennya Server Component, jadi tidak menambah satu byte pun JavaScript ke browser, dan slot kosong benar-benar tidak merender apa-apa (bukan `<div>` kosong yang meninggalkan jarak di tata letak).
 
 ## 4. Tabel Cepat: "Mau Ubah Apa → Edit File Mana"
 
@@ -91,7 +170,10 @@ Semua ada di `web/src/components/` (bukan `components/ui/`, itu primitif dasar �
 | Isi Syarat & Ketentuan / Kebijakan Privasi | **BUKAN file kode** — `/admin/settings` | Format teksnya "lite markdown" (`## judul`, `- bullet`) — lihat `web/src/lib/content/lite-markdown.tsx` untuk aturan lengkapnya. Kalau mau ubah TAMPILAN (bukan isi teks): `web/src/app/(public)/syarat-ketentuan/page.tsx` / `kebijakan-privasi/page.tsx`. |
 | Nomor WA/username Telegram CS / jam operasional | **BUKAN file kode** — `/admin/settings` bagian Kontak CS | Halaman `/kontak` + drawer + footer + tombol mengambang otomatis ikut berubah, semua baca dari sumber yang sama (`getSiteSettings()`). |
 | Logo & favicon situs | **BUKAN file kode** — `/admin/settings` | |
-| Warna tema (primary, accent, dll.) | `web/src/app/globals.css` | Lihat §5. |
+| Warna tema (primary, accent, dll.) | `web/src/app/globals.css` | Lihat §5. ⚠️ Tapi `--primary` & `--radius` bisa **ditimpa dari panel** `/admin/appearance` — kalau ubahanmu di CSS tidak kelihatan, cek dulu apakah ada override di sana. |
+| Menyisipkan HTML/pengumuman di halaman publik | **BUKAN file kode** — `/admin/appearance` | 12 slot, lihat §3. |
+| CSS kustom tambahan | **BUKAN file kode** — `/admin/appearance` | Disaring daftar-izin dua kali (simpan & baca). |
+| Ikon & layar pembuka aplikasi (PWA) | **BUKAN file kode** — `/admin/mobile-app` | Ikon dibuat di browser (canvas → 2 PNG: `any` 80% + `maskable` 58%). Splash iOS dibuat *on-demand* oleh `/pwa/splash`, nol berkas gambar di repo. |
 | Radius sudut (border-radius) global | `web/src/app/globals.css`, variabel `--radius` | |
 | Font | `web/src/app/layout.tsx` (import `Geist`/`Geist_Mono`/`Baloo_2` dari `next/font/google`) | |
 | Halaman login/register | `web/src/app/login/page.tsx` / `web/src/app/register/page.tsx` | Form-nya langsung ditulis di `page.tsx` (bukan dipecah ke komponen client terpisah). |
@@ -132,6 +214,10 @@ Buka `web/src/app/globals.css`. Ada 3 bagian penting:
 
 Untuk mengubah warna utama situs, edit nilai hex di blok `:root` (mode terang) dan `.dark` (mode gelap) — **bukan** di `@theme inline` (itu cuma pemetaan nama, jarang perlu disentuh). Dipakai di komponen lewat class Tailwind biasa: `bg-primary`, `text-primary`, `ring-primary`, dst — Tailwind v4 otomatis membaca dari `--color-primary` yang sudah dipetakan.
 
+> ⚠️ **Nilai di `globals.css` bisa ditimpa dari panel.** `StorefrontTheme` (§3) menyuntikkan `<style>:root{--primary:…;--radius:…}</style>` di root layout kalau admin mengisinya di `/admin/appearance`. Kalau kamu mengubah `--primary` di CSS dan tidak ada yang berubah di layar, **itu sebabnya** — bukan cache. Nilainya divalidasi (hex untuk warna, angka 0–32 untuk radius), jadi tidak bisa merusak tata letak.
+
+> 💡 **Untuk warna grafik/chart, jangan pakai `useTheme()`** — baca CSS variable-nya. Warna yang diambil dari state React akan tertinggal satu render di belakang saat tema berganti, dan pada render pertama di server nilainya belum ada sama sekali.
+
 ### 5.2 Komponen dasar (`web/src/components/ui/`)
 
 Gaya **shadcn** (`components.json`, style `"base-nova"`), primitif interaktif (Checkbox, RadioGroup, Select, dll.) dari library **`@base-ui/react`**. Isi folder ini: `badge.tsx`, `button.tsx`, `card.tsx`, `checkbox.tsx`, `input.tsx`, `label.tsx`, `radio-group.tsx`, `select.tsx`, `table.tsx`, `textarea.tsx`.
@@ -170,5 +256,9 @@ Diatur `next-themes` (`web/src/components/theme-provider.tsx`), toggle di `web/s
 | Footer | `web/src/components/site-footer.tsx` |
 | Warna tema | `web/src/app/globals.css` (blok `:root` & `.dark`) |
 | Konten FAQ/TOS/Privasi/Kontak | Panel admin `/admin/settings` — **bukan file kode** |
+| Warna/radius/CSS kustom/slot HTML | Panel admin `/admin/appearance` — **bukan file kode**, dan ia **menimpa** `globals.css` |
 | Tombol/input dasar | `web/src/components/ui/*.tsx` (hati-hati, dipakai di mana-mana) |
 | Font | `web/src/app/layout.tsx` |
+| Halaman reseller | `(public)/daftar-reseller/register-form.tsx` (publik) / `account/reseller/reseller-status.tsx` (member) |
+| Portal mitra | `web/src/app/mitra/mitra-shell.tsx` + halaman di bawahnya |
+| Ganti nama/email/password | `web/src/app/account/settings/page.tsx` |

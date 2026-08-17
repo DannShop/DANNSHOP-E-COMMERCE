@@ -16,6 +16,7 @@ Dokumentasi teknis lengkap untuk project **DannShop** — platform PPOB/digital 
 | 05 | [CARA-TAMBAH-FITUR](./05-CARA-TAMBAH-FITUR.md) | Panduan step-by-step: tambah produk, metode bayar, halaman, endpoint, field database | Mau menambah sesuatu yang baru |
 | 06 | [TROUBLESHOOTING-DEPLOY](./06-TROUBLESHOOTING-DEPLOY.md) | Cara run lokal, cara deploy, solusi masalah yang sudah pernah benar-benar terjadi | Ada error, atau mau deploy |
 | 09 | [FITUR-SESI-2026-08-09](./09-FITUR-SESI-2026-08-09.md) | Notifikasi Telegram, invoice/email/struk, kustomisasi storefront, analytics, cek ID game, produk manual | Mau paham 7 fitur terbaru & keputusan desain di baliknya |
+| 11 | [FITUR-RESELLER-RBAC-LABA](./11-FITUR-RESELLER-RBAC-LABA.md) | Program reseller (paket LIFETIME, kredit upgrade, potongan flat), RBAC karyawan & peran, pelacakan modal/laba, PWA ikon & splash | Mau paham fitur Agustus 16–18 2026 & keputusan desain di baliknya |
 | — | [api-partner](../web/src/content/api-partner.md) | **Dokumen untuk pihak luar.** Spesifikasi API H2H reseller: autentikasi md5, 4 endpoint, callback, kode `rc`, contoh PHP | Ada partner yang mau integrasi — mitra membacanya sendiri di `/mitra/dokumentasi` |
 
 ## Panduan Operasional (dirender di `/admin/panduan`)
