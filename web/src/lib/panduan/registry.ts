@@ -50,6 +50,54 @@ export const PANDUAN: Panduan[] = [
     audience: "Admin",
   },
   {
+    slug: "reseller",
+    title: "Program Reseller",
+    summary:
+      "Alur pendaftaran & aktivasi, mengatur paket, aturan naik paket, dan mengelola peserta program.",
+    file: "panduan/reseller.md",
+    audience: "Admin",
+  },
+  {
+    slug: "karyawan-peran",
+    title: "Karyawan & Peran",
+    summary:
+      "Merekrut karyawan, 9 izin yang tersedia, kenapa refund dipisah dari kelola pesanan, dan kapan perubahan izin berlaku.",
+    file: "panduan/karyawan-peran.md",
+    audience: "Admin",
+  },
+  {
+    slug: "laba-modal",
+    title: "Modal, Laba & Analytics",
+    summary:
+      "Dari mana modal datang untuk produk otomatis vs manual, rumus laba, dan cara membaca dashboard & analytics.",
+    file: "panduan/laba-modal.md",
+    audience: "Admin",
+  },
+  {
+    slug: "tampilan-css",
+    title: "Tampilan & CSS Kustom",
+    summary:
+      "Slot HTML, CSS kustom, apa yang otomatis dibuang penyaring, kelas yang aman disasar, dan cara memulihkan tampilan yang rusak.",
+    file: "panduan/tampilan-css.md",
+    audience: "Admin",
+  },
+  {
+    slug: "invoice-struk",
+    title: "Invoice, Struk & Email",
+    summary:
+      "Branding dokumen, 9 template email dan placeholder-nya, konfirmasi pesanan manual, serta pengaturan cetak struk.",
+    file: "panduan/invoice-struk.md",
+    audience: "Admin",
+  },
+  {
+    slug: "api-internal",
+    title: "API Internal & Webhook",
+    summary:
+      "Seluruh endpoint selain API Partner: webhook Midtrans & provider, cron, endpoint status publik, dan rate limit yang berlaku.",
+    file: "panduan/api-internal.md",
+    audience: "Admin",
+  },
+  {
     slug: "api-partner",
     title: "API Partner (H2H)",
     summary:
