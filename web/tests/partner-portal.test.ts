@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { MITRA_NAV, isMitraNavActive, resolveMitraPage } from "@/app/mitra/nav-config";
-import { ACCOUNT_NAV, ACCOUNT_NAV_GRID_CLASS, isAccountNavActive } from "@/app/account/nav-config";
+import {
+  ACCOUNT_NAV,
+  ACCOUNT_NAV_GRID_CLASS,
+  ACCOUNT_NAV_MOBILE,
+  isAccountNavActive,
+  isMobileNavActive,
+} from "@/app/account/nav-config";
 
 describe("navigasi portal mitra", () => {
   it("hanya menyalakan Beranda pada /mitra persis, bukan pada semua subhalaman", () => {
@@ -35,17 +41,65 @@ describe("navigasi panel user", () => {
   // literal, jadi jumlah menu yang tumbuh melewati peta yang tersedia akan
   // menghasilkan tab bar satu kolom yang menumpuk — gagal secara visual saja,
   // tanpa satu pun error. Test ini yang menangkapnya.
-  it("punya kelas grid yang cocok dengan jumlah menunya", () => {
-    expect(ACCOUNT_NAV_GRID_CLASS).toBe(`grid-cols-${ACCOUNT_NAV.length}`);
+  //
+  // Diturunkan dari daftar MOBILE, bukan desktop: sejak keduanya dipisah
+  // (2026-08-18), sidebar boleh panjang sementara tab bar dijaga tetap pendek.
+  it("punya kelas grid yang cocok dengan jumlah menu MOBILE", () => {
+    expect(ACCOUNT_NAV_GRID_CLASS).toBe(`grid-cols-${ACCOUNT_NAV_MOBILE.length}`);
   });
 
-  it("menyertakan pintu masuk kemitraan di menu utama", () => {
+  // Batas nyaman tab bar. Lewat dari lima, labelnya berhenti terbaca di layar
+  // 360px dan yang tersisa cuma deretan ikon tanpa keterangan.
+  it("tab bar mobile tidak lebih dari 5 tab", () => {
+    expect(ACCOUNT_NAV_MOBILE.length).toBeLessThanOrEqual(5);
+  });
+
+  it("menyertakan pintu masuk kemitraan di sidebar desktop", () => {
     expect(ACCOUNT_NAV.some((i) => i.href === "/account/mitra")).toBe(true);
   });
 
   it("tidak membuat /account/mitra menyalakan Beranda", () => {
     expect(isAccountNavActive("/account/mitra", "/account")).toBe(false);
     expect(isAccountNavActive("/account/mitra", "/account/mitra")).toBe(true);
+  });
+
+  /**
+   * Halaman yang tab-nya dilebur ke induknya di mobile.
+   *
+   * Yang dijaga di sini bukan kerapian, melainkan rasa tersesat: tanpa
+   * pemetaan ini, membuka riwayat deposit atau halaman reseller di HP membuat
+   * SELURUH tab bar padam sekaligus. Setiap halaman panel WAJIB punya tepat
+   * satu tab yang menyala.
+   */
+  describe("halaman tanpa tab sendiri tetap menyalakan tab induknya", () => {
+    const kasus: [string, string][] = [
+      ["/account/deposits", "/account/deposit"],
+      ["/account/reseller", "/account/settings"],
+      ["/account/mitra", "/account/settings"],
+    ];
+
+    for (const [pathname, induk] of kasus) {
+      it(`${pathname} → ${induk}`, () => {
+        expect(isMobileNavActive(pathname, induk)).toBe(true);
+        // Dan HANYA satu tab yang menyala, bukan dua.
+        const menyala = ACCOUNT_NAV_MOBILE.filter((i) => isMobileNavActive(pathname, i.href));
+        expect(menyala.map((i) => i.href)).toEqual([induk]);
+      });
+    }
+
+    it("setiap tab mobile menyalakan dirinya sendiri", () => {
+      for (const item of ACCOUNT_NAV_MOBILE) {
+        expect(isMobileNavActive(item.href, item.href)).toBe(true);
+      }
+    });
+
+    // Jebakan halus: "/account/deposits" tidak diawali "/account/deposit/",
+    // jadi pencocokan prefix biasa TIDAK menyalakannya — itulah sebabnya
+    // pemetaan eksplisit di atas ada.
+    it("halaman isi saldo tidak ikut menyalakan tab lain", () => {
+      const menyala = ACCOUNT_NAV_MOBILE.filter((i) => isMobileNavActive("/account/deposit", i.href));
+      expect(menyala.map((i) => i.href)).toEqual(["/account/deposit"]);
+    });
   });
 });
 

@@ -12,17 +12,16 @@ export interface AccountNavItem {
   icon: IconType;
 }
 
-// Satu-satunya sumber kebenaran menu panel user - dipakai sidebar desktop,
-// tab bar mobile, DAN judul di header.
+// Menu SIDEBAR DESKTOP. Semuanya tampil karena ruang vertikalnya memang ada -
+// daftar setinggi tujuh baris tidak pernah terasa sesak di layar lebar.
+//
+// Tab bar mobile memakai daftar TERPISAH di bawah (ACCOUNT_NAV_MOBILE), bukan
+// daftar ini. Dulu keduanya berbagi satu array, dan akibatnya tab bar ikut
+// menampung tujuh tab: di layar 360px itu ~51px per tab, cukup untuk ikon tapi
+// tidak untuk labelnya.
 //
 // Urutannya mengikuti seberapa sering dipakai: isi saldo dan riwayat transaksi
 // jauh lebih sering dibuka daripada pengaturan.
-//
-// "Mitra" ditaruh di menu utama, bukan disembunyikan di dalam Pengaturan, dan
-// itu keputusan yang disengaja: program mitra H2H hanya terbuka untuk member
-// terdaftar, jadi SATU-SATUNYA cara orang tahu program ini ada adalah dengan
-// melihatnya di sini. Menyembunyikannya berarti membuat pintu masuk yang tidak
-// pernah ditemukan siapa pun.
 export const ACCOUNT_NAV: AccountNavItem[] = [
   { href: "/account", label: "Beranda", icon: House },
   { href: "/account/deposit", label: "Isi Saldo", icon: PlusCircle },
@@ -34,21 +33,39 @@ export const ACCOUNT_NAV: AccountNavItem[] = [
 ];
 
 /**
+ * Menu TAB BAR MOBILE - sengaja empat, bukan tujuh.
+ *
+ * Yang dipangkas bukan fiturnya, melainkan pintu masuknya:
+ *   - "Isi Saldo" lebur ke dalam "Deposit". Dua tab bersebelahan yang namanya
+ *     mirip tapi isinya berbeda (form vs riwayat) adalah tebakan, bukan menu.
+ *   - "Reseller" & "Mitra" pindah ke dalam Pengaturan. Keduanya dibuka sekali
+ *     saat mendaftar lalu nyaris tidak pernah lagi - frekuensi seumur hidup
+ *     yang tidak sebanding dengan biaya tetap satu tab permanen.
+ *
+ * Keduanya tetap ada di sidebar desktop, dan route-nya tidak berubah sama
+ * sekali - tautan lama yang sudah tersebar tetap bekerja.
+ */
+export const ACCOUNT_NAV_MOBILE: AccountNavItem[] = [
+  { href: "/account", label: "Beranda", icon: House },
+  { href: "/account/orders", label: "Transaksi", icon: ReceiptText },
+  { href: "/account/deposit", label: "Deposit", icon: Wallet },
+  { href: "/account/settings", label: "Pengaturan", icon: Settings },
+];
+
+/**
  * Kelas grid tab bar mobile, diturunkan dari panjang menu.
  *
  * Ditulis sebagai peta literal karena Tailwind memindai kelas secara statis —
  * `grid-cols-${n}` tidak akan pernah ikut ter-compile dan tab bar-nya jadi satu
  * kolom menumpuk.
  *
- * ⚠️ 7 ADALAH BATASNYA, dan sudah tercapai (menu Reseller masuk 2026-08-17).
- * Di layar 360px itu berarti ~51px per tab — ikonnya masih jelas, labelnya
- * sudah mepet. Menu berikutnya WAJIB menggantikan salah satu yang ada, bukan
- * ditambahkan: lewat dari ini labelnya berhenti terbaca dan tab bar-nya jadi
- * deretan ikon tanpa keterangan.
+ * ⚠️ 5 adalah batas nyaman, 7 batas mutlak. Di layar 360px, tujuh tab berarti
+ * ~51px per tab: ikonnya masih jelas, labelnya sudah mepet. Kalau menu mobile
+ * perlu tambahan, GANTIKAN salah satu - jangan ditambahkan.
  */
 export const ACCOUNT_NAV_GRID_CLASS: string =
   ({ 4: "grid-cols-4", 5: "grid-cols-5", 6: "grid-cols-6", 7: "grid-cols-7" } as Record<number, string>)[
-    ACCOUNT_NAV.length
+    ACCOUNT_NAV_MOBILE.length
   ] ?? "grid-cols-5";
 
 /**
@@ -64,6 +81,27 @@ export const ACCOUNT_NAV_GRID_CLASS: string =
 export function isAccountNavActive(pathname: string, href: string): boolean {
   if (href === "/account") return pathname === "/account";
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Halaman yang TIDAK punya tab sendiri di mobile, dan tab mana yang mewakilinya.
+ *
+ * Tanpa peta ini, membuka riwayat deposit atau halaman reseller di HP membuat
+ * SELURUH tab bar padam - tidak ada satu pun yang menyala, dan yang dirasakan
+ * orang bukan "menu ini tidak ada" melainkan "saya tersesat di luar aplikasi".
+ * Tab induknya tetap menyala, jadi posisinya selalu punya jawaban.
+ */
+const MOBILE_NAV_PARENT: Record<string, string> = {
+  "/account/deposits": "/account/deposit",
+  "/account/reseller": "/account/settings",
+  "/account/mitra": "/account/settings",
+};
+
+export function isMobileNavActive(pathname: string, href: string): boolean {
+  for (const [child, parent] of Object.entries(MOBILE_NAV_PARENT)) {
+    if (pathname === child || pathname.startsWith(`${child}/`)) return href === parent;
+  }
+  return isAccountNavActive(pathname, href);
 }
 
 export function resolveAccountPageTitle(pathname: string): string {

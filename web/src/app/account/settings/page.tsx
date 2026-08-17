@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import type { ComponentType, SVGProps } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowRight, Handshake, Store } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { ChangeEmailForm } from "@/components/change-email-form";
@@ -15,6 +18,37 @@ import {
 
 export const metadata: Metadata = { title: "Pengaturan" };
 
+/** Kartu tautan program. Bentuknya menyamai kartu di halaman Akun Saya. */
+function ProgramLink({
+  href,
+  icon: Icon,
+  title,
+  desc,
+}: {
+  href: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/60 px-5 py-4 transition-colors duration-200 ease-out hover:bg-foreground/[0.04]"
+    >
+      <span className="flex items-center gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+          <Icon className="size-5" aria-hidden="true" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold">{title}</span>
+          <span className="block text-xs text-muted-foreground">{desc}</span>
+        </span>
+      </span>
+      <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+    </Link>
+  );
+}
+
 export default async function AccountSettingsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -23,6 +57,34 @@ export default async function AccountSettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
+      {/* ===== Program kemitraan =====
+          Ditaruh di sini karena di HP keduanya TIDAK punya tab sendiri: dibuka
+          sekali saat mendaftar lalu nyaris tidak pernah lagi, jadi tidak
+          sebanding dengan biaya tetap satu tab permanen. Di sidebar desktop
+          keduanya tetap tampil sebagai menu. Ini SATU-SATUNYA pintu masuknya di
+          mobile — menghapus blok ini membuat kedua program itu tidak bisa
+          ditemukan sama sekali dari HP. */}
+      <section className="flex flex-col gap-1 md:hidden">
+        <h2 className="font-heading text-base font-bold">Program</h2>
+        <p className="text-sm text-muted-foreground">
+          Harga khusus untuk yang berjualan ulang atau punya sistem sendiri.
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          <ProgramLink
+            href="/account/reseller"
+            icon={Store}
+            title="Reseller"
+            desc="Harga lebih murah untuk yang jualan eceran."
+          />
+          <ProgramLink
+            href="/account/mitra"
+            icon={Handshake}
+            title="Mitra H2H"
+            desc="Sambungkan sistemmu sendiri lewat API."
+          />
+        </div>
+      </section>
+
       <section className="flex flex-col gap-1">
         <h2 className="font-heading text-base font-bold">Nama Tampilan</h2>
         <p className="text-sm text-muted-foreground">
