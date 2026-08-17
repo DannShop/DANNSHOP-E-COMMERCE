@@ -155,11 +155,22 @@ export function InvoiceStatus({
   qrDataUri,
   initial,
   snapConfig,
+  hideShareButton = false,
 }: {
   token: string;
   qrDataUri: string | null;
   initial: OrderStatusResponse;
   snapConfig?: SnapBrowserConfig | null;
+  /**
+   * Sembunyikan tombol "Kirim ke WhatsApp".
+   *
+   * Dipakai saat kotak konfirmasi pesanan manual ikut tampil di bawah: kotak
+   * itu sudah punya tombol WhatsApp-nya sendiri yang isinya jauh lebih berguna
+   * (pesan konfirmasi lengkap ke nomor admin, bukan sekadar tautan invoice).
+   * Dua tombol WhatsApp bersebelahan terbaca sebagai duplikat, dan yang
+   * diklik orang belum tentu yang benar.
+   */
+  hideShareButton?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const { data, isFetching } = useQuery<OrderStatusResponse>({
@@ -278,18 +289,20 @@ export function InvoiceStatus({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => {
-          const url = `${window.location.origin}/invoice/${token}`;
-          const text = `Invoice pesanan ${order.orderNumber} - ${url}`;
-          window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-        }}
-        className="flex items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium hover:bg-muted"
-      >
-        <MessageCircle className="size-4" aria-hidden="true" />
-        Kirim ke WhatsApp
-      </button>
+      {!hideShareButton && (
+        <button
+          type="button"
+          onClick={() => {
+            const url = `${window.location.origin}/invoice/${token}`;
+            const text = `Invoice pesanan ${order.orderNumber} - ${url}`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+          }}
+          className="flex items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium hover:bg-muted"
+        >
+          <MessageCircle className="size-4" aria-hidden="true" />
+          Kirim ke WhatsApp
+        </button>
+      )}
     </div>
   );
 }

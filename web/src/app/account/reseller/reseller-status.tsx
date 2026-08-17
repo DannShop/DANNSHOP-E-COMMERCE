@@ -15,6 +15,8 @@ export interface TierOffer {
   name: string;
   badgeColor: string;
   discountPercent: number;
+  /** BigInt diserialkan sebagai string. 0 = tidak dipakai. */
+  discountFlatManual: string;
   benefits: string[];
   /** BigInt diserialkan sebagai string - Server Component tidak bisa mengirim BigInt ke client. */
   tierPrice: string;
@@ -158,6 +160,8 @@ export function ResellerStatus({
 
               <p className="mt-1 text-xs text-muted-foreground">
                 Potongan {percent(offer.discountPercent)}
+                {BigInt(offer.discountFlatManual) > 0n &&
+                  ` · ${formatRupiah(BigInt(offer.discountFlatManual))} untuk produk manual`}
                 {offer.benefits.length > 0 && ` · ${offer.benefits.length} keuntungan tambahan`}
               </p>
 

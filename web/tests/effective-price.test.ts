@@ -97,3 +97,93 @@ describe("effectivePrice", () => {
     expect(effectivePrice(expiredFlash, { discountBp: 1000, now })).toBe(9_000n);
   });
 });
+
+/**
+ * Potongan FLAT paket reseller — khusus produk MANUAL.
+ *
+ * Semua sifat di bawah punya ciri sama: kalau bergeser, tidak ada error yang
+ * muncul di mana pun. Yang terjadi cuma harga yang salah — dan di dua kasus
+ * paling buruk, harga yang menjual rugi.
+ */
+describe("effectivePrice - potongan flat produk manual", () => {
+  it("mengabaikan flat sepenuhnya untuk produk OTOMATIS", () => {
+    // Flat hanya untuk produk manual. Kalau bocor ke produk otomatis, potongan
+    // rupiah yang disetel untuk barang bermargin kaku ikut menghantam seluruh
+    // katalog otomatis.
+    expect(
+      effectivePrice(item(), { discountBp: 0, discountFlat: 2_000n, isManual: false, now }),
+    ).toBe(10_000n);
+  });
+
+  it("memotong flat untuk produk manual", () => {
+    // memberPrice sengaja direndahkan supaya potongannya punya ruang - dengan
+    // batas bawah bawaan (9.000), potongan 2.000 memang HARUS terjepit, dan
+    // itu diuji tersendiri di bawah.
+    expect(
+      effectivePrice(item({ memberPrice: 5_000n }), {
+        discountBp: 0,
+        discountFlat: 2_000n,
+        isManual: true,
+        now,
+      }),
+    ).toBe(8_000n);
+  });
+
+  // Flat MENGGANTIKAN persen di produk manual, bukan ditumpuk. Kalau ditumpuk,
+  // satu paket memberi dua potongan sekaligus justru di produk yang marginnya
+  // paling tipis.
+  it("flat MENGGANTIKAN persen di produk manual, bukan menumpuk", () => {
+    const harga = effectivePrice(item({ memberPrice: 5_000n }), {
+      discountBp: 1_000, // 10% = 1.000
+      discountFlat: 2_000n,
+      isManual: true,
+      now,
+    });
+    expect(harga).toBe(8_000n); // 10.000 - 2.000, BUKAN 10.000 - 1.000 - 2.000
+  });
+
+  it("produk manual tanpa flat tetap ikut diskon persen", () => {
+    expect(
+      effectivePrice(item(), { discountBp: 1_000, discountFlat: 0n, isManual: true, now }),
+    ).toBe(9_000n);
+  });
+
+  // INI penjaga uangnya. Potongan flat sebesar apa pun tidak boleh menembus
+  // batas bawah harga - kalau tembus, penjualan jadi rugi tanpa peringatan.
+  it("flat tetap dijepit batas bawah harga", () => {
+    expect(
+      effectivePrice(item(), { discountBp: 0, discountFlat: 9_999n, isManual: true, now }),
+    ).toBe(9_000n);
+  });
+
+  it("flat tidak pernah menghasilkan harga negatif", () => {
+    const harga = effectivePrice(item({ memberPrice: 0n }), {
+      discountBp: 0,
+      discountFlat: 999_999n,
+      isManual: true,
+      now,
+    });
+    expect(harga).toBe(0n);
+  });
+
+  // Flash sale menang di atas SEMUA diskon lain - perilaku yang sudah ada
+  // sebelum flat, dan tidak boleh berubah karenanya.
+  it("flash sale tetap menang di atas potongan flat", () => {
+    const flash = item({
+      flashPrice: 7_000n,
+      flashStartAt: new Date("2026-08-06T09:00:00Z"),
+      flashEndAt: new Date("2026-08-06T11:00:00Z"),
+    });
+    expect(
+      effectivePrice(flash, { discountBp: 0, discountFlat: 2_000n, isManual: true, now }),
+    ).toBe(7_000n);
+  });
+
+  // Pemanggil lama yang belum meneruskan dua field baru harus berperilaku
+  // PERSIS seperti sebelumnya - tidak ada jalur harga yang berubah diam-diam
+  // hanya karena tanda tangan fungsinya bertambah.
+  it("tanpa field baru, perilakunya sama persis seperti sebelum flat ada", () => {
+    expect(effectivePrice(item(), { discountBp: 1_000, now })).toBe(9_000n);
+    expect(effectivePrice(item(), { discountBp: 0, now })).toBe(10_000n);
+  });
+});

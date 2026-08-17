@@ -52,14 +52,19 @@ export async function previewVoucher(formData: FormData): Promise<VoucherPreview
   const [item, membership] = await Promise.all([
     db.productItem.findUnique({
       where: { id: parsed.data.productItemId, isActive: true },
-      include: { product: { select: { id: true, categoryId: true, isActive: true } } },
+      include: { product: { select: { id: true, categoryId: true, isActive: true, fulfillmentMode: true } } },
     }),
     getMembershipContext(userId),
   ]);
   if (!item || !item.product.isActive) return { ok: false, message: "Produk tidak ditemukan." };
 
   const now = new Date();
-  const price = effectivePrice(item, { discountBp: membership.discountBp, now });
+  const price = effectivePrice(item, {
+    discountBp: membership.discountBp,
+    discountFlat: membership.discountFlat,
+    isManual: item.product.fulfillmentMode === "MANUAL",
+    now,
+  });
 
   const hasil = await evaluateVoucher({
     rawCode: parsed.data.voucherCode,

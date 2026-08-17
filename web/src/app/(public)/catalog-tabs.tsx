@@ -20,6 +20,30 @@ export function CatalogTabs({ categories }: { categories: CatalogCategory[] }) {
   const [selectedSlug, setSelectedSlug] = useState(defaultCategory?.slug);
   const selected = categories.find((c) => c.slug === selectedSlug) ?? defaultCategory;
 
+  /**
+   * Menyalakan tab SEKALIGUS menuliskannya ke URL.
+   *
+   * Sebelumnya tab cuma hidup di state React, jadi URL-nya tidak pernah berubah
+   * dan me-refresh halaman selalu melempar orang kembali ke kategori pertama -
+   * termasuk saat dia sedang menelusuri kategori lain. Sekarang kategorinya ikut
+   * di alamat, jadi refresh, tombol kembali, dan tautan yang dibagikan
+   * semuanya mendarat di kategori yang benar.
+   *
+   * Dipakai `history.replaceState`, BUKAN router.replace(): keduanya mengubah
+   * alamat, tapi router.replace() menempuh perjalanan ke server untuk merender
+   * ulang halaman yang datanya sudah ada di tangan kita - berpindah tab jadi
+   * terasa berat tanpa satu pun informasi baru yang didapat. replaceState juga
+   * TIDAK menumpuk riwayat, jadi tombol kembali membawa orang keluar dari
+   * beranda seperti yang dia harapkan, bukan menyusuri ulang tab satu per satu.
+   */
+  function selectCategory(slug: string) {
+    setSelectedSlug(slug);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("kategori", slug);
+    window.history.replaceState(null, "", url);
+  }
+
   if (!selected) {
     return <p className="text-muted-foreground">Katalog belum tersedia.</p>;
   }
@@ -33,7 +57,7 @@ export function CatalogTabs({ categories }: { categories: CatalogCategory[] }) {
             variant={c.slug === selected.slug ? "default" : "outline"}
             size="sm"
             className="shrink-0 transition duration-200 ease-out hover:shadow-md hover:ring-2 hover:ring-primary"
-            onClick={() => setSelectedSlug(c.slug)}
+            onClick={() => selectCategory(c.slug)}
           >
             {c.name}
           </Button>

@@ -39,6 +39,10 @@ export function NewTierForm({ action }: { action: (formData: FormData) => Promis
           <Input id="new-tier-discount" name="discountPercent" type="number" min={0} max={10_000} defaultValue={0} required />
         </div>
         <div className="space-y-1.5">
+          <Label htmlFor="new-tier-flat" className="text-xs">Potongan flat produk manual</Label>
+          <Input id="new-tier-flat" name="discountFlatManual" type="number" min={0} defaultValue={0} />
+        </div>
+        <div className="space-y-1.5">
           <Label htmlFor="new-tier-bonus" className="text-xs">Bonus deposit (basis point)</Label>
           <Input id="new-tier-bonus" name="depositBonusPercent" type="number" min={0} max={10_000} defaultValue={0} required />
         </div>

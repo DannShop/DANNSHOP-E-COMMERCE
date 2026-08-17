@@ -10,6 +10,13 @@ import { parseBenefits, hasBenefit, type BenefitKey } from "@/lib/membership/ben
 export interface MembershipContext {
   tier: { id: string; name: string; slug: string; badgeColor: string } | null;
   discountBp: number; // 0 kalau tidak ada tier aktif
+  /**
+   * Potongan FLAT rupiah, HANYA berlaku untuk produk MANUAL.
+   *
+   * 0 kalau tidak ada paket aktif ATAU admin tidak mengisinya. Di produk
+   * manual, angka ini menggantikan discountBp (lihat effectivePrice).
+   */
+  discountFlat: bigint;
   depositBonusBp: number; // 0 kalau tidak ada tier aktif ATAU benefit deposit_bonus tidak dicentang
   benefits: BenefitKey[];
   // Kapan paket ini habis - murni untuk TAMPILAN. Sejak paket reseller bersifat
@@ -23,6 +30,7 @@ export interface MembershipContext {
 export const NO_MEMBERSHIP: MembershipContext = {
   tier: null,
   discountBp: 0,
+  discountFlat: 0n,
   depositBonusBp: 0,
   benefits: [],
   expiresAt: null,
@@ -74,6 +82,7 @@ export async function getMembershipContext(userId: string | null): Promise<Membe
       badgeColor: reseller.tier.badgeColor,
     },
     discountBp: reseller.tier.discountPercent,
+    discountFlat: reseller.tier.discountFlatManual,
     depositBonusBp: hasBenefit(benefits, "deposit_bonus") ? reseller.tier.depositBonusPercent : 0,
     benefits,
     // null = SEUMUR HIDUP, bukan "tidak punya paket". Pembacanya cuma tampilan,

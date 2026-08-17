@@ -115,14 +115,20 @@ export function AccountShell({
           </h1>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {/* Jalan pulang ke toko. Di desktop tugas ini dipegang blok brand di
-                puncak sidebar, jadi tombolnya cukup muncul di HP. */}
+            {/* Jalan pulang ke toko, TERLIHAT DI SEMUA UKURAN LAYAR.
+                Sebelumnya cuma muncul di HP dengan asumsi blok brand di puncak
+                sidebar sudah cukup untuk desktop - tapi logo yang kebetulan
+                bisa diklik bukan tombol: tidak ada yang menandainya sebagai
+                jalan keluar, dan orang memang tidak menemukannya. Di layar
+                lebar labelnya ikut tampil supaya tujuannya terbaca, bukan
+                ditebak dari ikon. */}
             <Link
               href="/"
               aria-label="Kembali ke toko"
-              className="grid size-9 place-items-center rounded-xl border border-border/60 bg-foreground/[0.04] text-muted-foreground transition-colors duration-200 ease-out hover:bg-foreground/[0.08] hover:text-foreground md:hidden"
+              className="flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-foreground/[0.04] px-2.5 text-sm font-medium text-muted-foreground transition-colors duration-200 ease-out hover:bg-foreground/[0.08] hover:text-foreground"
             >
-              <Store className="size-4" aria-hidden="true" />
+              <Store className="size-4 shrink-0" aria-hidden="true" />
+              <span className="hidden sm:inline">Ke Toko</span>
             </Link>
             <ThemeToggle className="size-9 rounded-xl" />
           </div>

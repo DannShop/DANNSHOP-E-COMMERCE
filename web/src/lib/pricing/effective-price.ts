@@ -45,9 +45,40 @@ export function isFlashActive(item: PricedItem, now: Date): boolean {
 // (perilaku ini sudah ada sebelum Fase B, dipertahankan apa adanya).
 export function effectivePrice(
   item: PricedItem,
-  { discountBp, now }: { discountBp: number; now: Date },
+  {
+    discountBp,
+    discountFlat = 0n,
+    isManual = false,
+    now,
+  }: {
+    discountBp: number;
+    /**
+     * Potongan FLAT rupiah dari paket reseller. HANYA dipakai kalau item ini
+     * milik produk MANUAL - lihat `isManual`.
+     */
+    discountFlat?: bigint;
+    /**
+     * Apakah produk pemilik item ini dikirim manual.
+     *
+     * Bawaannya `false` DENGAN SENGAJA: pemanggil lama yang belum meneruskan
+     * dua field baru ini berperilaku persis seperti sebelumnya (murni
+     * persentase). Tidak ada jalur harga yang diam-diam berubah hanya karena
+     * tanda tangan fungsinya bertambah.
+     */
+    isManual?: boolean;
+    now: Date;
+  },
 ): bigint {
   if (isFlashActive(item, now)) return item.flashPrice!;
+
+  // Produk MANUAL dengan potongan flat: flat MENGGANTIKAN persentase, bukan
+  // ditumpuk di atasnya. Menumpuk keduanya berarti satu paket memberi dua
+  // potongan sekaligus di produk yang justru marginnya paling tipis.
+  if (isManual && discountFlat > 0n) {
+    const discounted = item.sellingPrice - discountFlat;
+    return discounted < item.memberPrice ? item.memberPrice : discounted;
+  }
+
   if (discountBp > 0) {
     const discounted = item.sellingPrice - (item.sellingPrice * BigInt(discountBp)) / 10_000n;
     return discounted < item.memberPrice ? item.memberPrice : discounted;

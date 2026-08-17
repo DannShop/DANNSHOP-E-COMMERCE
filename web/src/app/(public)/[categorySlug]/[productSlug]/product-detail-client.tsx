@@ -495,29 +495,31 @@ export function ProductDetailClient({
                     {previewFee > 0n ? formatRupiah(previewFee) : formatRupiah(0n)}
                   </span>
                 </div>
-                {uniqueCodeApplies && (
-                  <div className="flex justify-between gap-3 text-sm">
-                    <span className="min-w-0 text-muted-foreground">Kode unik</span>
-                    <span className="shrink-0 font-medium">
-                      Rp{pricing.uniqueCodeMin}–{pricing.uniqueCodeMax}
-                    </span>
-                  </div>
-                )}
+                {/* Baris "Kode unik" DIHAPUS dari pratinjau (keputusan Wildan
+                    2026-08-18). Angkanya baru ada saat pesanan dibuat, dan
+                    memajang rentangnya di sini justru membuat satu-satunya
+                    angka yang benar-benar dibutuhkan pembeli - berapa yang
+                    harus dibayar - jadi tidak pasti. Rinciannya lengkap dengan
+                    kode uniknya muncul utuh di halaman invoice. */}
               </>
             )}
             <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-2">
               <span className="text-sm font-medium">Total Bayar</span>
+              {/* SATU angka pasti: harga item + biaya admin. Tidak ada rentang
+                  dan tidak ada tanda "+". Kode unik ditambahkan saat pesanan
+                  benar-benar dibuat, dan angka finalnya muncul di invoice. */}
               <span className="font-heading text-2xl font-bold text-primary">
                 {formatRupiah(previewTotal)}
-                {uniqueCodeApplies && !isBalanceSelected && <span className="text-base">+</span>}
               </span>
             </div>
             {uniqueCodeApplies && !isBalanceSelected && (
-              // Kode unik di-generate acak di SERVER saat order dibuat, jadi
-              // angka pastinya memang belum ada di sini. Ditampilkan jujur
-              // sebagai rentang alih-alih ditebak atau disembunyikan.
+              // Tetap diberitahu, walau angkanya tidak. Pembeli yang melihat
+              // nominal invoice sedikit berbeda dari yang barusan dia setujui
+              // akan mengira ada yang salah - satu kalimat di sini jauh lebih
+              // murah daripada satu pertanyaan ke CS.
               <p className="text-xs text-muted-foreground">
-                Kode unik ditentukan saat pesanan dibuat — nominal pastinya muncul di halaman invoice.
+                Kode unik untuk mencocokkan pembayaran ditambahkan saat pesanan dibuat — nominal finalnya
+                muncul di halaman invoice.
               </p>
             )}
           </div>

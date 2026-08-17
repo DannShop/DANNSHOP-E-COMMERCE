@@ -42,7 +42,15 @@ export default async function AccountResellerPage() {
     db.membershipTier.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { price: "asc" }],
-      select: { id: true, name: true, price: true, discountPercent: true, badgeColor: true, benefits: true },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        discountPercent: true,
+        discountFlatManual: true,
+        badgeColor: true,
+        benefits: true,
+      },
     }),
     db.paymentMethodConfig.findMany({
       where: { isActive: true },
@@ -90,6 +98,7 @@ export default async function AccountResellerPage() {
       name: tier.name,
       badgeColor: tier.badgeColor,
       discountPercent: tier.discountPercent,
+      discountFlatManual: tier.discountFlatManual.toString(),
       benefits: parseBenefits(tier.benefits),
       tierPrice: quote.tierPrice.toString(),
       credit: quote.credit.toString(),

@@ -107,6 +107,7 @@ export default async function InvoicePage({
           expiredAt: order.expiredAt?.toISOString() ?? null,
           sn: latestFulfillment?.status === "SUCCESS" ? latestFulfillment.sn : order.manualSn,
         }}
+        hideShareButton={manual !== null}
       />
 
       {manual && (

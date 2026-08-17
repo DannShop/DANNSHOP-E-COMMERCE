@@ -75,7 +75,13 @@ export function ManualOrderConfirm({
 
       <details className="mt-3">
         <summary className="cursor-pointer text-xs text-muted-foreground">Lihat isi pesan</summary>
-        <pre className="mt-2 rounded-md bg-muted/60 p-3 text-xs whitespace-pre-wrap">{message}</pre>
+        {/* break-words WAJIB berdampingan dengan whitespace-pre-wrap: yang
+            terakhir cuma memelihara baris baru & memutus di SPASI, sementara
+            URL invoice sepanjang 60+ karakter tidak punya satu pun spasi -
+            jadi ia meluber keluar bingkai tanpa ada yang menahannya. */}
+        <pre className="mt-2 overflow-x-auto rounded-md bg-muted/60 p-3 text-xs break-words whitespace-pre-wrap">
+          {message}
+        </pre>
       </details>
     </div>
   );

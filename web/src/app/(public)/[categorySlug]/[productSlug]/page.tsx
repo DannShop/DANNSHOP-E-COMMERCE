@@ -23,7 +23,7 @@ export default async function ProductDetailPage({
   const membership = await getMembershipContext(authSession?.user?.id ?? null);
 
   const [product, paymentMethods, rules] = await Promise.all([
-    getProductForCheckout(categorySlug, productSlug, membership.discountBp),
+    getProductForCheckout(categorySlug, productSlug, membership.discountBp, membership.discountFlat),
     db.paymentMethodConfig.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     getPaymentRules(),
   ]);

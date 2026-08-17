@@ -61,6 +61,7 @@ export default async function MembershipTiersPage() {
                 name: t.name,
                 price: t.price.toString(),
                 discountPercent: t.discountPercent,
+                discountFlatManual: t.discountFlatManual.toString(),
                 depositBonusPercent: t.depositBonusPercent,
                 badgeColor: t.badgeColor,
                 benefits: parseBenefits(t.benefits),

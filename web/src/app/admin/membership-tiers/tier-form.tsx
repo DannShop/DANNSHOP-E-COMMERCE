@@ -27,6 +27,7 @@ export function TierForm({
     name: string;
     price: string;
     discountPercent: number;
+    discountFlatManual: string;
     depositBonusPercent: number;
     badgeColor: string;
     benefits: string[];
@@ -105,6 +106,22 @@ export function TierForm({
             <p className="text-xs text-muted-foreground">
               100 = 1%. Preview: item {formatRupiah(PREVIEW_PRICE)} → {formatRupiah(discountedPreview < 0n ? 0n : discountedPreview)}
               {" "}(dibatasi harga modal per item, tidak akan lebih murah dari itu).
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`discountFlatManual-${tier.id}`} className="text-xs">Potongan flat produk manual</Label>
+            <Input
+              id={`discountFlatManual-${tier.id}`}
+              name="discountFlatManual"
+              type="number"
+              min={0}
+              defaultValue={tier.discountFlatManual}
+            />
+            <p className="text-xs text-muted-foreground">
+              Rupiah, mis. 2000. Berlaku HANYA di produk manual dan MENGGANTIKAN diskon persen di produk
+              itu — margin produk manual sering kaku, jadi persentase menghasilkan potongan yang tidak
+              berarti. Kosongkan/0 supaya produk manual ikut diskon persen. Tetap dibatasi batas bawah
+              harga per item, jadi tidak bisa menjual rugi.
             </p>
           </div>
           <div className="space-y-1.5">

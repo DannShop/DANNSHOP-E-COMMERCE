@@ -237,6 +237,12 @@ export async function getProductForCheckout(
   categorySlug: string,
   productSlug: string,
   discountBp: number,
+  /**
+   * Potongan flat paket reseller. Hanya menggigit kalau produknya MANUAL -
+   * modenya dibaca dari produk yang barusan diambil, bukan diminta dari
+   * pemanggil, supaya halaman produk tidak bisa salah menebaknya.
+   */
+  discountFlat: bigint = 0n,
 ): Promise<ProductForCheckout | null> {
   const now = new Date();
   const [product, activeProviders, idCheck] = await Promise.all([
@@ -260,9 +266,11 @@ export async function getProductForCheckout(
 
   // Termurah (harga efektif yang beneran dibayar) duluan; sortOrder cuma
   // pemecah seri kalau ada dua nominal dengan harga efektif sama persis.
+  const isManual = product.fulfillmentMode === "MANUAL";
+  const priceOpts = { discountBp, discountFlat, isManual, now };
   const sortedItems = [...product.items].sort((a, b) => {
-    const priceA = effectivePrice(a, { discountBp, now });
-    const priceB = effectivePrice(b, { discountBp, now });
+    const priceA = effectivePrice(a, priceOpts);
+    const priceB = effectivePrice(b, priceOpts);
     if (priceA !== priceB) return priceA < priceB ? -1 : 1;
     return a.sortOrder - b.sortOrder;
   });
@@ -277,7 +285,7 @@ export async function getProductForCheckout(
     name: item.name,
     description: item.description,
     sellingPrice: item.sellingPrice,
-    effectivePrice: effectivePrice(item, { discountBp, now }),
+    effectivePrice: effectivePrice(item, priceOpts),
     isFlashActive: isFlashActive(item, now),
     groupName: item.group?.name ?? null,
     groupSortOrder: item.group?.sortOrder ?? null,

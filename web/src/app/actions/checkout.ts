@@ -123,7 +123,15 @@ export async function createCheckoutOrder(formData: FormData): Promise<CheckoutR
   // tagihan konsisten memakai angka yang sama. discountBp datang dari tier
   // member AKTIF (lib/membership/tier.ts) - login saja TIDAK LAGI memberi
   // diskon otomatis sejak Fase B, harus punya tier yang dibeli.
-  const price = effectivePrice(item, { discountBp: membership.discountBp, now });
+  const price = effectivePrice(item, {
+    discountBp: membership.discountBp,
+    // Potongan flat paket reseller hanya menggigit di produk manual - lihat
+    // effectivePrice(). Mode-nya dibaca dari produknya, bukan dari snapshot
+    // order (order belum ada di titik ini).
+    discountFlat: membership.discountFlat,
+    isManual: item.product.fulfillmentMode === "MANUAL",
+    now,
+  });
 
   // ===== Kode promo =====
   //
