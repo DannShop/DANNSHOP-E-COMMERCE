@@ -92,6 +92,25 @@ export const handlers: Record<string, JobHandler> = {
     return "expired";
   },
 
+  // Kembaran expire-deposit untuk pembelian paket reseller. Wajib ada: satu
+  // baris PENDING mengunci pembelian berikutnya (lihat penjaga di
+  // lib/reseller/purchase.ts), jadi tagihan yang ditinggalkan tanpa penutup
+  // akan membuat resellernya tidak bisa upgrade sama sekali.
+  "expire-tier-purchase": async (payload) => {
+    const { purchaseId } = payload as { purchaseId: string };
+    const purchase = await db.tierPurchase.findUniqueOrThrow({ where: { id: purchaseId } });
+    if (purchase.status !== "PENDING") return "no-op: status sudah berubah";
+    if (purchase.expiredAt && purchase.expiredAt > new Date()) return "no-op: belum jatuh tempo";
+
+    const claimed = await db.tierPurchase.updateMany({
+      where: { id: purchase.id, status: "PENDING" },
+      data: { status: "EXPIRED" },
+    });
+    if (claimed.count === 0) return "no-op: sudah diklaim proses lain";
+
+    return "expired";
+  },
+
   "reconcile-paid-orders": async () => {
     const STALE_MINUTES = 5;
     const staleThreshold = new Date(Date.now() - STALE_MINUTES * 60_000);

@@ -299,6 +299,36 @@ export async function sendEmailChangeVerifyEmail(
   });
 }
 
+// Satu-satunya yang membawa link aktivasi. Tanpa diklik, ResellerAccount-nya
+// ada tapi `activatedAt` masih null - dan getMembershipContext() memperlakukan
+// itu persis seperti bukan reseller (harga normal).
+export async function sendResellerActivationEmail(
+  to: string,
+  data: { userName: string; activationUrl: string },
+): Promise<boolean> {
+  const branding = await getInvoiceBranding();
+  return sendTemplated("reseller_activation", to, {
+    vars: { user_name: data.userName, activation_url: data.activationUrl },
+    blocks: {
+      activation_button: button(data.activationUrl, "Aktifkan Akun Reseller", branding.accentColor),
+    },
+  });
+}
+
+// Dikirim saat form reseller PUBLIK diisi dengan email yang sudah punya akun.
+// Layar tidak pernah mengatakan itu (lihat PUBLIC_ACK di actions/reseller.ts);
+// yang tahu hanya orang yang benar-benar bisa membuka inbox-nya.
+export async function sendResellerExistingAccountEmail(
+  to: string,
+  data: { userName: string; resellerUrl: string },
+): Promise<boolean> {
+  const branding = await getInvoiceBranding();
+  return sendTemplated("reseller_existing_account", to, {
+    vars: { user_name: data.userName, reseller_url: data.resellerUrl },
+    blocks: { reseller_button: button(data.resellerUrl, "Buka Menu Reseller", branding.accentColor) },
+  });
+}
+
 // Dikirim ke alamat LAMA. SENGAJA tanpa tombol/link konfirmasi: fungsinya
 // memperingatkan, bukan menyediakan jalan pintas. Kalau alamat lama juga bisa
 // menyetujui perpindahan, penyerang yang membajak sesi tinggal menyetujuinya

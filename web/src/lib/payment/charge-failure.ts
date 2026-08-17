@@ -33,7 +33,11 @@ const BUYER_MESSAGE: Record<MidtransFailure["kind"], string> = {
 };
 
 export function reportChargeFailure(
-  context: { scope: "checkout" | "deposit"; refId: string; method: string },
+  // "tier-purchase" = pembelian paket reseller. Ditambahkan ke union yang sama,
+  // bukan diberi pelaporan sendiri: ketiga jalur uang harus terbaca serupa di
+  // log & Telegram, kalau tidak yang paling baru selalu jadi yang paling sulit
+  // didiagnosis saat gateway bermasalah.
+  context: { scope: "checkout" | "deposit" | "tier-purchase"; refId: string; method: string },
   e: unknown,
 ): ChargeFailureReport {
   const failure = describeMidtransFailure(e);

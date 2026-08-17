@@ -191,6 +191,8 @@ model User {
   memberships         UserMembership[]
   partnerAccount      PartnerAccount?
   partnerApplications PartnerApplication[]
+  resellerAccount     ResellerAccount?
+  resellerActivationTokens ResellerActivationToken[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -347,6 +349,8 @@ model MembershipTier {
   // karena katalog benefit didefinisikan di kode (bukan admin-defined) dan
   // jumlahnya kecil - satu tabel join di sini cuma menambah kerumitan tanpa
   // manfaat nyata.
+  resellerAccounts    ResellerAccount[]
+  tierPurchases       TierPurchase[]   @relation("TierPurchaseTarget")
   benefits            Json
   // Warna badge tier di UI publik & panel admin (hex). Kosmetik, tapi
   // membedakan tier secara visual sekilas pandang tanpa baca teks.
@@ -370,6 +374,125 @@ model MembershipTier {
 // satu langganan yang sama. Beli tier BEDA membuat baris baru mulai sekarang -
 // sisa waktu tier lama tidak dikembalikan/dikonversi (perilaku "upgrade
 // mengganti", bukan akumulasi, supaya tidak perlu logika proration).
+/// Keanggotaan program reseller. SATU baris per user.
+///
+/// ===== KENAPA STATUS DAN TIER DIPISAH =====
+///
+/// "Reseller" dan "punya diskon" adalah dua hal berbeda. Pendaftar yang baru
+/// aktivasi berstatus reseller dengan `tierId` NULL — dan itu berarti harga
+/// NORMAL, persis seperti pembeli biasa. Diskon baru menyala setelah dia
+/// membeli paket.
+///
+/// Konsekuensinya menyenangkan: "tier gratis" tidak perlu diwujudkan sebagai
+/// baris tier atau baris keanggotaan apa pun. Tidak ada tier aktif = tidak ada
+/// diskon = harga normal, yang memang sudah jadi perilaku bawaan seluruh kode
+/// harga. Nol baris kode harga yang perlu diubah.
+///
+/// ⚠️ JANGAN mewujudkan tier gratis sebagai UserMembership berumur panjang.
+/// Aturan pemilihan tier dulu memakai `expiresAt` terjauh, jadi baris "gratis"
+/// yang berumur panjang akan MENGALAHKAN tier berbayar — diskonnya hilang tanpa
+/// satu pun error.
+model ResellerAccount {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessName String
+  phone        String
+  /// Kode referral yang diketik pendaftar. Disimpan MENTAH: nol validasi, nol
+  /// efek, sengaja. Program referralnya belum ada, dan membuang isian ini
+  /// sekarang berarti data pendaftar paling awal hilang saat programnya jadi.
+  referralCode String?
+
+  /// Paket berbayar saat ini. NULL = paket gratis (harga normal).
+  tierId String?
+  tier   MembershipTier? @relation(fields: [tierId], references: [id])
+  /// Jumlah yang BENAR-BENAR dibayar untuk `tierId` sekarang.
+  ///
+  /// Inilah dasar kredit saat upgrade, BUKAN harga tier itu hari ini. Kalau
+  /// dasarnya harga saat ini, menurunkan harga sebuah paket akan menghukum
+  /// orang yang sudah terlanjur membayar penuh: kreditnya ikut turun padahal
+  /// uang yang masuk ke kita tidak pernah berkurang.
+  tierPricePaid BigInt @default(0)
+
+  /// Dicabut admin. Reseller nonaktif kehilangan diskonnya seketika.
+  isActive Boolean @default(true)
+  /// NULL = link aktivasi di email belum pernah diklik. Sebelum ini terisi,
+  /// akunnya belum berstatus reseller dan belum bisa membeli paket.
+  activatedAt DateTime?
+
+  purchases TierPurchase[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([tierId])
+}
+
+/// Link aktivasi pendaftaran reseller.
+///
+/// Pola sama persis dengan PasswordResetToken & EmailChangeToken: yang disimpan
+/// hanya hash SHA-256, sekali pakai lewat `usedAt`, dan kedaluwarsa sendiri.
+/// Bocornya isi tabel ini tidak bisa dipakai mengaktifkan akun siapa pun.
+model ResellerActivationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+enum TierPurchaseStatus {
+  PENDING
+  PAID
+  EXPIRED
+  FAILED
+}
+
+/// Satu kali pembelian/upgrade paket reseller lewat Midtrans.
+///
+/// Berdiri sendiri (bukan menumpang Deposit) karena uangnya TIDAK pernah masuk
+/// saldo: ini pembelian langsung. Menumpang Deposit akan berarti saldo bertambah
+/// lalu dipotong lagi, dan tiap kegagalan di tengah meninggalkan saldo yang
+/// tidak seharusnya ada.
+///
+/// Seluruh angkanya DISNAPSHOT saat dibuat, bukan dihitung ulang saat dibayar.
+/// Harga paket bisa berubah antara pembeli menekan tombol dan menyelesaikan
+/// pembayaran; yang berlaku adalah yang tertera saat dia setuju.
+model TierPurchase {
+  id         String          @id @default(cuid())
+  resellerId String
+  reseller   ResellerAccount @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+
+  tierId String
+  tier   MembershipTier @relation("TierPurchaseTarget", fields: [tierId], references: [id])
+  /// Paket yang dimiliki saat membeli. NULL = naik dari paket gratis.
+  fromTierId String?
+
+  /// Harga paket tujuan saat pembelian dibuat.
+  tierPrice BigInt
+  /// Kredit dari paket lama (= `tierPricePaid` saat itu). Dijepit agar tidak
+  /// pernah melebihi `tierPrice` — tidak ada tagihan minus, tidak ada refund.
+  creditApplied BigInt @default(0)
+  fee           BigInt @default(0)
+  uniqueCode    Int    @default(0)
+  /// Yang benar-benar ditagihkan: tierPrice - creditApplied + fee + uniqueCode.
+  totalPaid     BigInt
+
+  paymentMethod String?
+  status        TierPurchaseStatus @default(PENDING)
+  paymentRef    String?
+  rawResponse   Json?
+  expiredAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([resellerId, status])
+}
+
 model UserMembership {
   id                   String         @id @default(cuid())
   userId               String

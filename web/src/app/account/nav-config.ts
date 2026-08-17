@@ -1,4 +1,4 @@
-import { House, PlusCircle, ReceiptText, Wallet, Handshake, Settings } from "lucide-react";
+import { House, PlusCircle, ReceiptText, Wallet, Handshake, Store, Settings } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 // Tipe ikon ditulis manual (bukan `LucideIcon`) supaya file ini tidak terikat
@@ -28,6 +28,7 @@ export const ACCOUNT_NAV: AccountNavItem[] = [
   { href: "/account/deposit", label: "Isi Saldo", icon: PlusCircle },
   { href: "/account/orders", label: "Transaksi", icon: ReceiptText },
   { href: "/account/deposits", label: "Deposit", icon: Wallet },
+  { href: "/account/reseller", label: "Reseller", icon: Store },
   { href: "/account/mitra", label: "Mitra", icon: Handshake },
   { href: "/account/settings", label: "Pengaturan", icon: Settings },
 ];
@@ -37,12 +38,18 @@ export const ACCOUNT_NAV: AccountNavItem[] = [
  *
  * Ditulis sebagai peta literal karena Tailwind memindai kelas secara statis —
  * `grid-cols-${n}` tidak akan pernah ikut ter-compile dan tab bar-nya jadi satu
- * kolom menumpuk. Dibatasi sampai 6: lewat dari itu labelnya tidak lagi terbaca
- * di layar 360px dan menunya harus dipangkas, bukan digencet lagi.
+ * kolom menumpuk.
+ *
+ * ⚠️ 7 ADALAH BATASNYA, dan sudah tercapai (menu Reseller masuk 2026-08-17).
+ * Di layar 360px itu berarti ~51px per tab — ikonnya masih jelas, labelnya
+ * sudah mepet. Menu berikutnya WAJIB menggantikan salah satu yang ada, bukan
+ * ditambahkan: lewat dari ini labelnya berhenti terbaca dan tab bar-nya jadi
+ * deretan ikon tanpa keterangan.
  */
 export const ACCOUNT_NAV_GRID_CLASS: string =
-  ({ 4: "grid-cols-4", 5: "grid-cols-5", 6: "grid-cols-6" } as Record<number, string>)[ACCOUNT_NAV.length] ??
-  "grid-cols-5";
+  ({ 4: "grid-cols-4", 5: "grid-cols-5", 6: "grid-cols-6", 7: "grid-cols-7" } as Record<number, string>)[
+    ACCOUNT_NAV.length
+  ] ?? "grid-cols-5";
 
 /**
  * `/account` adalah prefix dari SEMUA route panel, jadi khusus dia dicocokkan

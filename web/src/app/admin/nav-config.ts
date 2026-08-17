@@ -17,6 +17,7 @@ import {
   Radio,
   Activity,
   Crown,
+  Store,
   Users,
   UserCog,
   Palette,
@@ -75,7 +76,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Membership",
     items: [
       { href: "/admin/users", label: "Kontrol User", icon: Users },
-      { href: "/admin/membership-tiers", label: "Tier Member", icon: Crown },
+      { href: "/admin/membership-tiers", label: "Paket Reseller", icon: Crown },
+      { href: "/admin/reseller", label: "Reseller", icon: Store },
     ],
   },
   {

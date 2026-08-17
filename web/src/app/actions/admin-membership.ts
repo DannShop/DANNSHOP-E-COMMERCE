@@ -87,7 +87,7 @@ export async function createMembershipTier(formData: FormData): Promise<ActionRe
   });
   await logAdmin(admin.adminId, "membership_tier.create", tier.id, { slug: parsed.data.slug, benefits });
   revalidatePath("/admin/membership-tiers");
-  revalidatePath("/membership");
+  revalidatePath("/daftar-reseller");
   return { ok: `Tier "${tier.name}" dibuat.` };
 }
 
@@ -135,7 +135,7 @@ export async function updateMembershipTier(formData: FormData): Promise<ActionRe
   // langsung berlaku untuk semua member), bukan bug.
   await logAdmin(admin.adminId, "membership_tier.update", parsed.data.id, { benefits });
   revalidatePath("/admin/membership-tiers");
-  revalidatePath("/membership");
+  revalidatePath("/daftar-reseller");
   return { ok: "Tier tersimpan." };
 }
 
@@ -159,7 +159,7 @@ export async function deleteMembershipTier(formData: FormData): Promise<ActionRe
   await db.membershipTier.delete({ where: { id: parsed.data.id } });
   await logAdmin(admin.adminId, "membership_tier.delete", parsed.data.id);
   revalidatePath("/admin/membership-tiers");
-  revalidatePath("/membership");
+  revalidatePath("/daftar-reseller");
   return { ok: "Tier dihapus." };
 }
 

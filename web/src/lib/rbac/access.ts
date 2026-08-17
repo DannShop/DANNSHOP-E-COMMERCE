@@ -73,6 +73,7 @@ export const ADMIN_ROUTE_RULES: RouteRule[] = [
 
   { prefix: "/admin/users", permission: "users.view" },
   { prefix: "/admin/membership-tiers", permission: "users.view" },
+  { prefix: "/admin/reseller", permission: "users.view" },
 
   { prefix: "/admin/banners", permission: "storefront.manage" },
   { prefix: "/admin/appearance", permission: "storefront.manage" },

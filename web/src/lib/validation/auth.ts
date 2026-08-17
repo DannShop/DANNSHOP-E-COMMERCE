@@ -16,7 +16,11 @@ import { z } from "zod";
 // diterima setelah dirapikan. Tidak ada alamat yang dulu diterima jadi ditolak,
 // dan nilai yang keluar tetap sudah di-trim + huruf kecil seperti sebelumnya -
 // jadi tidak ada baris database lama yang mendadak tidak cocok.
-const emailField = z
+// Diekspor supaya form di luar berkas ini (mis. pendaftaran reseller) memakai
+// aturan email yang SAMA, bukan menulis ulang `z.email()` sendiri - salinan
+// yang menulis ulang akan kehilangan perbaikan trim di atas dan menghidupkan
+// lagi bug "email saya ditolak padahal sudah benar" di pintu masuk yang lain.
+export const emailField = z
   .string()
   .transform((v) => v.trim().toLowerCase())
   .pipe(z.email("Email tidak valid"));

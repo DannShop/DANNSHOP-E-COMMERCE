@@ -189,7 +189,12 @@ export default auth(async (req) => {
   const isAccountRecovery =
     nextUrl.pathname === "/konfirmasi-email" ||
     nextUrl.pathname === "/reset-password" ||
-    nextUrl.pathname === "/forgot-password";
+    nextUrl.pathname === "/forgot-password" ||
+    // Link aktivasi reseller: sama persis sifatnya - masuk lewat email, 30
+    // menit, sekali pakai. Yang membukanya saat maintenance menyala akan
+    // melihat halaman maintenance, mengira link-nya rusak, dan tokennya keburu
+    // mati sebelum toko dibuka lagi.
+    nextUrl.pathname === "/reseller/aktivasi";
 
   const isExemptFromMaintenance =
     nextUrl.pathname === "/maintenance" ||

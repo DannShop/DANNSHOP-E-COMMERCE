@@ -219,6 +219,87 @@ async function settleDeposit(
   return mapped;
 }
 
+/**
+ * Memberikan paket reseller setelah pembayarannya benar-benar masuk.
+ *
+ * Pola idempotensinya sama persis dengan settleDeposit: klaim atomik lewat
+ * `updateMany ... where status: "PENDING"`. Webhook Midtrans mengirim ulang
+ * notifikasi yang sama berkali-kali, dan tanpa klaim ini paket bisa diberikan
+ * dua kali - yang di sini berarti `tierPricePaid` tertimpa dua kali dan kredit
+ * upgrade berikutnya jadi salah.
+ */
+async function settleTierPurchase(
+  purchase: { id: string; totalPaid: bigint },
+  confirmed: MidtransStatusResult,
+): Promise<string> {
+  const mapped = mapMidtransStatus(confirmed.transactionStatus, confirmed.fraudStatus);
+
+  // Nominal WAJIB cocok sebelum paket diberikan. Penjaga yang sama dipakai
+  // deposit: kalau yang dibayar berbeda dari yang ditagih, yang benar adalah
+  // berhenti dan memanggil manusia - bukan menebak mana yang dimaksud.
+  if (mapped === "paid" && BigInt(Math.round(Number(confirmed.grossAmount))) !== purchase.totalPaid) {
+    console.error("settleTierPurchase: nominal tidak cocok, paket TIDAK diberikan", {
+      purchaseId: purchase.id,
+      expected: purchase.totalPaid.toString(),
+      received: confirmed.grossAmount,
+    });
+    await notifyTelegram(
+      "system_anomaly",
+      `⚠️ Pembelian paket reseller ${purchase.id} nominal settlement TIDAK COCOK (ditagih Rp ${purchase.totalPaid.toString()}, diterima ${confirmed.grossAmount}) - paket TIDAK diberikan, perlu investigasi manual.`,
+    );
+    return "amount_mismatch";
+  }
+
+  if (mapped === "paid") {
+    let claimedCount = 0;
+    await db.$transaction(async (tx) => {
+      const claimed = await tx.tierPurchase.updateMany({
+        where: { id: purchase.id, status: "PENDING" },
+        data: { status: "PAID" },
+      });
+      claimedCount = claimed.count;
+      if (claimed.count === 0) return;
+
+      const full = await tx.tierPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+      // `tierPricePaid` disetel ke HARGA PAKET, bukan ke jumlah yang barusan
+      // ditransfer. Yang dicatat adalah "sudah membayar penuh sebesar harga
+      // paket ini" - kredit dari paket sebelumnya memang bagian dari harga itu.
+      // Kalau yang dicatat cuma selisihnya, upgrade berikutnya akan mengkredit
+      // jauh lebih kecil dari yang benar-benar sudah dibayar orang ini.
+      await tx.resellerAccount.update({
+        where: { id: full.resellerId },
+        data: { tierId: full.tierId, tierPricePaid: full.tierPrice },
+      });
+    });
+
+    if (claimedCount === 0) {
+      const current = await db.tierPurchase.findUnique({
+        where: { id: purchase.id },
+        select: { status: true },
+      });
+      if (current?.status !== "PAID") {
+        console.error(
+          "settleTierPurchase: settlement 'paid' datang setelah status bukan PENDING - paket BELUM diberikan",
+          { purchaseId: purchase.id, statusSaatIni: current?.status },
+        );
+        await notifyTelegram(
+          "system_anomaly",
+          `⚠️ Pembelian paket reseller ${purchase.id} dibayar SETELAH statusnya jadi "${current?.status}" - paket BELUM diberikan, perlu investigasi manual.`,
+        );
+        return "paid_but_not_pending";
+      }
+    }
+  } else if (mapped === "failed" || mapped === "expired") {
+    const newStatus = mapped === "expired" ? "EXPIRED" : "FAILED";
+    await db.tierPurchase.updateMany({
+      where: { id: purchase.id, status: "PENDING" },
+      data: { status: newStatus },
+    });
+  }
+
+  return mapped;
+}
+
 // Titik masuk tunggal untuk kedua pemanggil (webhook & lazy reconcile).
 //
 // `externalRef` adalah order_id di sisi Midtrans, yang di sistem kita berarti
@@ -247,6 +328,15 @@ export async function settleFromMidtrans(externalRef: string): Promise<string> {
   if (deposit) {
     const confirmed = await getTransactionStatus(externalRef, creds);
     return settleDeposit(deposit, confirmed);
+  }
+
+  const purchase = await db.tierPurchase.findUnique({
+    where: { id: externalRef },
+    select: { id: true, totalPaid: true },
+  });
+  if (purchase) {
+    const confirmed = await getTransactionStatus(externalRef, creds);
+    return settleTierPurchase(purchase, confirmed);
   }
 
   return "order_not_found";

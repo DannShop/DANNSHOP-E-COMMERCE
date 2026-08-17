@@ -24,6 +24,8 @@ export const EMAIL_TEMPLATE_KEYS = [
   "password_reset",
   "email_change_verify",
   "email_change_notice",
+  "reseller_activation",
+  "reseller_existing_account",
 ] as const;
 
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
@@ -155,6 +157,38 @@ export const EMAIL_TEMPLATE_META: Record<EmailTemplateKey, EmailTemplateMeta> = 
 <p>Kalau itu memang kamu, tidak ada yang perlu dilakukan di sini — selesaikan lewat link konfirmasi yang kami kirim ke alamat barunya.</p>
 <p style="margin-top:16px;font-size:13px;color:#666;"><strong>Kalau ini BUKAN kamu:</strong> akunmu kemungkinan sedang diakses orang lain. Segera ganti passwordmu — mengganti password otomatis mengakhiri seluruh sesi yang sedang berjalan, termasuk milik orang tersebut.</p>`,
   },
+  reseller_activation: {
+    label: "Aktivasi Reseller",
+    description:
+      "Dikirim setelah formulir pendaftaran reseller diisi. Membawa link aktivasi — tanpa diklik, akunnya belum jadi reseller.",
+    vars: [
+      { name: "brand_name", description: "Nama toko" },
+      { name: "user_name", description: "Nama pendaftar" },
+      { name: "activation_url", description: "URL aktivasi (juga tersedia sebagai tombol)" },
+    ],
+    blocks: [{ name: "activation_button", description: "Tombol Aktifkan Akun Reseller" }],
+    defaultBody: `<p>Halo <strong>{{user_name}}</strong>, terima kasih sudah mendaftar program reseller {{brand_name}}.</p>
+<p>Satu langkah lagi: klik tombol di bawah untuk mengaktifkan akun resellermu.</p>
+{{activation_button}}
+<p style="margin-top:16px;">Setelah aktif, kamu langsung bisa bertransaksi seperti biasa dengan status reseller. Harga masih normal di paket gratis — pilih paket berbayar kapan saja dari menu Reseller di akunmu untuk mendapat harga lebih murah.</p>
+<p style="margin-top:16px;font-size:13px;color:#666;">Link ini berlaku <strong>30 menit</strong> dan cuma bisa dipakai sekali.</p>
+<p style="font-size:13px;color:#666;">Kalau kamu tidak merasa mendaftar, abaikan saja email ini — tidak ada yang berubah.</p>`,
+  },
+  reseller_existing_account: {
+    label: "Reseller — Akun Sudah Ada",
+    description:
+      "Dikirim saat formulir reseller publik diisi dengan email yang SUDAH punya akun. Sengaja tidak membuat akun baru dan tidak membocorkan apa pun di layar.",
+    vars: [
+      { name: "brand_name", description: "Nama toko" },
+      { name: "user_name", description: "Nama pemilik akun" },
+      { name: "reseller_url", description: "URL menu Reseller di dalam akun" },
+    ],
+    blocks: [{ name: "reseller_button", description: "Tombol Buka Menu Reseller" }],
+    defaultBody: `<p>Halo <strong>{{user_name}}</strong>, ada yang mendaftarkan alamat email ini ke program reseller {{brand_name}}.</p>
+<p>Email ini sudah punya akun, jadi pendaftarannya diteruskan lewat akun yang ada — tidak ada akun kedua yang dibuat. Buka menu Reseller di dalam akunmu untuk melanjutkan; email dan passwordmu tidak perlu diisi ulang di sana.</p>
+{{reseller_button}}
+<p style="margin-top:16px;font-size:13px;color:#666;">Kalau kamu tidak merasa mendaftar, abaikan saja email ini — tidak ada yang berubah pada akunmu.</p>`,
+  },
 };
 
 // Subjek default dipisah dari `default` di atas supaya keduanya tetap bisa
@@ -168,6 +202,8 @@ const DEFAULT_SUBJECTS: Record<EmailTemplateKey, string> = {
   password_reset: "Reset Password - {{brand_name}}",
   email_change_verify: "Konfirmasi Email Baru - {{brand_name}}",
   email_change_notice: "Ada Permintaan Ganti Email - {{brand_name}}",
+  reseller_activation: "Aktifkan Akun Reseller - {{brand_name}}",
+  reseller_existing_account: "Lanjutkan Pendaftaran Reseller - {{brand_name}}",
 };
 
 export function defaultTemplate(key: EmailTemplateKey): EmailTemplate {
