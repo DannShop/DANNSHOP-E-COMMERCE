@@ -51,6 +51,19 @@ export async function loginAction(
   // Rate limit per email di atas (20/jam) tetap berlaku untuk langkah ini, jadi
   // dia tidak bisa dipakai menyapu daftar password.
   const totpInput = String(formData.get("totp") ?? "").trim();
+
+  // Kode diisi tapi identitasnya hilang. Ini TIDAK BOLEH jatuh ke jalur normal
+  // di bawah, karena di langkah kedua setiap kegagalan dilaporkan sebagai
+  // "Kode autentikasi salah" - dan itu persis yang membuat bug reset form React
+  // 19 mustahil didiagnosis dari layar: kodenya benar, kode pemulihannya juga
+  // benar, tapi keduanya tidak pernah sempat diperiksa karena email & password
+  // sudah dikosongkan lebih dulu. Akarnya sudah diperbaiki di login-form.tsx;
+  // yang di sini memastikan kalau keadaan itu muncul lagi lewat jalan lain,
+  // yang terbaca orang adalah sebabnya, bukan tuduhan ke kode yang benar.
+  if (totpInput && (!email || !String(formData.get("password") ?? ""))) {
+    return { error: "Sesi login terputus. Masukkan email & password lagi." };
+  }
+
   if (!totpInput) {
     const cek = await checkCredentials({
       email: formData.get("email"),
