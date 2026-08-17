@@ -504,7 +504,12 @@ export function ProductDetailClient({
               </>
             )}
             <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-2">
-              <span className="text-sm font-medium">Total Bayar</span>
+              {/* "Total Harga", BUKAN "Total Bayar". Kode unik baru dibuat saat
+                  pesanan dibuat, jadi angka di layar ini belum jumlah yang
+                  ditagihkan - dan label yang mengaku sebaliknya membuat pembeli
+                  merasa ditagih diam-diam saat melihat invoice. Angka final
+                  ada di invoice, dengan label yang memang menjanjikan itu. */}
+              <span className="text-sm font-medium">Total</span>
               {/* SATU angka pasti: harga item + biaya admin. Tidak ada rentang
                   dan tidak ada tanda "+". Kode unik ditambahkan saat pesanan
                   benar-benar dibuat, dan angka finalnya muncul di invoice. */}
@@ -518,8 +523,8 @@ export function ProductDetailClient({
               // akan mengira ada yang salah - satu kalimat di sini jauh lebih
               // murah daripada satu pertanyaan ke CS.
               <p className="text-xs text-muted-foreground">
-                Kode unik untuk mencocokkan pembayaran ditambahkan saat pesanan dibuat — nominal finalnya
-                muncul di halaman invoice.
+                Kode unik ditambahkan saat pesanan dibuat. Jumlah yang harus dibayar muncul lengkap di
+                halaman invoice setelah kamu menekan tombol di bawah.
               </p>
             )}
           </div>

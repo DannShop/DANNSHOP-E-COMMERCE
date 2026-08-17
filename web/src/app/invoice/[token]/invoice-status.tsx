@@ -238,8 +238,12 @@ export function InvoiceStatus({
           <span className="text-muted-foreground">Kode unik</span>
           <span>{formatRupiah(order.uniqueCode)}</span>
         </div>
+        {/* Di SINI barulah angkanya final: kode unik sudah dibuat saat pesanan
+            dibuat, jadi inilah satu-satunya layar yang boleh menjanjikan
+            "sejumlah ini yang harus dibayar". Halaman produk sengaja memakai
+            label "Total Harga" karena di sana kode uniknya memang belum ada. */}
         <div className="mt-1 flex justify-between border-t pt-1 font-semibold">
-          <span>Total</span>
+          <span>Total Harga</span>
           <span>{formatRupiah(order.total)}</span>
         </div>
       </div>
