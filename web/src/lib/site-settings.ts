@@ -143,7 +143,7 @@ DannShop berhak memperbarui Kebijakan Privasi ini sewaktu-waktu. Perubahan berla
 ## Kontak
 Pertanyaan atau permintaan terkait data pribadi bisa disampaikan lewat halaman Kontak.`;
 
-const DEFAULT_MAINTENANCE_MESSAGE = "Optimalisasi sistem sedang berjalan.";
+const DEFAULT_MAINTENANCE_MESSAGE = "Optimalisasi sistem sedang dalam proses.";
 const DEFAULT_CS_HOURS = "Setiap hari, 08.00 – 22.00 WIB";
 
 const SETTINGS_KEYS = [
